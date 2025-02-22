@@ -2,6 +2,13 @@
 
 #define str8_lit(S) Str8{(u8*) S, sizeof(S) - 1}
 
+Str8 str8(char* str, size_t size) {
+    Str8 result = {0};
+    result.str = (u8*) str;
+    result.size = size;
+    return result;
+}
+
 Str8 str8(char* str) {
     Str8 result = {0};
     result.str = (u8*) str;

@@ -2,19 +2,19 @@
 
 #define arena_push_size(arena, value, count) (value*) _push_size(arena, sizeof(value) * count);
 
-void arena_init(Arena* arena, u8* memory, size_t max_len) 
+void arena_init(Arena* arena, size_t size) 
 {
-    arena->base = memory;
+    arena->base = (u8*)VirtualAlloc(0, size, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
     arena->len = 0;
-    arena->max_len = max_len;
+    arena->max_len = size;
     arena->temp_count = 0;
 }
 
 void* _push_size(Arena* arena, size_t size) 
 {
-    assert(arena->len + size <= arena->max_len);
+    gui_assert(arena->len + size <= arena->max_len, "Arena size exceeded!");
     void* result = arena->base + arena->len;
-    memset(arena->base, 0, size);
+    //memset(arena->base, 0, size);
     arena->len += size;
     return result;
 }

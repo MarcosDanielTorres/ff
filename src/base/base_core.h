@@ -1,4 +1,5 @@
 #pragma once
+#include <stdint.h>
 
 #define global_variable static
 #define internal static
@@ -28,3 +29,4 @@ typedef u32 b32;
 #define align_pow2(x,b) (((x) + (b) - 1)&(~((b) - 1)))
 
 #define assert(expr) do{if(!(expr)) {__debugbreak();}}while(0)
+#define gui_assert(expr, msg) do{if(!(expr)) {MessageBox(0, msg, 0, MB_OK | MB_ICONERROR); __debugbreak();}}while(0)

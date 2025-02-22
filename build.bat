@@ -23,5 +23,6 @@ pushd build
 del *.obj
 if "%main%"=="1"                %compile% ..\src\main.cpp /link /LIBPATH:%freetype_lib_path% libfreetype.lib user32.lib gdi32.lib
 if "%samples_cmdline%"=="1"     %compile% ..\src\samples\samples_cmdline.cpp /link user32.lib gdi32.lib
+%compile% ..\src\samples\opengl.cpp /link user32.lib gdi32.lib opengl32.lib
 popd
 

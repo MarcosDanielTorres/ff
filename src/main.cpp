@@ -1,5 +1,4 @@
 #include <stdio.h>
-#include <stdint.h>
 #include <ft2build.h>
 #include FT_FREETYPE_H
 
@@ -11,6 +10,7 @@
 #include "base/base_string.cpp"
 #include "base/base_arena.cpp"
 #include "base/base_os.cpp"
+#include <psapi.h>
 
 
 union FlagsUnion {
@@ -34,10 +34,12 @@ Str8 os_g_key_display_string_table[143] =
 };
 
 
+global_variable int window_width = 1280;
+global_variable int window_height = 720;
 
 global_variable FT_Library library;
 global_variable Arena global_arena;
-global_variable int is_running = true;
+global_variable Arena global_scratch_arena;
 
 global_variable char* global_line;
 global_variable u32 global_cursor_in_line;
@@ -72,6 +74,7 @@ u32 line_numbers_to_chars_hash(int num) {
     u32 result = {0};
     return result;
 }
+
 
 void add_line_number_in_chars(LineNumberToChars* line_numbers_to_chars, u32 index, u32 key_line_number, char* buf) {
     LineNumberToChars* slot;
@@ -111,6 +114,12 @@ enum OS_Modifiers {
     OS_Modifiers_Shift = (1 << 2),
 };
 
+struct UI_State
+{
+   b32 primary_menu_opened;
+};
+
+global_variable UI_State ui_state;
 global_variable u32 os_modifiers;
 
 global_variable TextEditor text_editor;
@@ -154,6 +163,7 @@ enum Keys {
     Keys_Enter = 0x0D,
     Keys_Backspace = 0x08,
     Keys_Caps = 0x14,
+    Keys_ESC = 0x1B,
     Keys_Count = 0xFE,
 };
 
@@ -184,6 +194,11 @@ struct Input {
     MouseState prev_mouse_state;
 };
 
+u32 click_left(Input* input) {
+    u32 result = 0;
+    result = input->curr_mouse_state.button[Buttons_LeftClick] == 1;
+    return result;
+}
 
 u32 is_key_just_pressed(Input* input, Keys key) {
     u32 result = 0;
@@ -272,61 +287,6 @@ u8* some(Arena* arena) {
 global_variable char* test_string = (char*)malloc(100);
 global_variable u32 test_string_count;
 
-LRESULT CALLBACK Win32MainWindowCallback(HWND Window, UINT Message, WPARAM wParam, LPARAM lParam) {
-    LRESULT result = 0;
-    switch(Message)
-    {
-        case WM_DESTROY:
-        {
-            is_running = false;
-        } break;
-        case WM_PAINT: {
-            PAINTSTRUCT Paint;
-            HDC DeviceContext = BeginPaint(Window, &Paint);
-            OS_Window_Dimension Dimension = os_win32_get_window_dimension(Window);
-            os_win32_display_buffer(DeviceContext, &global_buffer,
-                                       Dimension.width, Dimension.height);
-            EndPaint(Window, &Paint);
-        }break;
-        default:
-        {
-            result = DefWindowProcA(Window, Message, wParam, lParam);
-        } break;
-    }
-    return result;
-}
-
-OS_Window os_win32_open_window(i32 width, i32 height, RECT rect) {
-    OS_Window result = {0};
-    WNDCLASSA WindowClass = {0};
-    WindowClass.style = CS_HREDRAW|CS_VREDRAW;
-    WindowClass.lpfnWndProc = Win32MainWindowCallback;
-    // TODO I don't know if this is useful or not
-    //WindowClass.hInstance = instance;
-    WindowClass.hCursor = LoadCursor(0, IDC_ARROW);
-    WindowClass.lpszClassName = "HandmadeHeroWindowClass";
-    RegisterClass(&WindowClass);
-    HWND handle = CreateWindowExA(
-        0,
-        WindowClass.lpszClassName, //[in, optional] LPCSTR    lpClassName,
-        "Lucho!!", //[in, optional] LPCSTR    lpWindowName,
-        WS_OVERLAPPEDWINDOW | WS_VISIBLE, //[in]           DWORD     dwStyle,
-        CW_USEDEFAULT, //[in]           int       X,
-        CW_USEDEFAULT, //[in]           int       Y,
-        // TODO take this out from here
-        rect.right - rect.left,//[in]           int       nWidth,
-        rect.bottom - rect.top, //[in]           int       nHeight,
-        0, //[in, optional] HWND      hWndParent,
-        0, //[in, optional] HMENU     hMenu,
-        // TODO Same here, is instance useful?
-        0, //[in, optional] HINSTANCE hInstance,
-        0 //[in, optional] LPVOID    lpParam
-    );
-    result.handle = handle;
-    global_window_handle = handle;
-    return result;
-}
-
 char* keys_to_str[6] =  {
     "Shift",
     "LeftShift",
@@ -403,7 +363,7 @@ void Win32ProcessPendingMessages() {
         {
             case WM_QUIT:
             {
-                is_running = false;
+                global_os_w32_window.is_running = false;
             } break;
 
             case WM_CHAR: 
@@ -548,12 +508,41 @@ void Win32ProcessPendingMessages() {
                 i32 yyPos = HIWORD(Message.lParam);
                 char buf[100];
                 sprintf(buf,  "MOUSE MOVE: x: %d, y: %d\n", xPos, yPos);
-                //OutputDebugStringA(buf);
-
+                OutputDebugStringA(buf);
 
                 assert((xxPos == xPos && yyPos == yPos));
+                global_input.curr_mouse_state.x = xPos;
+                global_input.curr_mouse_state.y = yPos;
             }
             break;
+            case WM_LBUTTONUP:
+            {
+                global_input.curr_mouse_state.button[Buttons_LeftClick] = 0;
+
+            } break;
+            case WM_MBUTTONUP:
+            {
+                global_input.curr_mouse_state.button[Buttons_MiddleClick] = 0;
+            } break;
+            case WM_RBUTTONUP:
+            {
+                global_input.curr_mouse_state.button[Buttons_RightClick] = 0;
+            } break;
+
+            case WM_LBUTTONDOWN:
+            {
+                global_input.curr_mouse_state.button[Buttons_LeftClick] = 1;
+
+            } break;
+            case WM_MBUTTONDOWN:
+            {
+                global_input.curr_mouse_state.button[Buttons_MiddleClick] = 1;
+            } break;
+            case WM_RBUTTONDOWN:
+            {
+                global_input.curr_mouse_state.button[Buttons_RightClick] = 1;
+            } break;
+
             
 
             default:
@@ -584,9 +573,11 @@ void draw_rect(OS_Window_Buffer* buffer, i32 dest_x, i32 dest_y, i32 width, i32 
     }
 }
 
-enum UI_Button_Flags {
-    UI_Button_Flags_Drag = (1 << 0),
-    UI_Button_Flags_Hover = (1 << 1),
+typedef u32 UI_ButtonFlags;
+enum {
+    UI_ButtonFlags_Drag = (1 << 0),
+    UI_ButtonFlags_Hover = (1 << 1),
+    UI_ButtonFlags_Click = (1 << 2),
 };
 
 struct UI_Button {
@@ -609,7 +600,7 @@ struct UI_Button {
 
 
     Another thing is to keep using only one draw_button with the flag check buuuuuuut the mouse state is inside the button this time!
-    For this before drawing i need to do a pass inside every button and if mouse_inside_rect() break... the problem is that all the other buttons must be resseted!
+    For this before drawing i need to do a pass inside every button and if rect_contains(a, b) break... the problem is that all the other buttons must be resseted!
     so i still need to go over them!
 */
 /*
@@ -626,38 +617,28 @@ IsInRectangle(rectangle2 Rectangle, v2 Test)
 */
 
 
+struct Rect2D
+{
+    i32 x;
+    i32 y;
+    i32 w;
+    i32 h;
+};
 
-b32 mouse_inside_rect(i32 x, i32 y, i32 w, i32 h) {
-    b32 result = ((global_input.curr_mouse_state.x > x) &&
-                  (global_input.curr_mouse_state.x < w) && 
-                  (global_input.curr_mouse_state.y > y) &&
-                  (global_input.curr_mouse_state.y < h));
+struct Point2D
+{
+    i32 x;
+    i32 y;
+};
+
+b32 rect_contains_point(Rect2D rect, Point2D point) {
+    b32 result = ((point.x > rect.x) &&
+                  (point.x < rect.x + rect.w) && 
+                  (point.y > rect.y) &&
+                  (point.y < rect.y + rect.h));
     return result;
 }
 
-void draw_button(OS_Window_Buffer* buffer, UI_Button button) {
-    int dest_x = button.x;
-    int dest_y = button.y;
-    int height = button.h;
-    int width = button.w;
-    int color = button.color;
-    int hovered_color = 0xFF00FFFF;
-
-    if(button.ui_flags & UI_Button_Flags_Hover) {
-        if (mouse_inside_rect(dest_x, dest_y, width, height)) {
-            color = hovered_color;
-        }
-    }
-
-    u8* row = buffer->pixels + buffer->pitch * dest_y + dest_x * 4;
-    for(i32 y = 0; y < height; y++) {
-        u32* pixel = (u32*)row;
-        for(i32 x = 0; x < width; x++) {
-            *pixel++ = color;
-        }
-        row += buffer->pitch;
-    }
-}
 
 
 void draw_line(OS_Window_Buffer* buffer, i32 x1, i32 y1, i32 x2, i32 y2) {
@@ -691,7 +672,9 @@ void draw_bitmap(OS_Window_Buffer* buffer, i32 x_baseline, i32 y_baseline, Loade
     i32 new_y = y_baseline - hdp.bitmap_top;
 
     u8* dest_row = buffer->pixels + new_y * buffer->pitch + x_baseline * 4;
+    u32* dest_row2 = (u32*)buffer->pixels + new_y * buffer->width + x_baseline;
     for(i32 y = 0; y < hdp.bitmap.height; y++){
+        u32* destrow = (u32*) dest_row2;
         u32* dest_pixel = (u32*) dest_row;
         for(i32 x = 0; x < hdp.bitmap.width; x++) {
             u8* src_pixel = hdp.bitmap.buffer + hdp.bitmap.width * y + x;
@@ -700,9 +683,167 @@ void draw_bitmap(OS_Window_Buffer* buffer, i32 x_baseline, i32 y_baseline, Loade
             u32 green = *src_pixel << 8;
             u32 blue = *src_pixel;
             u32 color = alpha | red | green | blue;
-            *dest_pixel++ = color;
+            //*dest_pixel++ = color;
+
+            //u32* sourcerow = (u32*)hdp.bitmap.buffer + hdp.bitmap.width * y + x;
+            //f32 sa = (f32)((*sourcerow >> 24) & 0xFF) / 255.0f;
+            //f32 sr = (f32)((*sourcerow >> 16) & 0xFF);
+            //f32 sg = (f32)((*sourcerow >> 8) & 0xFF);
+            //f32 sb = (f32)((*sourcerow >> 0) & 0xFF);
+
+            //f32 dr = (f32)((*destrow >> 16) & 0xFF);
+            //f32 dg = (f32)((*destrow >> 8) & 0xFF);
+            //f32 db = (f32)((*destrow >> 0) & 0xFF);
+
+            //// Blend equation: linear interpolation (lerp)
+            //u32 nr = u32((1.0f - sa) * dr + sa*sr);
+            //u32 ng = u32((1.0f - sa) * dg + sa*sg);
+            //u32 nb = u32((1.0f - sa) * db + sa*sb);
+
+            //*destrow = (nr << 16) | (ng << 8) | (nb << 0);
+            //destrow++;
+
+
+            // alright so dest is the background and in this case the dest_row (buffer->memory)
+            // formula: alpha * src + (1 - alpha) * dest
+            f32 sa = (f32)(*src_pixel / 255.0f);
+
+            u32 color2 = 0xFFFFFFFF;
+
+            f32 sr = (f32)((color2 >> 16) & 0xFF);
+            f32 sg = (f32)((color2 >> 8) & 0xFF);
+            f32 sb = (f32)((color2 >> 0) & 0xFF);
+
+            f32 dr = (f32)((*destrow >> 16) & 0xFF);
+            f32 dg = (f32)((*destrow >> 8) & 0xFF);
+            f32 db = (f32)((*destrow >> 0) & 0xFF);
+            // Blend equation: linear interpolation (lerp)
+            // TODO why if i only want white fonts i cant just remove the right hand side of the last multplication
+            // (sa * sr) => (sa)
+            u32 nr = u32((1.0f - sa) * dr + sa*sr);
+            u32 ng = u32((1.0f - sa) * dg + sa*sg);
+            u32 nb = u32((1.0f - sa) * db + sa*sb);
+
+            *destrow = (nr << 16) | (ng << 8) | (nb << 0);
+            destrow++;
+
         }
         dest_row += buffer->pitch;
+        dest_row2 += buffer->width;
+    }
+}
+
+union ButtonState {
+    struct {
+        u32 pressed_left   : 1;
+        u32 pressed_middle : 1;
+        u32 pressed_right  : 1;
+    };
+    u32 all_flags;
+};
+
+struct UI_Widget
+{
+    i32 x;
+    i32 y;
+    i32 w;
+    i32 h;
+    u32 color;
+    const char* text;
+    ButtonState clicked_state;
+    u32 flags;
+    u32 hovered;
+};
+
+
+
+UI_Widget make_widget(i32 x, i32 y, i32 w, i32 h, u32 color, const char* text = 0) 
+{
+    UI_Widget result = {0};
+    result.flags |= UI_ButtonFlags_Hover;
+
+    result.x = x;
+    result.y = y;
+    result.w = w;
+    result.h = h;
+    result.color = color;
+    result.text = text;
+    if (rect_contains_point({x, y, w, h}, {global_input.curr_mouse_state.x, global_input.curr_mouse_state.y})) 
+    {
+        if(click_left(&global_input))
+        {
+            result.clicked_state.pressed_left = 1;
+        }
+        if(result.flags & UI_ButtonFlags_Hover) {
+            result.hovered = 1;
+        }
+    }
+
+    return result;
+}
+
+void draw_widget(OS_Window_Buffer* buffer, UI_Widget button) {
+    int dest_x = button.x;
+    int dest_y = button.y;
+    int height = button.h;
+    int width = button.w;
+    int color = button.color;
+
+    //if(button.ui_flags & UI_ButtonFlags_Hover) {
+    //    if (rect_contains_point({dest_x, dest_y, width, height}, {global_input.curr_mouse_state.x, global_input.curr_mouse_state.y})) {
+    //        color = hovered_color;
+    //    }
+    //}
+
+    u8* row = buffer->pixels + buffer->pitch * dest_y + dest_x * 4;
+    for(i32 y = 0; y < height; y++) {
+        u32* pixel = (u32*)row;
+        for(i32 x = 0; x < width; x++) {
+            *pixel++ = color;
+        }
+        row += buffer->pitch;
+    }
+
+    u32 line_offset = 0;
+    if (button.text) 
+    {
+        for(const char* c = button.text; *c; c++) {
+            LoadedGlyph glyph = font_table[u32(*c)];
+            draw_bitmap(buffer, line_offset + button.x + button.w / 2, button.y + button.h / 2, glyph);
+            line_offset += glyph.advance_x >> 6;
+        }
+    }
+}
+
+void draw_button(OS_Window_Buffer* buffer, UI_Button button) {
+    int dest_x = button.x;
+    int dest_y = button.y;
+    int height = button.h;
+    int width = button.w;
+    int color = button.color;
+    int hovered_color = 0xFFFFFFFF;
+
+    if(button.ui_flags & UI_ButtonFlags_Hover) {
+
+        if (rect_contains_point({dest_x, dest_y, width, height}, {global_input.curr_mouse_state.x, global_input.curr_mouse_state.y})) {
+            color = hovered_color;
+        }
+    }
+
+    u8* row = buffer->pixels + buffer->pitch * dest_y + dest_x * 4;
+    for(i32 y = 0; y < height; y++) {
+        u32* pixel = (u32*)row;
+        for(i32 x = 0; x < width; x++) {
+            *pixel++ = color;
+        }
+        row += buffer->pitch;
+    }
+
+    u32 line_offset = 0;
+    for(const char* c = button.text; *c; c++) {
+        LoadedGlyph glyph = font_table[u32(*c)];
+        draw_bitmap(buffer, line_offset + button.x + button.w / 2, button.y + button.h / 2, glyph);
+        line_offset += glyph.advance_x >> 6;
     }
 }
 
@@ -714,7 +855,7 @@ LoadedGlyph load_glyph(FT_Face face, char codepoint) {
     u32 glyph_index = FT_Get_Char_Index(face, codepoint);
     if (glyph_index) 
     {
-        FT_Error load_glyph_err = FT_Load_Glyph(face, glyph_index, FT_LOAD_DEFAULT );
+        FT_Error load_glyph_err = FT_Load_Glyph(face, glyph_index, FT_LOAD_DEFAULT); 
         if (load_glyph_err) 
         {
             const char* err_str = FT_Error_String(load_glyph_err);
@@ -777,7 +918,6 @@ int CALLBACK WinMain(HINSTANCE Instance, HINSTANCE PrevInstance, LPSTR CommandLi
         }
     }
 
-    os_win32_instance = Instance;
     LPSTR command_line = GetCommandLine();
     // cycle through the commands and everytime a space is found do createa String8 and place it in an array of String* commands;
     // 
@@ -802,10 +942,10 @@ int CALLBACK WinMain(HINSTANCE Instance, HINSTANCE PrevInstance, LPSTR CommandLi
 
 
     memset(test_string, 0, 100);
-    size_t arena_total_size = 1024 * 1024 * 1024;
-    u8* memory =(u8*) malloc(arena_total_size);
+    size_t arena_total_size = mb(1);
 
-    arena_init(&global_arena, memory, arena_total_size);
+    arena_init(&global_arena, arena_total_size);
+    arena_init(&global_scratch_arena, arena_total_size);
 
     FT_Error error = FT_Init_FreeType(&library);
     if (error)
@@ -815,101 +955,22 @@ int CALLBACK WinMain(HINSTANCE Instance, HINSTANCE PrevInstance, LPSTR CommandLi
         exit(1);
     }
 
-{
-
-    GameState game = {0};
-    game.x = 4;
-    game.y = 3;
-
-    uint64_t ptr_to_game = (uint64_t) &game;
-    GameState* same_game = (GameState*) ptr_to_game;
-
-    /*  What exactly the difference between a uint64_t pointer and a uint64_t value? Both are 8 bytes.
-	    Because initially I thought I had to cast &game to uint64_t*, not to a uint64_t.
-    */
-}
-
-{
-    enum Type 
-    {
-        Type1,
-        Type2,
-    }; 
-    struct Params 
-    {
-        Type type;
-        union {
-            struct 
-            {
-                int x,w;
-            } type1;
-            struct Type2
-            {
-                int x,y,z;
-            }type2;
-        };
-    };
-
-    Params t1_params = {0};
-    t1_params.type = Type1;
-    t1_params.type1.x = 11;
-    t1_params.type1.w = 12;
-
-    Params t2_params = {0};
-    t2_params.type = Type2;
-    t2_params.type2.x = 100;
-    t2_params.type2.y = 101;
-    t2_params.type2.z = 102;
-
-    t2_params.type1.w = 102;
-
-    struct Type1Params 
-    {
-        int x;
-        int w;
-    };
-
-    struct Type2Params 
-    {
-        int x;
-        int y;
-        int z;
-    };
-
-    typedef struct ParamsM 
-    {
-        enum Type type;
-        union {
-            struct Type1Params t1;
-            struct Type2Params t2;
-        }; //data;
-    } ParamsM;
-
-    ParamsM t1_paramsM = {0};
-    t1_paramsM.type = Type1;
-    t1_paramsM.t1.x = 11;
-    t1_paramsM.t1.w = 12;
-
-    ParamsM t2_paramsM = {0};
-    t2_paramsM.type = Type2;
-    t2_paramsM.t2.x = 100;
-    t2_paramsM.t2.y = 101;
-    t2_paramsM.t2.z = 102;
-
-    t2_paramsM.t1.w = 102;
-
-    int x = 321321;
-}
 
 
 
-    int window_width = 1280;
-    int window_height = 720;
+    int screenWidth = GetSystemMetrics(SM_CXSCREEN);
+    int screenHeight = GetSystemMetrics(SM_CYSCREEN);
     RECT window_rect = {0};
-    window_rect.right = window_width;
-    window_rect.bottom = window_height;
-    AdjustWindowRect(&window_rect, 0, false);
-    OS_Window window = os_win32_open_window(window_width, window_height, window_rect);
+    SetRect(&window_rect,
+    (screenWidth / 2) - (window_width / 2),
+    (screenHeight / 2) - (window_height / 2),
+    (screenWidth / 2) + (window_width / 2),
+    (screenHeight / 2) + (window_height / 2));
+    DWORD style = (WS_OVERLAPPED | WS_VISIBLE);
+    //window_rect.right = window_width;
+    //window_rect.bottom = window_height;
+    AdjustWindowRect(&window_rect, WS_OVERLAPPEDWINDOW | WS_VISIBLE, false);
+    OS_Window window = os_win32_open_window(window_rect);
 
     // Allen stored the target width and height in a variable here calling win32_resize. But I guess its not needed
     // because at least as far as i can tell it `AdjustWindowRect` respects the fucking size!
@@ -1028,13 +1089,6 @@ int CALLBACK WinMain(HINSTANCE Instance, HINSTANCE PrevInstance, LPSTR CommandLi
             }
 
             {
-                /* TODOs
-                * - Draw the baseline as a line
-                * - Create render bitmap    antes habia hecho un render bitmap como viene del formato .bmp pero ahora no es necesario porque ya tengo un array de pixels.
-                esto a pesar de compartir el nombre no es un bitmap de windows. Solo son pixels
-                * - Draw a letter
-                */
-
                 /* NOTEs
                 * - face->glyph->bitmap
                 * --- face->glyph->bitmap.buffer
@@ -1101,16 +1155,17 @@ int CALLBACK WinMain(HINSTANCE Instance, HINSTANCE PrevInstance, LPSTR CommandLi
         //u32 cursor_pos;
         //u32 line_count;
         //Cursor cursor;
-        while(is_running) 
+        global_os_w32_window.is_running = true;
+        while(global_os_w32_window.is_running) 
         {
 
             POINT mouse_point;
             DWORD LastError;
-            if (GetCursorPos(&mouse_point) && ScreenToClient(global_window_handle, &mouse_point))
+            if (GetCursorPos(&mouse_point) && ScreenToClient(global_os_w32_window.handle, &mouse_point))
             {
                 int fjdksal = 1231;
             }
-            if (GetCursorPos(&mouse_point) && ScreenToClient(global_window_handle, &mouse_point))
+            if (GetCursorPos(&mouse_point) && ScreenToClient(global_os_w32_window.handle, &mouse_point))
             {
 
                 char buf2[100];
@@ -1193,26 +1248,133 @@ int CALLBACK WinMain(HINSTANCE Instance, HINSTANCE PrevInstance, LPSTR CommandLi
 
 
                 // UI
+                /* puedo hacer todo el build de la UI aca, no hace falta que haga otra cosa diferente sinceramente
+
+                        Si quiero hacer esto entonces tengo que hacer 2 pases, uno donde guardo el estado de todos los botones y otro donde los dibujo
+                        if(buttons[i].is_left_clicked) {
+
+                        }
+
+                 rad tiene UI_Signal por cada box, y cada box es una estructura compleja
+                */
+
                 {
 
                     UI_Button buttons[10];
                     i32 button_count = 10;
-                    // add buttons
+
+                    /*
+                    This approach infers that `buttons` will persist, effectively creating a retained-mode gui
+                    */
+                    /*
                     for(i32 i = 0; i < button_count; i++) {
                         UI_Button button = {0};
-                        button.ui_flags |= UI_Button_Flags_Hover;
-                        button.x = 100 + i * 60;
-                        button.y = 100;
-                        button.w = 50;
+                        button.ui_flags |= UI_ButtonFlags_Hover;
+                        button.x = 300;
+                        button.y = 100 + i * 52;
+                        button.w = 700;
                         button.h = 50;
-                        button.color = 0xFF00FFFF;
+                        button.color = 0xFF001F00;
                         button.text = "Click me!";
                         buttons[i] = button;
                     }
 
-                    // draw ui
                     for(i32 i = 0; i < button_count; i++) {
                         draw_button(&global_buffer, buttons[i]);
+                    }
+                    */
+                    // TODO provisory!!!
+                    ui_state.primary_menu_opened = 1;
+
+                    /*
+                        Here the buttons are created on the fly, similar to IMGUI. The entire button and its state is reconstructed each frame! 
+                    */
+
+
+
+
+                    const char* buttons_text[10] = {
+                        "Button 1",
+                        "Button 2",
+                        "Button 3",
+                        "Button 4",
+                        "Button 5",
+                        "Button 6",
+                        "Button 6",
+                        "Button 8",
+                        "Button 9",
+                        "Button 10",
+                    };
+
+                    /* 
+                        Esto es tricky porque es transient pero en varios frames.
+                        Siempre vi que tienen dos arenas, una para siempre y otra para data que se borra por cada frame. En este caso no es asi. Como esto va a persistir
+                        hasta que cierre el menu. Tengo que sacar la temp de una arena que vive siempre. Por eso la saque de global_arena. Aunque tambien
+                        podria sacarla de esa arena scratch global. Que se usa para este tipo de cosas, siempre y cuando no la borre no pasa nada. Supongo que para este
+                        caso cualqueira de las dos cosas va. No entiendo bien como es la onda con esto la verdad!
+                        Voy a hacer los dos casos! Primero hago la temp desde la global persistent arena y despues de la global transient arena
+                        Igual seguro ni calienta esto porque todos hacen pura mierda todo el tiempo
+                    */ 
+                    TempArena arena_input_buffer;
+                    if ( is_key_pressed(&global_input, Keys_O) && os_modifiers & OS_Modifiers_Ctrl && !(os_modifiers & OS_Modifiers_Shift) &&
+                        !ui_state.primary_menu_opened) 
+                    {
+                        arena_input_buffer = temp_begin(&global_arena);
+                        ui_state.primary_menu_opened = 1;
+                    }
+
+                    if (is_key_pressed(&global_input, Keys_ESC) && ui_state.primary_menu_opened) 
+                    {
+                        ui_state.primary_menu_opened = 0;
+                        temp_end(arena_input_buffer);
+                    }
+
+                    if(ui_state.primary_menu_opened) 
+                    {
+                        // TODO turn this into a list!
+                        UI_Widget widgets[11];
+                        u32 left_clicked_color = 0xFFF11F12F;
+                        u32 hovered_color = 0xFFF1F1F1;
+                        i32 element_height = 45; 
+                        i32 menu_width = 300;
+                        Rect2D menu_dim = {(window_width / 2) - (menu_width / 2), 80, menu_width, 500};
+                        u32 padding = 5;
+                        u32 curr_pos_x = menu_dim.x;
+                        u32 curr_pos_y = menu_dim.y;
+                        for(u32 i = 0; i < 10; i++) 
+                        {
+                            u32 color = 0xFFF01FFF;
+                            UI_Widget widget = make_widget(curr_pos_x, curr_pos_y, menu_dim.w, element_height, color, buttons_text[i]);
+                            if (widget.hovered) {
+                                widget.color = hovered_color;
+                            }
+                            if (widget.clicked_state.pressed_left) {
+                                widget.color = left_clicked_color;
+                            }
+                            widgets[i] = widget;
+                            curr_pos_y += element_height + padding;
+                        }
+                        // make textview
+                        // TODO When I click the text view I must set the focus of the application to that text view
+                        // draw the cursor, and start writing there. So I need another data structure for text, for this specific text view in this specific execution
+                        // until I unfocus it!  This is pretty interesting! 
+                        // TODO when i start searching I need to decrease the drew text while shrinking the menu area!
+                        // TODO Do I need a flag when making the widget that specifies its a text view?
+
+                        // NOTE I will start handling clicking the text view and start writing text into it
+                        u32 color = 0xFFFF0000;
+                        UI_Widget text_view = make_widget(curr_pos_x, curr_pos_y + 10, menu_dim.w, element_height, color, 0);
+                        widgets[10] = text_view;
+                        if (text_view.clicked_state.pressed_left) {
+
+                        }
+
+
+                        // TODO This is probably better done elsewhere at the end of the UI processing code!
+                        for(u32 i = 0; i < array_count(widgets); i++) 
+                        {
+                            draw_widget(&global_buffer, widgets[i]);
+                        }
                     }
                 }
 
@@ -1225,15 +1387,29 @@ int CALLBACK WinMain(HINSTANCE Instance, HINSTANCE PrevInstance, LPSTR CommandLi
         }
         
 
-        if (global_toggle_fullscreen) {
+        if (global_os_w32_window.is_fullscreen) {
             os_win32_toggle_fullscreen(window.handle);
-            global_toggle_fullscreen = false;
+            global_os_w32_window.is_fullscreen = false;
         }
 
         global_input.prev_keyboard_state = global_input.curr_keyboard_state;
+        global_input.prev_mouse_state = global_input.curr_mouse_state;
+        //memset(&global_input.curr_mouse_state, 0, sizeof(global_input.curr_mouse_state));
+
     }
 
+    // --- ProcessMemoryInfo ---
+     
+    HANDLE process_handle = OpenProcess(PROCESS_QUERY_INFORMATION | PROCESS_VM_READ, 0, GetCurrentProcessId());
+    PROCESS_MEMORY_COUNTERS_EX pmc = {0};
 
+    if(GetProcessMemoryInfo(process_handle, (PROCESS_MEMORY_COUNTERS*)&pmc, sizeof(PROCESS_MEMORY_COUNTERS_EX))) {
+        char buf[200];
+        sprintf(buf, "Page fault count: %d\n", pmc.PageFaultCount);
+        OutputDebugStringA(buf);
+    }
+
+    // --- system info --
     SYSTEM_INFO info{};
     GetSystemInfo(&info);
     size_t windows_page_size = info.dwPageSize;
@@ -1352,6 +1528,92 @@ int CALLBACK WinMain(HINSTANCE Instance, HINSTANCE PrevInstance, LPSTR CommandLi
             u32 count;
         };
 
+    }
+    {
+
+        GameState game = {0};
+        game.x = 4;
+        game.y = 3;
+
+        uint64_t ptr_to_game = (uint64_t) &game;
+        GameState* same_game = (GameState*) ptr_to_game;
+
+
+        /*  What exactly the difference between a uint64_t pointer and a uint64_t value? Both are 8 bytes.
+            Because initially I thought I had to cast &game to uint64_t*, not to a uint64_t.
+        */
+    }
+
+    {
+        enum Type 
+        {
+            Type1,
+            Type2,
+        }; 
+        struct Params 
+        {
+            Type type;
+            union {
+                struct 
+                {
+                    int x,w;
+                } type1;
+                struct Type2
+                {
+                    int x,y,z;
+                }type2;
+            };
+        };
+
+        Params t1_params = {0};
+        t1_params.type = Type1;
+        t1_params.type1.x = 11;
+        t1_params.type1.w = 12;
+
+        Params t2_params = {0};
+        t2_params.type = Type2;
+        t2_params.type2.x = 100;
+        t2_params.type2.y = 101;
+        t2_params.type2.z = 102;
+
+        t2_params.type1.w = 102;
+
+        struct Type1Params 
+        {
+            int x;
+            int w;
+        };
+
+        struct Type2Params 
+        {
+            int x;
+            int y;
+            int z;
+        };
+
+        typedef struct ParamsM 
+        {
+            enum Type type;
+            union {
+                struct Type1Params t1;
+                struct Type2Params t2;
+            }; //data;
+        } ParamsM;
+
+        ParamsM t1_paramsM = {0};
+        t1_paramsM.type = Type1;
+        t1_paramsM.t1.x = 11;
+        t1_paramsM.t1.w = 12;
+
+        ParamsM t2_paramsM = {0};
+        t2_paramsM.type = Type2;
+        t2_paramsM.t2.x = 100;
+        t2_paramsM.t2.y = 101;
+        t2_paramsM.t2.z = 102;
+
+        t2_paramsM.t1.w = 102;
+
+        int x = 321321;
     }
 }
 

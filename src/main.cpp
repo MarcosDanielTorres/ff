@@ -36,6 +36,12 @@ Str8 os_g_key_display_string_table[143] =
 
 global_variable int window_width = 1280;
 global_variable int window_height = 720;
+global_variable i32 max_glyph_width;
+global_variable i32 max_char_width;
+global_variable i32 max_glyph_height;
+global_variable i32 ascent;    // Distance from baseline to top (positive)
+global_variable i32 descent; // Distance from baseline to bottom (positive)
+global_variable i32 line_height;
 
 global_variable FT_Library library;
 global_variable Arena global_arena;
@@ -47,9 +53,12 @@ global_variable u32 global_curr_line_number = 0;
 global_variable u32 global_max_line_length = 300;
 
 
+struct LoadedGlyph;
+
 struct Cursor {
     u32 line_number;
     u32 rel_line_pos;
+    LoadedGlyph* curr_glyph;
 };
 
 struct Line {
@@ -244,6 +253,7 @@ struct FontBitmap {
 struct LoadedGlyph {
     FontBitmap bitmap;
     i32 bitmap_top;
+    i32 bitmap_left;
     i32 advance_x;
 };
 
@@ -336,15 +346,27 @@ Line* get_current_line(TextEditor* text_editor) {
 
 void add_char_to_line(TextEditor* text_editor, Line* line, char ch){
     line->line[text_editor->cursor.rel_line_pos++]  = ch;
+    text_editor->cursor.curr_glyph = &font_table[u32(ch)];
 }
 
-u32 remove_char_from_line(Line* line, u32 rel_line_pos, u32 count = 1, char replace_by = char(32)) {
-    u32 chars_removed = {0};
-    u32 initial_pos = rel_line_pos;
-    for(i32 i = 0; i < count; i++) {
-        line->line[--initial_pos]  = replace_by;
+// TODO esta logica esta flawed
+// Ver mas adelante cuando pruebe con palaabras de 4 caracteres, etc como "hola"
+// Ver cuando pase a usar otro cursor
+// Cuando esta arriba de la letra en bloque entonces tiene la pos de la letra, cuando estoy en insert tiene la pos siguiente!!!
+// TODO use bitmap_left to offset the bitmap like in the tutorial 
+u32 remove_char_from_line(TextEditor* text_editor, Line* line, u32 rel_line_pos, u32 count = 1, char replace_by = char(32)) {
+    u32 pos = rel_line_pos;
+    for(u32 i = 0; i < count; i++) {
+        pos--;
+        line->line[pos] = replace_by;
     }
-    return chars_removed = count;
+    pos--;
+
+    text_editor->cursor.rel_line_pos -= count;
+    // Lo mas importante de esto era tener bien esta logica!
+    text_editor->cursor.curr_glyph = &font_table[u32(line->line[pos])];
+
+    return count;
 }
 
 void reset_current_cursor(TextEditor* text_editor) {
@@ -415,12 +437,20 @@ void Win32ProcessPendingMessages() {
 
                 if(is_key_pressed(&global_input, Keys_Backspace)) {
                     Line* line = get_current_line(&text_editor);
-                    u32 chars_removed = remove_char_from_line(line, text_editor.cursor.rel_line_pos);
-                    text_editor.cursor.rel_line_pos -= chars_removed;
+                    u32 chars_removed = remove_char_from_line(&text_editor, line, text_editor.cursor.rel_line_pos);
                 }
 
                 if(is_key_pressed(&global_input, Keys_Enter)) {
                     reset_current_cursor(&text_editor);
+                }
+
+                if ( is_key_pressed(&global_input, Keys_H) && os_modifiers & OS_Modifiers_Ctrl) 
+                {
+                    text_editor.cursor.rel_line_pos--;
+                }
+                if ( is_key_pressed(&global_input, Keys_L) && os_modifiers & OS_Modifiers_Ctrl) 
+                {
+                    text_editor.cursor.rel_line_pos++;
                 }
             } break;
             
@@ -682,7 +712,6 @@ void draw_bitmap(OS_Window_Buffer* buffer, i32 x_baseline, i32 y_baseline, Loade
             u32 red = *src_pixel << 16;
             u32 green = *src_pixel << 8;
             u32 blue = *src_pixel;
-            u32 color = alpha | red | green | blue;
             //*dest_pixel++ = color;
 
             //u32* sourcerow = (u32*)hdp.bitmap.buffer + hdp.bitmap.width * y + x;
@@ -717,14 +746,12 @@ void draw_bitmap(OS_Window_Buffer* buffer, i32 x_baseline, i32 y_baseline, Loade
             f32 dr = (f32)((*destrow >> 16) & 0xFF);
             f32 dg = (f32)((*destrow >> 8) & 0xFF);
             f32 db = (f32)((*destrow >> 0) & 0xFF);
-            // Blend equation: linear interpolation (lerp)
-            // TODO why if i only want white fonts i cant just remove the right hand side of the last multplication
-            // (sa * sr) => (sa)
             u32 nr = u32((1.0f - sa) * dr + sa*sr);
             u32 ng = u32((1.0f - sa) * dg + sa*sg);
             u32 nb = u32((1.0f - sa) * db + sa*sb);
 
             *destrow = (nr << 16) | (ng << 8) | (nb << 0);
+            //*destrow = red;
             destrow++;
 
         }
@@ -780,6 +807,25 @@ UI_Widget make_widget(i32 x, i32 y, i32 w, i32 h, u32 color, const char* text = 
     }
 
     return result;
+}
+
+
+void draw_cursor(OS_Window_Buffer* buffer, Cursor* cursor) {
+    u32 column_numbers_size = 30;
+    u32 line_offset = column_numbers_size + 15;
+    i32 dest_x = ((cursor->rel_line_pos - 1) * ((max_char_width >> 6)) + line_offset) - cursor->curr_glyph->bitmap_left / 2;
+    i32 dest_y = ((cursor->line_number + 1) * line_height) - ascent;
+    u8* row = buffer->pixels + buffer->pitch * dest_y + dest_x * 4;
+
+    for(i32 y = 0; y < ascent + descent; y++) {
+        u32* pixel = (u32*)row;
+        for(i32 x = 0; x < max_char_width >> 6; x++) {
+            // ARGB -> 0xAARRGGBB
+            //*pixel++ = 0xFfFFFF00;
+            *pixel++ = 0xFf0000ff;
+        }
+        row += buffer->pitch;
+    }
 }
 
 void draw_widget(OS_Window_Buffer* buffer, UI_Widget button) {
@@ -869,12 +915,17 @@ LoadedGlyph load_glyph(FT_Face face, char codepoint) {
             printf("FT_Load_Glyph: %s\n", err_str);
         }
 
+		max_glyph_width = max(max_glyph_width, face->glyph->bitmap.width);
+		max_glyph_height = max(max_glyph_height, face->glyph->bitmap.rows);
+
         result.bitmap.width = face->glyph->bitmap.width;
         result.bitmap.height = face->glyph->bitmap.rows;
         result.bitmap.pitch = face->glyph->bitmap.pitch;
         
         result.bitmap_top = face->glyph->bitmap_top;
+        result.bitmap_left = face->glyph->bitmap_left;
         result.advance_x = face->glyph->advance.x;
+        max_char_width = max(max_char_width, result.advance_x);
 
         FT_Bitmap* bitmap = &face->glyph->bitmap;
         result.bitmap.buffer = (u8*)malloc(result.bitmap.pitch * result.bitmap.height);
@@ -1031,7 +1082,8 @@ int CALLBACK WinMain(HINSTANCE Instance, HINSTANCE PrevInstance, LPSTR CommandLi
 
 
     {
-        OS_FileReadResult font_file = os_file_read(&global_arena, "C:\\Windows\\Fonts\\Arial.ttf");
+        //OS_FileReadResult font_file = os_file_read(&global_arena, "C:\\Windows\\Fonts\\Arial.ttf");
+        OS_FileReadResult font_file = os_file_read(&global_arena, "C:\\Windows\\Fonts\\CascadiaMono.ttf");
 
         FT_Face face = {0};
         if(font_file.data)
@@ -1051,6 +1103,15 @@ int CALLBACK WinMain(HINSTANCE Instance, HINSTANCE PrevInstance, LPSTR CommandLi
 
 
             FT_Error set_char_size_err = FT_Set_Char_Size(face, 4 * 64, 4 * 64, 300, 300);
+            //max_glyph_width = face->size->metrics.max_advance;
+            //max_glyph_height = face->size->metrics.height;
+			ascent = face->size->metrics.ascender >> 6;    // Distance from baseline to top (positive)
+			descent = - (face->size->metrics.descender >> 6); // Distance from baseline to bottom (positive)
+			line_height = face->size->metrics.height >> 6;
+
+            max_glyph_width = 0;
+            max_glyph_height = 0;
+
 
             u32 char_code = 0;
             u32 min_index = UINT32_MAX;
@@ -1068,6 +1129,7 @@ int CALLBACK WinMain(HINSTANCE Instance, HINSTANCE PrevInstance, LPSTR CommandLi
                 //printf("(%d, %d)\n", char_code, glyph_index);
                 min_index = min(min_index, glyph_index);
                 max_index = max(max_index, glyph_index);
+
             }
             printf("min and max indexes: (%d, %d)\n", min_index, max_index);
 
@@ -1086,6 +1148,9 @@ int CALLBACK WinMain(HINSTANCE Instance, HINSTANCE PrevInstance, LPSTR CommandLi
                     const char* err_str = FT_Error_String(render_glyph_err);
                     printf("FT_Load_Glyph: %s\n", err_str);
                 }
+
+
+                // * - "The metrics found in face->glyph->metrics are normally expressed in 26.6 pixel format"
             }
 
             {
@@ -1179,10 +1244,14 @@ int CALLBACK WinMain(HINSTANCE Instance, HINSTANCE PrevInstance, LPSTR CommandLi
 
             // NOTE No olvidar de llamar esto aca no ser pelotudo por dios!!!!!!
             draw_rect(&global_buffer, 0, 0, global_buffer.width, global_buffer.height, 0xFF000000);
+            //draw_rect(&global_buffer, 0, 0, global_buffer.width, global_buffer.height, 0xFFffffff);
             {
 
+                if(text_editor.line_count > 0 && text_editor.cursor.rel_line_pos > 0)
+                    draw_cursor(&global_buffer, &text_editor.cursor);
+
                 // editor
-                i32 y_baseline = 25;
+                i32 y_baseline = line_height;
 
                 char* word = "Sale Dota eeh!";
                 word = "The sound of ocean waves calms my soul";
@@ -1218,7 +1287,7 @@ int CALLBACK WinMain(HINSTANCE Instance, HINSTANCE PrevInstance, LPSTR CommandLi
                     for(i32 i = buf_size - 1; i >= 0; i--, pos++) {
                         LoadedGlyph glyph = font_table[(u32)buf[i]];
                         char_offset += glyph.advance_x >> 6;
-                        draw_bitmap(&global_buffer, column_numbers_size - char_offset, y_baseline * (line_index + 1), glyph);
+                        draw_bitmap(&global_buffer, glyph.bitmap_left + column_numbers_size - char_offset, y_baseline * (line_index + 1), glyph);
                     }
                     ///////////////////////////// line numbers //////////////////////////////////
 
@@ -1226,10 +1295,26 @@ int CALLBACK WinMain(HINSTANCE Instance, HINSTANCE PrevInstance, LPSTR CommandLi
                     for(char* c = text_editor.lines[line_index].line; *c != '\0'; c++) {
                         LoadedGlyph glyph = font_table[(u32)*c];
                         // TODO `y_baseline` is fine, but what is NOT fine is `y_baseline * (line_index + 1)` because the height is based on the font size
-                        draw_bitmap(&global_buffer, line_offset, y_baseline * (line_index + 1), glyph);
+                        draw_bitmap(&global_buffer,  1* glyph.bitmap_left + line_offset, y_baseline * (line_index + 1), glyph);
                         line_offset += glyph.advance_x >> 6;
                     }
                 }
+
+
+                ///////////////////// print line info ////////////////////////////////
+                char buf[200];
+                sprintf(buf, "Line number: %d, line column: %d\n", text_editor.cursor.line_number, text_editor.cursor.rel_line_pos);
+                u32 line_offset = 900;
+                u32 y_baseline2 = 500;
+                for(char* c = buf; *c != '\0'; c++)
+                {
+                    LoadedGlyph glyph = font_table[(u32)*c];
+                    // TODO `y_baseline` is fine, but what is NOT fine is `y_baseline * (line_index + 1)` because the height is based on the font size
+                    draw_bitmap(&global_buffer, glyph.bitmap_left + line_offset, y_baseline2, glyph);
+                    line_offset += glyph.advance_x >> 6;
+                }
+                ///////////////////// print line info ////////////////////////////////
+
                 //char linesssss[20][1000];
                 //const char* line = "hola";
                 //const char** lines = {"hola", "como", "estas?"}; // doesnt' compile
@@ -1290,9 +1375,6 @@ int CALLBACK WinMain(HINSTANCE Instance, HINSTANCE PrevInstance, LPSTR CommandLi
                         Here the buttons are created on the fly, similar to IMGUI. The entire button and its state is reconstructed each frame! 
                     */
 
-
-
-
                     const char* buttons_text[10] = {
                         "Button 1",
                         "Button 2",
@@ -1307,6 +1389,7 @@ int CALLBACK WinMain(HINSTANCE Instance, HINSTANCE PrevInstance, LPSTR CommandLi
                     };
 
                     /* 
+                    NOTE
                         Esto es tricky porque es transient pero en varios frames.
                         Siempre vi que tienen dos arenas, una para siempre y otra para data que se borra por cada frame. En este caso no es asi. Como esto va a persistir
                         hasta que cierre el menu. Tengo que sacar la temp de una arena que vive siempre. Por eso la saque de global_arena. Aunque tambien
@@ -1331,6 +1414,8 @@ int CALLBACK WinMain(HINSTANCE Instance, HINSTANCE PrevInstance, LPSTR CommandLi
 
                     if(ui_state.primary_menu_opened) 
                     {
+                        // TODO push this menu onto a stack?
+
                         // TODO turn this into a list!
                         UI_Widget widgets[11];
                         u32 left_clicked_color = 0xFFF11F12F;
@@ -1366,6 +1451,23 @@ int CALLBACK WinMain(HINSTANCE Instance, HINSTANCE PrevInstance, LPSTR CommandLi
                         UI_Widget text_view = make_widget(curr_pos_x, curr_pos_y + 10, menu_dim.w, element_height, color, 0);
                         widgets[10] = text_view;
                         if (text_view.clicked_state.pressed_left) {
+                            // get focus here
+                            // COMPLEX draw cursor where the focus is                            
+                            /*
+                                The cursor design is not as good as I thought!
+                                Right now it stores the line and where in the line it is. Problem is that I would like to have a Cursor when clicking this textview
+                                but if I use the actual Cursor I have to specify the line number. But this line number is relative to the textview and it doesnt
+                                have to align with the line on the text editor.
+
+                                For this cursor I dont care about the concept of a line
+
+                                Yes I need 2 cursors!
+
+                                struct Widget {
+                                    type: UI_Type_Textview
+                                    ...
+                                };
+                            */
 
                         }
 

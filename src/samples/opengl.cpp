@@ -117,6 +117,7 @@ void Win32ProcessPendingMessages() {
 }
 
 typedef void (WINAPI* PFNGLGENVERTEXARRAYSPROC) (GLsizei n, GLuint *arrays);
+typedef void (WINAPI* PFNGLBINDVERTEXARRAYPROC) (GLuint array);
 
 global_variable GLuint global_vao;
 int WINAPI WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_line, i32 show_code) {
@@ -170,6 +171,7 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_li
     HGLRC tempRC = wglCreateContext(hdc);
     if(wglMakeCurrent(hdc, tempRC))
     {
+        // NOTE It seems that in order to get anything from `wglGetProcAddress`, `wglMakeCurrent` must have been called!
         PFNWGLCREATECONTEXTATTRIBSARBPROC wglCreateContextAttribsARB = (PFNWGLCREATECONTEXTATTRIBSARBPROC) wglGetProcAddress("wglCreateContextAttribsARB");
 
         i32 attrib_list[] = {
@@ -186,7 +188,9 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_li
     }
     
     PFNGLGENVERTEXARRAYSPROC glGenVertexArrays = (PFNGLGENVERTEXARRAYSPROC) wglGetProcAddress("glGenVertexArrays"); 
+    PFNGLBINDVERTEXARRAYPROC glBindVertexArray = (PFNGLBINDVERTEXARRAYPROC) wglGetProcAddress("glBindVertexArray"); 
     glGenVertexArrays(1, &global_vao);
+    glBindVertexArray(global_vao);
 
     PFNWGLGETEXTENSIONSSTRINGEXTPROC wglGetExtensionsStringEXT = (PFNWGLGETEXTENSIONSSTRINGEXTPROC) wglGetProcAddress("wglGetExtensionsStringEXT");
 

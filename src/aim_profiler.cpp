@@ -4,6 +4,7 @@ void aim_profiler_print() {
     char buf[100];
     sprintf(buf, "Total execution time: %f ms\n", aim_timer_ticks_to_ms(total_time, profiler.os_freq));
     OutputDebugStringA(buf);
+    printf(buf);
 	for (int i = 1; i < sizeof(profiled_anchors) / sizeof(profiled_anchors[0]); i++) {
 		ProfiledAnchor anchor = profiled_anchors[i];
 		if (anchor.elapsed_inclusive) {
@@ -14,11 +15,13 @@ void aim_profiler_print() {
                    aim_timer_ticks_to_ms(anchor.elapsed_inclusive, profiler.os_freq),
                    ((double)anchor.elapsed_inclusive / (double)total_time) * 100.0f);
             OutputDebugStringA(buf);
+            printf(buf);
             
 			if (anchor.elapsed_exclusive != anchor.elapsed_inclusive) {
                 char buf[500];
                 sprintf(buf, "without children: %.4fms (%.4f%%)", aim_timer_ticks_to_ms(anchor.elapsed_exclusive, profiler.os_freq), ((double)(anchor.elapsed_exclusive)) / (double)(total_time) * 100.0f);
                 OutputDebugStringA(buf);
+                printf(buf);
 			}
             
 			if (anchor.bytes_count) {
@@ -27,6 +30,7 @@ void aim_profiler_print() {
                 char buf[500];
                 sprintf(buf, "%.3f mb at %.2f gb/s", (double)anchor.bytes_count / mb, (((double)anchor.bytes_count / gb) / aim_timer_ticks_to_sec(anchor.elapsed_inclusive, profiler.os_freq)));
                 OutputDebugStringA(buf);
+                printf(buf);
 			}
 			printf("\n");
 		}

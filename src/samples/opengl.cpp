@@ -2,11 +2,11 @@
 #include "base/base_core.h"
 #include "base/base_string.h"
 #include "base/base_arena.h"
-#include "base/base_os.h"
+#include "os/os_core.h"
 
 #include "base/base_string.cpp"
 #include "base/base_arena.cpp"
-#include "base/base_os.cpp"
+#include "os/os_core.cpp"
 
 #define AIM_PROFILER 1
 #include "aim_profiler.h"
@@ -16,6 +16,7 @@
 
 #include <gl/gl.h>
 
+#include<windows.h>
 
 #define WGL_CONTEXT_DEBUG_BIT_ARB               0x00000001
 #define WGL_CONTEXT_FORWARD_COMPATIBLE_BIT_ARB  0x00000002

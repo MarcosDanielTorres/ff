@@ -1,18 +1,23 @@
 #define AIM_PROFILER 1
 #include <stdio.h>
-#include <ft2build.h>
-#include FT_FREETYPE_H
 
 
 #include "base/base_core.h"
 #include "base/base_string.h"
 #include "base/base_arena.h"
-#include "base/base_os.h"
+#include "os/os_core.h"
+#include "font/font.h"
+#include "buffer.h"
+
 #include "aim_profiler.h"
 
 #include "base/base_string.cpp"
 #include "base/base_arena.cpp"
-#include "base/base_os.cpp"
+#include "os/os_core.cpp"
+#include "font/font.cpp"
+#include "buffer.cpp"
+
+
 #include "aim_profiler.cpp"
 #include "aim_timer.cpp"
 
@@ -31,8 +36,8 @@ union FlagsUnion {
     u32 all_flags;
 };
 
-
-
+global_variable OS_Window global_os_w32_window;
+global_variable OS_PixelBuffer global_buffer;
 global_variable int window_width = 1280;
 global_variable int window_height = 720;
 global_variable i32 max_glyph_width;
@@ -42,11 +47,9 @@ global_variable i32 ascent;    // Distance from baseline to top (positive)
 global_variable i32 descent; // Distance from baseline to bottom (positive)
 global_variable i32 line_height;
 
-global_variable FT_Library library;
 global_variable Arena global_arena;
 global_variable Arena global_scratch_arena;
 
-global_variable char* global_line;
 global_variable u32 global_cursor_in_line;
 global_variable u32 global_curr_line_number = 0;
 global_variable u32 global_max_line_length = 300;
@@ -54,10 +57,10 @@ global_variable u32 global_max_line_length = 300;
 
 struct LoadedGlyph;
 
-enum CursorType
+enum EditionType
 {
-    CursorType_Normal,
-    CursorType_Insert,
+    EditionType_Normal,
+    EditionType_Insert,
 };
 
 /*
@@ -74,14 +77,19 @@ struct Cursor {
 };
 
 struct Line {
-    char* line;
+    char* data;
     u32 max_char_count;
 };
 
 struct TextEditor {
-    CursorType edition_mode;
+    EditionType edition_mode;
     Line* lines;
     u32 line_count {1};
+    // TODO make it ptr
+    // draw line number 2 -> line_index[2] = index -> line 2 = lines[index]
+    // proble with this approach is that line_index is contiguos and will fit in the cache but not the lines. And when rendering many lines
+    // will be scattered. In a buffer this doesn't happen!
+    u32 line_index[100];
     Cursor cursor;
 };
 
@@ -130,22 +138,22 @@ LineNumberToChars* get_line_number_in_chars(LineNumberToChars* line_numbers_to_c
 LineNumberToChars line_numbers_to_chars[256];
 
 
-enum OS_Modifiers {
-    OS_Modifiers_Ctrl = (1 << 0),
-    OS_Modifiers_Alt = (1 << 1),
-    OS_Modifiers_Shift = (1 << 2),
-};
-
 struct UI_State
 {
    b32 primary_menu_opened;
 };
 
 global_variable UI_State ui_state;
-global_variable u32 os_modifiers;
 
 global_variable TextEditor text_editor;
 ///////////////// input //////////////////////
+enum OS_Modifiers {
+    OS_Modifiers_Ctrl = (1 << 0),
+    OS_Modifiers_Alt = (1 << 1),
+    OS_Modifiers_Shift = (1 << 2),
+};
+
+global_variable u32 os_modifiers;
 enum Keys {
     Keys_A = 0x41,
     Keys_B = 0x42,
@@ -261,12 +269,12 @@ u32 is_any_modifier_pressed(Input* input, u32 key) {
     );
     return result;
 }
-///////////////// input //////////////////////
 
 global_variable Input global_input;
+///////////////// input //////////////////////
 
 
-struct FontBitmap {
+struct Bitmap {
     i32 width;
     i32 height;
     i32 pitch;
@@ -274,105 +282,23 @@ struct FontBitmap {
 };
 
 struct LoadedGlyph {
-    FontBitmap bitmap;
+    Bitmap bitmap;
     i32 bitmap_top;
     i32 bitmap_left;
     i32 advance_x;
 };
 
-global_variable LoadedGlyph letter_A_glyph;
-global_variable LoadedGlyph letter_B_glyph;
-global_variable LoadedGlyph letter_C_glyph;
-global_variable LoadedGlyph letter_D_glyph;
-global_variable LoadedGlyph letter_E_glyph;
-global_variable LoadedGlyph letter_F_glyph;
-global_variable LoadedGlyph letter_j_glyph;
-global_variable LoadedGlyph letter_h_glyph;
-global_variable LoadedGlyph letter_u_glyph;
-global_variable LoadedGlyph letter_g_glyph;
-global_variable LoadedGlyph letter_e_glyph;
 
 global_variable LoadedGlyph font_table[300];
 
 
-struct SomeRes 
-{
-    u8* bytes;
-};
-
-size_t cstring_length(char* str) {
-    size_t result = 0;
-    for(char* c = str; *c != '\0'; c++) {
-        result++;
-    }
-    return result;
-}
-
-u8* some(Arena* arena) {
-    TempArena temp_arena = temp_begin(arena);
-    u8* bytes = arena_push_size(arena, u8, 10); // no entiendo por que cuando pushea no incrementa el pos del temp
-    for(int i = 0; i < 10; i++) {
-        u8* value = bytes + i;
-        *value = 'a' + i;
-    }
-
-    for(int i = 0; i < 10; i++) {
-        printf("%c, ", bytes[i]);
-    }
-    printf("\n");
-    temp_end(temp_arena);
-    return bytes;
-}
-
-
-global_variable char* test_string = (char*)malloc(100);
-global_variable u32 test_string_count;
-
-char* keys_to_str[6] =  {
-    "Shift",
-    "LeftShift",
-    "RightShift",
-    "Ctrl",
-    "LeftCtrl",
-    "RightCtrl"
-};
-
-char* keycode_to_str(Keys key) {
-    char* result = 0;
-    switch(key) 
-    {
-        case Keys_Shift: 
-        {
-            result = keys_to_str[0];
-        } break;
-        case Keys_ShiftLeft: 
-        {
-            result = keys_to_str[1];
-        } break;
-        case Keys_ShiftRight: 
-        {
-            result = keys_to_str[2];
-        } break;
-        case Keys_Control: 
-        {
-            result = keys_to_str[3];
-        } break;
-        case Keys_ControlLeft: 
-        {
-            result = keys_to_str[4];
-        } break;
-        case Keys_ControlRight: 
-        {
-            result = keys_to_str[5];
-        } break;
-    }
-    return result;
-}
-
 Line* get_current_line(TextEditor* text_editor) {
-    Line* result = 0;
-    result = &text_editor->lines[text_editor->cursor.line];
-    return result;
+    Line* current_line = 0;
+    //current_line = &text_editor->lines[text_editor->cursor.line];
+
+    // change
+    current_line = &text_editor->lines[text_editor->line_index[text_editor->cursor.line]];
+    return current_line;
 }
 
 void add_char_to_line(TextEditor* text_editor, Line* line, char ch){
@@ -381,14 +307,14 @@ void add_char_to_line(TextEditor* text_editor, Line* line, char ch){
     if(ch == '\n')
     {
         // TODO incomplete, does not handle when there is a line below already. Only works when you press enter on the first line!
-        size_t len = cstring_length(&line->line[curr_cursor->column]);
+        size_t len = cstring8_length(&line->data[curr_cursor->column]);
 
-        Line* next_line = &text_editor->lines[text_editor->cursor.line + 1];
+        Line* next_line = &text_editor->lines[text_editor->line_index[text_editor->cursor.line + 1]];
         if (next_line->max_char_count == 0)
         {
-            memcpy(&next_line->line[1], &line->line[curr_cursor->column], len);
-            line->line[curr_cursor->column] = ch;
-            line->line[curr_cursor->column + 1] = '\0';
+            memcpy(&next_line->data[1], &line->data[curr_cursor->column], len);
+            line->data[curr_cursor->column] = ch;
+            line->data[curr_cursor->column + 1] = '\0';
             next_line->max_char_count += len;
             line->max_char_count -= len;
             text_editor->cursor.line++;
@@ -403,11 +329,11 @@ void add_char_to_line(TextEditor* text_editor, Line* line, char ch){
             */
             Line* next_next_line = &text_editor->lines[text_editor->cursor.line + 2];
 
-            memcpy(&next_next_line->line[1], &next_line->line[1], next_line->max_char_count + 1);
-            memcpy(&next_line->line[1], &line->line[curr_cursor->column], len);
+            memcpy(&next_next_line->data[1], &next_line->data[1], next_line->max_char_count + 1);
+            memcpy(&next_line->data[1], &line->data[curr_cursor->column], len);
             next_next_line->max_char_count = next_line->max_char_count;
             next_line->max_char_count += len; 
-            memset(&line->line[curr_cursor->column], 0, len);
+            memset(&line->data[curr_cursor->column], 0, len);
             line->max_char_count -= len;
 
 
@@ -431,9 +357,9 @@ void add_char_to_line(TextEditor* text_editor, Line* line, char ch){
     else
     {
 
-        size_t len = cstring_length(&line->line[curr_cursor->column]);
-        memcpy(&line->line[curr_cursor->column + 1], &line->line[curr_cursor->column], len);
-        line->line[curr_cursor->column]  = ch;
+        size_t len = cstring8_length(&line->data[curr_cursor->column]);
+        memcpy(&line->data[curr_cursor->column + 1], &line->data[curr_cursor->column], len);
+        line->data[curr_cursor->column]  = ch;
         curr_cursor->column++;
         line->max_char_count++;
         text_editor->cursor.curr_glyph = &font_table[u32(ch)];
@@ -451,18 +377,42 @@ void add_char_to_line(TextEditor* text_editor, Line* line, char ch){
 // Ver cuando pase a usar otro cursor
 // Cuando esta arriba de la letra en bloque entonces tiene la pos de la letra, cuando estoy en insert tiene la pos siguiente!!!
 // TODO use bitmap_left to offset the bitmap like in the tutorial 
+// 32 = space
+/*
+Si estoy al final de la linea - easiest
+Si estoy en la mitad - medium
+Si estoy en el principio - hardest
+*/
 u32 remove_char_from_line(TextEditor* text_editor, Line* line, u32 rel_line_pos, u32 count = 1, char replace_by = char(32)) {
     u32 pos = rel_line_pos;
-    for(u32 i = 0; i < count; i++) {
-        pos--;
-        line->line[pos] = replace_by;
-    }
-    pos--;
+    if (replace_by == char(32))
+    {
+        u32 resulting_pos = pos - count;
+        if (resulting_pos < 1) {
+            resulting_pos = 1;
+        }
 
-    text_editor->cursor.column -= count;
-    line->max_char_count -= count;
-    // Lo mas importante de esto era tener bien esta logica!
-    text_editor->cursor.curr_glyph = &font_table[u32(line->line[pos])];
+        memcpy(&line->data[resulting_pos], &line->data[pos], line->max_char_count - pos);
+        text_editor->cursor.column -= count;
+        line->max_char_count -= count;
+        // Lo mas importante de esto era tener bien esta logica!
+        text_editor->cursor.curr_glyph = &font_table[u32(line->data[resulting_pos])];
+    }
+    else
+    {
+        for(u32 i = 0; i < count; i++) 
+        {
+            pos--;
+            line->data[pos] = replace_by;
+        }
+        pos--;
+
+        text_editor->cursor.column -= count;
+        line->max_char_count -= count;
+        // Lo mas importante de esto era tener bien esta logica!
+        text_editor->cursor.curr_glyph = &font_table[u32(line->data[pos])];
+
+    }
 
     return count;
 }
@@ -471,6 +421,30 @@ void reset_current_cursor(TextEditor* text_editor) {
     text_editor->cursor.column = 1;
     text_editor->cursor.scroll_x = 0;
     text_editor->cursor.scroll_y = 0;
+}
+
+LRESULT CALLBACK win32_main_callback(HWND Window, UINT Message, WPARAM wParam, LPARAM lParam) {
+    LRESULT result = 0;
+    switch(Message)
+    {
+        case WM_DESTROY:
+        {
+            global_os_w32_window.is_running = false;
+        } break;
+        case WM_PAINT: {
+            PAINTSTRUCT Paint;
+            HDC DeviceContext = BeginPaint(Window, &Paint);
+            OS_Window_Dimension Dimension = os_win32_get_window_dimension(Window);
+            os_win32_display_buffer(DeviceContext, &global_buffer,
+                                       Dimension.width, Dimension.height);
+            EndPaint(Window, &Paint);
+        }break;
+        default:
+        {
+            result = DefWindowProcA(Window, Message, wParam, lParam);
+        } break;
+    }
+    return result;
 }
 
 
@@ -524,7 +498,7 @@ void Win32ProcessPendingMessages() {
                 }
 
                 // NOTE raddbg do not proccess '\n' and '\t'. And I guess the reason for that is because they don't allow text editing of files (as far as I can tell!)
-                if (text_editor.edition_mode == CursorType_Insert)
+                if (text_editor.edition_mode == EditionType_Insert)
                 {
                     // NOTE This only works for sequential insertion. The moment i place the cursor anywhere on the line and enter chars it will bypass this check
                     // This is only here so to avoid crashes. Delay until I know what to do with infinite lines!
@@ -540,7 +514,7 @@ void Win32ProcessPendingMessages() {
 
                     if(is_key_pressed(&global_input, Keys_Backspace)) {
                         Line* line = get_current_line(&text_editor);
-                        u32 chars_removed = remove_char_from_line(&text_editor, line, text_editor.cursor.column);
+                        u32 chars_removed = remove_char_from_line(&text_editor, line, text_editor.cursor.column - 1);
                     }
 
                     //if(is_key_pressed(&global_input, Keys_Enter)) {
@@ -613,7 +587,7 @@ void Win32ProcessPendingMessages() {
 				if ( is_key_pressed(&global_input, Keys_Arrow_Right)) 
 				{
 					// TODO this value is not what I want. I want editor width, or panel width or something like that
-					if(text_editor.cursor.column <= text_editor.lines[text_editor.cursor.line].max_char_count)
+					if(text_editor.cursor.column <= text_editor.lines[text_editor.line_index[text_editor.cursor.line]].max_char_count)
 					{
 						text_editor.cursor.column++;
 
@@ -657,17 +631,6 @@ void Win32ProcessPendingMessages() {
                     }
 				}
 
-                char* key_to_str = keycode_to_str(Keys(key));
-                if(key_to_str)
-                {
-                    char buf[300];
-                    //sprintf(buf, "Modifier key processed! %s\n", key_to_str);
-                    u32 shift_is_pressed = (os_modifiers & OS_Modifiers_Shift) != 0;
-                    if(shift_is_pressed) {
-                        sprintf(buf, "Modifier key pressed: Shift! \n");
-                        OutputDebugStringA(buf);
-                    }
-                }
 
 
                 /*
@@ -755,7 +718,7 @@ struct GameState
     int y;
 };
 
-void draw_rect(OS_Window_Buffer* buffer, i32 dest_x, i32 dest_y, i32 width, i32 height, u32 color) {
+void draw_rect(OS_PixelBuffer* buffer, i32 dest_x, i32 dest_y, i32 width, i32 height, u32 color) {
     u8* row = buffer->pixels + buffer->pitch * dest_y + dest_x * 4;
 
     for(i32 y = 0; y < height; y++) {
@@ -786,30 +749,6 @@ struct UI_Button {
 };
 
 
-/*
-    Some thoughts:
-    I could find where im at and only do this check once before drawing the button as in practice you wont be hovering more than one button at a time!
-
-    But.. that would create another codepath, a codepath where draw_button takes a hovered colored vs non hovered codepath
-
-
-    Another thing is to keep using only one draw_button with the flag check buuuuuuut the mouse state is inside the button this time!
-    For this before drawing i need to do a pass inside every button and if rect_contains(a, b) break... the problem is that all the other buttons must be resseted!
-    so i still need to go over them!
-*/
-/*
-inline bool32
-IsInRectangle(rectangle2 Rectangle, v2 Test)
-{
-    bool32 Result = ((Test.x >= Rectangle.Min.x) &&
-                     (Test.y >= Rectangle.Min.y) &&
-                     (Test.x < Rectangle.Max.x) &&
-                     (Test.y < Rectangle.Max.y));
-
-    return(Result);
-}
-*/
-
 
 struct Rect2D
 {
@@ -834,19 +773,7 @@ b32 rect_contains_point(Rect2D rect, Point2D point) {
 }
 
 
-
-void draw_line(OS_Window_Buffer* buffer, i32 x1, i32 y1, i32 x2, i32 y2) {
-    // NOTE: only supports rectas
-    u8* row =  buffer->pixels + y1 * buffer->pitch + x1 * 4;
-    u32* pixel = (u32*) row;
-    while(x1 < x2) {
-        *pixel++ = 0xFFFFFFFF;
-        x1++;
-    }
-} 
-
-
-// Copies the `FontBitmap` into the `OS_Window_Buffer`
+// Copies the `FontBitmap` into the `OS_PixelBuffer`
 /*
 * - face->glyph->bitmap
 * --- face->glyph->bitmap.buffer
@@ -861,11 +788,8 @@ void draw_line(OS_Window_Buffer* buffer, i32 x1, i32 y1, i32 x2, i32 y2) {
 * - glyph->advance.x must be shifted >> 6 as well if pixels are wanted
 */
 
-//aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa //aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa //aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa //aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa //aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa //aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa //aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa //aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa //aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa //aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa //aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa //aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa //aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa //aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa //aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa //aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa //aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa //aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa //aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa //aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
-//aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa //aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa //aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa //aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa //
 
-global_variable f32 line_number_size = 0;
-void draw_bitmap(OS_Window_Buffer* buffer, i32 x_baseline, i32 y_baseline, LoadedGlyph hdp) {
+void draw_bitmap(OS_PixelBuffer* buffer, i32 x_baseline, i32 y_baseline, LoadedGlyph hdp) {
     //aim_profiler_time_function;
     u32 x = x_baseline;
     u32 y = y_baseline;
@@ -881,8 +805,6 @@ void draw_bitmap(OS_Window_Buffer* buffer, i32 x_baseline, i32 y_baseline, Loade
     {
 
         width = buffer->width - x;
-        //scroll_x += 1;
-
     }
 
     if(y > buffer->height)
@@ -1014,7 +936,7 @@ UI_Widget make_widget(i32 x, i32 y, i32 w, i32 h, u32 color, const char* text = 
 }
 
 
-void draw_cursor_insert_mode(OS_Window_Buffer* buffer, Cursor* cursor) {
+void draw_cursor_insert_mode(OS_PixelBuffer* buffer, Cursor* cursor) {
     u32 cursor_width_px = 2.0f;
 
     u32 column_numbers_size = 30;
@@ -1112,7 +1034,7 @@ void draw_cursor_insert_mode(OS_Window_Buffer* buffer, Cursor* cursor) {
     }
 }
 
-void draw_cursor_normal_mode(OS_Window_Buffer* buffer, Cursor* cursor) {
+void draw_cursor_normal_mode(OS_PixelBuffer* buffer, Cursor* cursor) {
     u32 column_numbers_size = 30;
     u32 line_offset = column_numbers_size + 15;
     u32 bitmap_offset = 0;
@@ -1135,22 +1057,22 @@ void draw_cursor_normal_mode(OS_Window_Buffer* buffer, Cursor* cursor) {
     }
 }
 
-void draw_cursor(OS_Window_Buffer* buffer, Cursor* cursor, CursorType type)
+void draw_cursor(OS_PixelBuffer* buffer, Cursor* cursor, EditionType type)
 {
     switch(type)
     {
-        case CursorType_Normal: 
+        case EditionType_Normal: 
         {
             draw_cursor_normal_mode(buffer, cursor);
         } break;
-        case CursorType_Insert: 
+        case EditionType_Insert: 
         {
             draw_cursor_insert_mode(buffer, cursor);
         } break;
     }
 };
 
-void draw_widget(OS_Window_Buffer* buffer, UI_Widget button) {
+void draw_widget(OS_PixelBuffer* buffer, UI_Widget button) {
     int dest_x = button.x;
     int dest_y = button.y;
     int height = button.h;
@@ -1183,7 +1105,7 @@ void draw_widget(OS_Window_Buffer* buffer, UI_Widget button) {
     }
 }
 
-void draw_button(OS_Window_Buffer* buffer, UI_Button button) {
+void draw_button(OS_PixelBuffer* buffer, UI_Button button) {
     int dest_x = button.x;
     int dest_y = button.y;
     int height = button.h;
@@ -1260,12 +1182,6 @@ LoadedGlyph load_glyph(FT_Face face, char codepoint) {
 
 
 
-struct CmdLine {
-
-};
-
-void EntryPoint();
-
 int CALLBACK WinMain(HINSTANCE Instance, HINSTANCE PrevInstance, LPSTR CommandLine, int ShowCode) {
      AllocConsole();
 
@@ -1273,60 +1189,30 @@ int CALLBACK WinMain(HINSTANCE Instance, HINSTANCE PrevInstance, LPSTR CommandLi
     freopen_s(&fDummy, "CONIN$", "r", stdin);
     freopen_s(&fDummy, "CONOUT$", "w", stderr);
     freopen_s(&fDummy, "CONOUT$", "w", stdout);
+
     aim_profiler_begin();
+
     i32 argc = __argc;
     char** argv = __argv;
 
-    b32 paso_por_hola = false;
-    for(i32 i = 0; i < argc; i++) {
-        Str8 command = str8_lit(argv[i]);
-        if (paso_por_hola) {
-            if(str8_equals(command, str8_lit("hola"))) {
-                int x =12312;
-            }
-        }
+    
+    // --- system info --
+    SYSTEM_INFO info{};
+    GetSystemInfo(&info);
+    OS_SystemInfo system_info = {0};
+    system_info.page_size = info.dwPageSize;
+    system_info.large_page_size = GetLargePageMinimum();
 
-        if (str8_equals(command, str8_lit("--help"))) {
-            paso_por_hola = true;
-        }
-    }
-
-    LPSTR command_line = GetCommandLine();
-    // cycle through the commands and everytime a space is found do createa String8 and place it in an array of String* commands;
-    // 
-    // My doubt is how to cleanly get the arguments for each command, because show could have a command or two or three and also -s is show as well. How to handle this
-    // is not enough to just separate every command into its own string
-    // unless you know that show is gonna possible have 3 args so you say: Cmd show_cmd
-    // Cmd* args and to know which type of args you are working with you then get the type with a tagged union... which of course is messy as fuck!!
-
-    // ["--help", "--show", "-s"]
-
-    // 
-    EntryPoint();
-    FlagsUnion u;
-    u.all_flags = 0;
-
-    printf("Before setting anything: 0x%X\n", u.all_flags);
-    u.pressed_left = 1;
-    printf("After setting pressed_left: 0x%X\n", u.all_flags);
-
-    u.all_flags |= (1 << 1);  // Set pressed_middle (if it's at bit position 1)
-    printf("After setting pressed_middle: 0x%X\n", u.all_flags);
-
-
-    memset(test_string, 0, 100);
     size_t arena_total_size = mb(1);
 
     arena_init(&global_arena, arena_total_size);
     arena_init(&global_scratch_arena, arena_total_size);
 
-    FT_Error error = FT_Init_FreeType(&library);
-    if (error)
-    {
-        const char* err_str = FT_Error_String(error);
-        printf("FT_Init_FreeType: %s\n", err_str);
-        exit(1);
-    }
+    GapBuffer gap_buffer = {0};
+    gapbuffer_init(&gap_buffer, &global_arena, 10);
+
+    font_init();
+
 
 
     int screenWidth = GetSystemMetrics(SM_CXSCREEN);
@@ -1337,11 +1223,9 @@ int CALLBACK WinMain(HINSTANCE Instance, HINSTANCE PrevInstance, LPSTR CommandLi
     (screenHeight / 2) - (window_height / 2),
     (screenWidth / 2) + (window_width / 2),
     (screenHeight / 2) + (window_height / 2));
-    DWORD style = (WS_OVERLAPPED | WS_VISIBLE);
-    //window_rect.right = window_width;
-    //window_rect.bottom = window_height;
+
     AdjustWindowRect(&window_rect, WS_OVERLAPPEDWINDOW | WS_VISIBLE, false);
-    OS_Window window = os_win32_open_window(window_rect);
+    OS_Window window = os_win32_open_window(window_rect, win32_main_callback);
 
     // Allen stored the target width and height in a variable here calling win32_resize. But I guess its not needed
     // because at least as far as i can tell it `AdjustWindowRect` respects the fucking size!
@@ -1402,7 +1286,6 @@ int CALLBACK WinMain(HINSTANCE Instance, HINSTANCE PrevInstance, LPSTR CommandLi
 
 
     {
-        //OS_FileReadResult font_file = os_file_read(&global_arena, "C:\\Windows\\Fonts\\Arial.ttf");
         OS_FileReadResult font_file = os_file_read(&global_arena, "C:\\Windows\\Fonts\\CascadiaMono.ttf");
 
         FT_Face face = {0};
@@ -1469,55 +1352,9 @@ int CALLBACK WinMain(HINSTANCE Instance, HINSTANCE PrevInstance, LPSTR CommandLi
                     printf("FT_Load_Glyph: %s\n", err_str);
                 }
 
-
                 // * - "The metrics found in face->glyph->metrics are normally expressed in 26.6 pixel format"
             }
 
-            {
-                /* NOTEs
-                * - face->glyph->bitmap
-                * --- face->glyph->bitmap.buffer
-                * - Global Metrics: face->(ascender, descender, height): For general font information
-                * - Scaled Global Metrics: face->size.metrics.(ascender, descender, height): For rendering text
-                * - "The metrics found in face->glyph->metrics are normally expressed in 26.6 pixel format"
-                    to convert to pixels >> 6 (divide by 64). Applies to scaled metrics as well.
-                * - Calling `FT_Set_Char_Size` sets `FT_Size` in the active `FT_Face` and is used by functions like: `FT_Load_Glyph`
-                    https://freetype.org/freetype2/docs/reference/ft2-sizing_and_scaling.html#ft_size
-                * - face->bitmap_top is the distance from the top of the bitmap to the baseline. y+ positive
-                    https://freetype.org/freetype2/docs/reference/ft2-glyph_retrieval.html#ft_glyphslot
-                * - glyph->advance.x must be shifted >> 6 as well if pixels are wanted
-                */
-
-                // Inspect this word: "HogellTo"
-                const char* word = "HogellTo";
-                const char* c = word;
-                //for(; *c != '\0'; c++) 
-                //{
-                    //u32 glyph_index = FT_Get_Char_Index(face, 'A');
-                    //if (glyph_index) 
-                    //{
-                    //    FT_Error load_glyph_err = FT_Load_Glyph(face, glyph_index, FT_LOAD_DEFAULT );
-                    //    if (load_glyph_err) 
-                    //    {
-                    //        const char* err_str = FT_Error_String(load_glyph_err);
-                    //        printf("FT_Load_Glyph: %s\n", err_str);
-                    //    }
-
-                    //    FT_Error render_glyph_err = FT_Render_Glyph(face->glyph, FT_RENDER_MODE_NORMAL);
-                    //    if (render_glyph_err) 
-                    //    {
-                    //        const char* err_str = FT_Error_String(render_glyph_err);
-                    //        printf("FT_Load_Glyph: %s\n", err_str);
-                    //    }
-
-						//letter_A_glyph//.glyph = face->glyph;
-						//letter_A_glyph//.bitmap.width = face->glyph->bitmap.width;
-						//letter_A_glyph//.bitmap.height = face->glyph->bitmap.rows;
-						//letter_A_glyph//.bitmap.pitch = face->glyph->bitmap.pitch;
-						//letter_A_glyph//.bitmap.buffer = face->glyph->bitmap.buffer;
-                    //}
-                //}
-            }
 
             {
                 aim_profiler_time_block("font_table creation")
@@ -1529,15 +1366,12 @@ int CALLBACK WinMain(HINSTANCE Instance, HINSTANCE PrevInstance, LPSTR CommandLi
 
         }
         
-        global_line = (char*) malloc(global_max_line_length);
-        memset(global_line, 0, global_max_line_length);
-
-        text_editor.lines = (Line*) malloc(255 * sizeof(Line));
+        text_editor.lines = (Line*) calloc(255, sizeof(Line));
         for(u32 line_index = 0; line_index < 255; line_index++) {
             Line* line = text_editor.lines + line_index;
-            line->line = (char*) malloc(global_max_line_length);
-            memset(line->line, 0, global_max_line_length);
+            line->data = (char*) calloc(1, global_max_line_length);
         }
+
         //Line* lines;
         //char* line;
         //u32 cursor_pos;
@@ -1579,30 +1413,18 @@ int CALLBACK WinMain(HINSTANCE Instance, HINSTANCE PrevInstance, LPSTR CommandLi
                         draw_cursor(&global_buffer, &text_editor.cursor, text_editor.edition_mode);
                     }
 
-                    // editor
                     i32 y_baseline = line_height;
 
-                    char* word = "Sale Dota eeh!";
-                    word = "The sound of ocean waves calms my soul";
-                    word = "The sound of the ocean";
-                    word = "GameUpdateAndRender?? hola";
-                    //for(char* c = global_line; *c != '\0'; c++) {
                     u32 last_line_index = text_editor.line_count;
 
-                    // line_number = 120;
-                    // char number = "120";
                     aim_profiler_time_block("Text and line numbers routine");
-                    for(u32 line_index = 1 - text_editor.cursor.scroll_y; line_index <= last_line_index; line_index++) {
+                    for(u32 line_index = 1; line_index <= last_line_index; line_index++) {
                         i32 column_numbers_size = 30;
-                        // TODO this `init_pos` should go away when I have the parent sorted.
-
-                        ///////////////////////////// line numbers //////////////////////////////////
-                        /* 
-                        NOTE line numbers in vim: it has a size for the column numbers that grows based on the total line_count of the file
-
-                        */
-                        // NOTE instead of a hash I could have used: char* number_to_str[1000000000] = 
                         {
+                            /* 
+                                NOTE line numbers in vim: it has a size for the column numbers that grows based on the total line_count of the file
+                                NOTE instead of a hash I could have used: char* number_to_str[1000000000] = 
+                            */
                             aim_profiler_time_block("Line numbers drawing");
                             u32 index = line_numbers_to_chars_hash(line_index ) % array_count(line_numbers_to_chars);
                             LineNumberToChars* line_in_chars = get_line_number_in_chars(line_numbers_to_chars, index, line_index );
@@ -1613,7 +1435,7 @@ int CALLBACK WinMain(HINSTANCE Instance, HINSTANCE PrevInstance, LPSTR CommandLi
                                 itoa(line_index , buf, 10);
                                 add_line_number_in_chars(line_numbers_to_chars, index, line_index , buf);
                             }
-                            size_t buf_size = cstring_length(buf);
+                            size_t buf_size = cstring8_length(buf);
                             u32 char_offset = 0;
                             u32 pos = 0;
                             for(i32 i = buf_size - 1; i >= 0; i--, pos++) {
@@ -1627,30 +1449,28 @@ int CALLBACK WinMain(HINSTANCE Instance, HINSTANCE PrevInstance, LPSTR CommandLi
                             /////////////////////////////    t_text    //////////////////////////////////
                             aim_profiler_time_block("Text Drawing");
                             u32 line_offset = column_numbers_size + 15;
-                            line_number_size = line_offset;
-                            char* current_line = text_editor.lines[line_index].line + 1 + text_editor.cursor.scroll_x;
+                            // char* current_line = text_editor.lines[line_index].data + 1 + text_editor.cursor.scroll_x;
+                            // change
+                            char* current_line = text_editor.lines[text_editor.line_index[line_index]].data + 1 + text_editor.cursor.scroll_x;
                             for(char* c = current_line; *c != '\0' && *c != '\n'; c++) {
                                 LoadedGlyph glyph = font_table[(u32)*c];
-                                // TODO `y_baseline` is fine, but what is NOT fine is `y_baseline * (line_index + 1)` because the height is based on the font size
                                 draw_bitmap(&global_buffer,  glyph.bitmap_left + line_offset, y_baseline * line_index, glyph);
                                 line_offset += glyph.advance_x >> 6;
                             }
                         }
                     }
-                
                 }
 
 
                 {
                     ///////////////////// print line info ////////////////////////////////
                     char buf[200];
-                    sprintf(buf, "Line number: %d, line column: %d, max_line_ch_cnt: %d\n", text_editor.cursor.line, text_editor.cursor.column, text_editor.lines[text_editor.cursor.line].max_char_count);
+                    sprintf(buf, "Line number: %d, line column: %d, max_line_ch_cnt: %d\n", text_editor.cursor.line, text_editor.cursor.column, text_editor.lines[text_editor.line_index[text_editor.cursor.line]].max_char_count);
                     u32 line_offset = 700;
                     u32 y_baseline2 = 700;
                     for(char* c = buf; *c != '\0'; c++)
                     {
                         LoadedGlyph glyph = font_table[(u32)*c];
-                        // TODO `y_baseline` is fine, but what is NOT fine is `y_baseline * (line_index + 1)` because the height is based on the font size
                         draw_bitmap(&global_buffer, glyph.bitmap_left + line_offset, y_baseline2, glyph);
                         line_offset += glyph.advance_x >> 6;
                     }
@@ -1673,35 +1493,8 @@ int CALLBACK WinMain(HINSTANCE Instance, HINSTANCE PrevInstance, LPSTR CommandLi
 
 
 
-                //char linesssss[20][1000];
-                //const char* line = "hola";
-                //const char** lines = {"hola", "como", "estas?"}; // doesnt' compile
-                //const char*** liness = [3]["hola", "como", "estas?"]; // doesnt' compile
-
-                // cuando estoy editando. Tengo todo el archivo en memoria hasta guardarlo? Seguramente 
-
-                // curr_y_baseline
-                // curr_line
-                // curr_col
-
-                // lines grow until '\n' or '\0'
-                // const char** line (array of characters "["hola", "como", "estas??"])
-
-
-
-
-                // UI
-                /* puedo hacer todo el build de la UI aca, no hace falta que haga otra cosa diferente sinceramente
-
-                        Si quiero hacer esto entonces tengo que hacer 2 pases, uno donde guardo el estado de todos los botones y otro donde los dibujo
-                        if(buttons[i].is_left_clicked) {
-
-                        }
-
-                 rad tiene UI_Signal por cada box, y cada box es una estructura compleja
-                */
-
                 {
+                    /* UI */
 
                     UI_Button buttons[10];
                     i32 button_count = 10;
@@ -1727,7 +1520,7 @@ int CALLBACK WinMain(HINSTANCE Instance, HINSTANCE PrevInstance, LPSTR CommandLi
                     }
                     */
                     // TODO provisory!!!
-                    ui_state.primary_menu_opened = 1;
+                    //ui_state.primary_menu_opened = 1;
 
                     /*
                         Here the buttons are created on the fly, similar to IMGUI. The entire button and its state is reconstructed each frame! 
@@ -1747,20 +1540,20 @@ int CALLBACK WinMain(HINSTANCE Instance, HINSTANCE PrevInstance, LPSTR CommandLi
                     };
                     ////////////////////
 
-                    if (text_editor.edition_mode == CursorType_Insert)
+                    if (text_editor.edition_mode == EditionType_Insert)
                     {
                         if (is_key_pressed(&global_input, Keys_ESC))
                         {
-                            text_editor.edition_mode = CursorType_Normal;
+                            text_editor.edition_mode = EditionType_Normal;
                         }
                     }
                     else
                     {
-                        if (text_editor.edition_mode == CursorType_Normal)
+                        if (text_editor.edition_mode == EditionType_Normal)
                         {
                             if (is_key_pressed(&global_input, Keys_I))
                             {
-                                text_editor.edition_mode = CursorType_Insert;
+                                text_editor.edition_mode = EditionType_Insert;
                             }
                         }
                     }
@@ -1864,237 +1657,21 @@ int CALLBACK WinMain(HINSTANCE Instance, HINSTANCE PrevInstance, LPSTR CommandLi
                 os_win32_display_buffer(device_context, &global_buffer, win_dim.width, win_dim.height);
                 ReleaseDC(window.handle, device_context);
             }
+            global_input.prev_keyboard_state = global_input.curr_keyboard_state;
+            global_input.prev_mouse_state = global_input.curr_mouse_state;
         }
         
 
         if (global_os_w32_window.is_fullscreen) {
-            os_win32_toggle_fullscreen(window.handle);
+            os_win32_toggle_fullscreen(window.handle, &global_os_w32_window.window_placement);
             global_os_w32_window.is_fullscreen = false;
         }
 
-        global_input.prev_keyboard_state = global_input.curr_keyboard_state;
-        global_input.prev_mouse_state = global_input.curr_mouse_state;
         //memset(&global_input.curr_mouse_state, 0, sizeof(global_input.curr_mouse_state));
 
     }
 
-    // --- ProcessMemoryInfo ---
-     
-    HANDLE process_handle = OpenProcess(PROCESS_QUERY_INFORMATION | PROCESS_VM_READ, 0, GetCurrentProcessId());
-    PROCESS_MEMORY_COUNTERS_EX pmc = {0};
 
-    if(GetProcessMemoryInfo(process_handle, (PROCESS_MEMORY_COUNTERS*)&pmc, sizeof(PROCESS_MEMORY_COUNTERS_EX))) {
-        char buf[200];
-        sprintf(buf, "Page fault count: %d\n", pmc.PageFaultCount);
-        OutputDebugStringA(buf);
-    }
-
-    // --- system info --
-    SYSTEM_INFO info{};
-    GetSystemInfo(&info);
-    size_t windows_page_size = info.dwPageSize;
-    char buf[200];
-    sprintf(buf,  "Windows page size: %zd\n", windows_page_size);
-    OutputDebugStringA(buf);
-
-    printf("Windows large page size: %zd\n",GetLargePageMinimum());
-
-    size_t def_commit_size = 1024 * 64;
-    printf("Commit size: %zd\n", def_commit_size);
-    size_t new_commit_size = align_pow2(def_commit_size, 4 * 1024);
-    printf("Commit size: %zd\n", new_commit_size);
-
-    TempArena temp_arena1 = temp_begin(&global_arena);
-
-    u8* bytes = some(temp_arena1.arena);
-    for(int i = 0; i < 10; i++) {
-        printf("%c, ", bytes[i]);
-    }
-    printf("\n");
-
-    // What happens is that this values reads the previous values stored in the temp arena
-    // created in `some` and because the pointer is shared between arenas I can use the original arena up until I reached
-    // the point where the temp arena (no longer availabe) was created. 
-    // DONE do it in ginger code
-    printf("First rubbish \n");
-    u8* rubbish = arena_push_size(&global_arena, u8, 10);
-    for(int i = 0; i < 10; i++) {
-        printf("%c, ", rubbish[i]);
-    }
-    printf("\n");
-
-    printf("Second rubbish \n");
-    rubbish = arena_push_size(&global_arena, u8, 10);
-    for(int i = 0; i < 10; i++) {
-        printf("%c, ", rubbish[i]);
-    }
-    printf("\n");
-
-    //TODO Add this
-    printf("bytes again \n");
-    for(int i = 0; i < 10; i++) {
-        printf("%c, ", bytes[i]);
-    }
-    printf("\n");
-
-    temp_end(temp_arena1);
-
-
-    //OS_ReadFileResult font_file = os_read_file(temp_arena.arena, "C:\\Windows\\Fonts\\Arial.ttf");
-
-
-    // Datastructures
-    /* TODOs
-        - Lists and list macros 
-        - Metaprogramming or parsing
-    */
-    {
-        void* memory = malloc(mb(10));
-        typedef u32 NodeFlags;
-        enum {
-            NodeFlag_MaskSetDelimiters          = (0x3F<<0),
-            NodeFlag_HasParenLeft               = (1<<0),
-            NodeFlag_HasParenRight              = (1<<1),
-            NodeFlag_HasBracketLeft             = (1<<2),
-            NodeFlag_HasBracketRight            = (1<<3),
-            NodeFlag_HasBraceLeft               = (1<<4),
-            NodeFlag_HasBraceRight              = (1<<5),
-            
-            NodeFlag_MaskSeparators             = (0xF<<6),
-            NodeFlag_IsBeforeSemicolon          = (1<<6),
-            NodeFlag_IsAfterSemicolon           = (1<<7),
-            NodeFlag_IsBeforeComma              = (1<<8),
-            NodeFlag_IsAfterComma               = (1<<9),
-        };
-
-        enum NodeKind {
-            NodeKind_Nil,
-            NodeKind_File,
-            NodeKind_Tag,
-            NodeKind_List,
-            NodeKind_COUNT
-        };
-
-        enum MsgKind {
-            MsgKind_Null,
-            MsgKind_Note,
-            MsgKind_Warning,
-            MsgKind_Error,
-            MsgKind_COUNT
-        };
-
-        struct Node {
-            // tree links
-            Node* first;
-            Node* last;
-            Node* parent;
-            Node* prev;
-            Node* next;
-
-            // node info
-            NodeFlags flags;
-        };
-
-        struct Msg {
-            Msg* next;
-            Node* node;
-            Str8 string;
-            NodeKind kind;
-        };
-
-        struct MsgList {
-            Msg* first;
-            Msg* last;
-            u32 count;
-        };
-
-    }
-    {
-
-        GameState game = {0};
-        game.x = 4;
-        game.y = 3;
-
-        uint64_t ptr_to_game = (uint64_t) &game;
-        GameState* same_game = (GameState*) ptr_to_game;
-
-
-        /*  What exactly the difference between a uint64_t pointer and a uint64_t value? Both are 8 bytes.
-            Because initially I thought I had to cast &game to uint64_t*, not to a uint64_t.
-        */
-    }
-
-    {
-        enum Type 
-        {
-            Type1,
-            Type2,
-        }; 
-        struct Params 
-        {
-            Type type;
-            union {
-                struct 
-                {
-                    int x,w;
-                } type1;
-                struct Type2
-                {
-                    int x,y,z;
-                }type2;
-            };
-        };
-
-        Params t1_params = {0};
-        t1_params.type = Type1;
-        t1_params.type1.x = 11;
-        t1_params.type1.w = 12;
-
-        Params t2_params = {0};
-        t2_params.type = Type2;
-        t2_params.type2.x = 100;
-        t2_params.type2.y = 101;
-        t2_params.type2.z = 102;
-
-        t2_params.type1.w = 102;
-
-        struct Type1Params 
-        {
-            int x;
-            int w;
-        };
-
-        struct Type2Params 
-        {
-            int x;
-            int y;
-            int z;
-        };
-
-        typedef struct ParamsM 
-        {
-            enum Type type;
-            union {
-                struct Type1Params t1;
-                struct Type2Params t2;
-            }; //data;
-        } ParamsM;
-
-        ParamsM t1_paramsM = {0};
-        t1_paramsM.type = Type1;
-        t1_paramsM.t1.x = 11;
-        t1_paramsM.t1.w = 12;
-
-        ParamsM t2_paramsM = {0};
-        t2_paramsM.type = Type2;
-        t2_paramsM.t2.x = 100;
-        t2_paramsM.t2.y = 101;
-        t2_paramsM.t2.z = 102;
-
-        t2_paramsM.t1.w = 102;
-
-        int x = 321321;
-    }
 
     aim_profiler_end();
     aim_profiler_print();

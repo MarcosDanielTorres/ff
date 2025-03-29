@@ -15,7 +15,10 @@ set compile_flags=-nologo %inc_files% -Z7
 
 set compile=call cl %compile_flags% 
 
-set main=1
+set main=0
+set ui=1
+set opengl=0
+set vulkan=0
 
 if not exist build mkdir build
 
@@ -23,6 +26,7 @@ pushd build
 del *.obj
 if "%main%"=="1"                %compile% ..\src\main.cpp /link /LIBPATH:%freetype_lib_path% libfreetype.lib user32.lib gdi32.lib comdlg32.lib
 if "%samples_cmdline%"=="1"     %compile% ..\src\samples\samples_cmdline.cpp /link user32.lib gdi32.lib
-%compile% ..\src\samples\opengl.cpp /link user32.lib gdi32.lib opengl32.lib
+if "%opengl%"=="1"              %compile% ..\src\samples\opengl.cpp /link user32.lib gdi32.lib opengl32.lib
+if "%ui%"=="1"                  %compile% ..\src\samples\ui\ui.cpp /link /LIBPATH:%freetype_lib_path% libfreetype.lib user32.lib gdi32.lib comdlg32.lib
 popd
 

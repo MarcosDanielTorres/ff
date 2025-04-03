@@ -86,8 +86,8 @@ enum Buttons {
 
 struct MouseState {
     u8 button[Buttons_Count];
-    f32 x;
-    f32 y;
+    i32 x;
+    i32 y;
     f32 scroll;
 };
 
@@ -161,37 +161,6 @@ u32 input_is_any_modifier_pressed(Input* input, u32 key) {
 global_variable Input global_input;
 ///////////////// input //////////////////////
 
-struct Mat4x4
-{
-    f32 m[4][4];
-    Mat4x4(
-        f32 m00, f32 m01, f32 m02, f32 m03,
-        f32 m10, f32 m11, f32 m12, f32 m13,
-        f32 m20, f32 m21, f32 m22, f32 m23,
-        f32 m30, f32 m31, f32 m32, f32 m33
-    ) {
-        m[0][0] = m00; 
-        m[0][1] = m10; 
-        m[0][2] = m20; 
-        m[0][3] = m30; 
-
-        m[1][0] = m01; 
-        m[1][1] = m11; 
-        m[1][2] = m21; 
-        m[1][3] = m31; 
-
-        m[2][0] = m02; 
-        m[2][1] = m12; 
-        m[2][2] = m22; 
-        m[2][3] = m32; 
-
-        m[3][0] = m03; 
-        m[3][1] = m13; 
-        m[3][2] = m23; 
-        m[3][3] = m33; 
-    };
-};
-
 struct Point2D
 {
     f32 x;
@@ -218,7 +187,6 @@ enum DebugInteractionType
 {
     DebugInteractionType_None,
     DebugInteractionType_Toggle,
-    DebugInteractionType_DragHierarchy,
 };
 
 enum DebugVariableType
@@ -226,7 +194,6 @@ enum DebugVariableType
     DebugVariableType_B32,
     DebugVariableType_U32,
     DebugVariableType_F32,
-    DebugVariableType_Mat4x4,
     DebugVariableType_Button,
     DebugVariableType_Group,
 };
@@ -258,21 +225,17 @@ struct DebugVariable
         b32 b32_value;
         u32 u32_value;
         f32 f32_value;
-        Mat4x4 mat4x4_value;
         DebugGroup group;
         DebugButton button;
     };
 };
 
-
 struct DebugState
 {
     Arena arena;
-    FontInfo font_info;
-    f32 AtX;
-    f32 AtY;
 
-    
+    FontInfo font_info;
+
     DebugVariable *root_var;
     DebugVariable *active_variable;
     DebugVariable *hot_variable;
@@ -325,13 +288,12 @@ debug_add_var(DebugContext *context, Str8 name, DebugVariableType type)
     return var;
 }
 
-internal DebugVariable *
+internal void
 debug_begin_group(DebugContext *context, Str8 group_name)
 {
     DebugVariable *var = debug_add_var(context, group_name, DebugVariableType_Group);
     var->group.expanded = true;
     context->current_group = var;
-    return var;
 }
 
 
@@ -500,52 +462,36 @@ int main()
     DebugVariable *root_var = arena_push_size(&debug_state->arena, DebugVariable, 1);
     debug_state->root_var = root_var;
     debug_state->font_info = font_info;
-    debug_state->AtX = 0;
-    debug_state->AtY = 0;
-
 
     DebugContext context; 
     context.state = debug_state;
     context.current_group = root_var;
 
-    Mat4x4 rot_mat = 
-    Mat4x4(
-        1, 5, 9,  13,
-        2, 6, 10, 14,
-        3, 7, 11, 15,
-        4, 8, 12, 16
-    );
 
-    debug_begin_group(&context, str8("Group 1"));
-    {
-        debug_add_var(&context, str8("elem 1"), DebugVariableType_B32);
-        debug_add_var(&context, str8("elem 2"), DebugVariableType_B32);
-        DebugVariable *debug_var_rot_mat = debug_add_var(&context, str8("Rotation matrix"), DebugVariableType_Mat4x4);
-        debug_var_rot_mat->mat4x4_value = rot_mat;
-    }
-    debug_end_group(&context);
+    //debug_begin_group(&context, str8("Group 1"));
+    //{
+    //    debug_add_var(&context, str8("elem 1"), DebugVariableType_B32);
+    //    debug_add_var(&context, str8("elem 2"), DebugVariableType_B32);
+    //}
+    //debug_end_group(&context);
 
-    debug_begin_group(&context, str8("Group 2"));
-    {
-        debug_add_var(&context, str8("elem 1"), DebugVariableType_B32);
-        DebugVariable *var = debug_begin_group(&context, str8("Group 3"));
-        var->group.expanded = false;
-        {
-            debug_add_var(&context, str8("elem 1"), DebugVariableType_B32);
-        }
-        debug_end_group(&context);
-    }
-    debug_end_group(&context);
+    //debug_begin_group(&context, str8("Group 2"));
+    //{
+    //    debug_add_var(&context, str8("elem 1"), DebugVariableType_B32);
+    //    debug_begin_group(&context, str8("Group 3"));
+    //    {
+    //        debug_add_var(&context, str8("elem 1"), DebugVariableType_B32);
+    //    }
+    //    debug_end_group(&context);
+    //}
+    //debug_end_group(&context);
 
-    debug_add_var(&context, str8("groupless item"), DebugVariableType_B32);
-
+    //debug_add_var(&context, str8("groupless item"), DebugVariableType_B32);
 
     DebugVariable *btn1;
     DebugVariable *btn2;
     DebugVariable *btn3;
-    
-    DebugVariable *btn_grp1 = debug_begin_group(&context, str8("Group 1"));
-    btn_grp1->group.expanded = false;
+    debug_begin_group(&context, str8("Group 1"));
     {
         btn1 = debug_add_var(&context, str8("btn 1"), DebugVariableType_Button);
         btn2 = debug_add_var(&context, str8("btn 2"), DebugVariableType_Button);
@@ -575,10 +521,55 @@ int main()
         Point2D mouse_p;
         mouse_p.x = global_input.curr_mouse_state.x;
         mouse_p.y = global_input.curr_mouse_state.y;
+        Rect2D r1 = {100.0f, 100.0f, 100.0f, 100.0f};
+        Rect2D r2 = {400.0f, 100.0f, 50.0f, 100.0f};
+        Rect2D r3 = {500.0f, 100.0f, 100.0f, 100.0f};
 
 
+        /*
+        Dudas:
+            Cuando va a pintar chequea si esta dentro el mouse y setea el next_hot. Acto seguido, si el hot actual es igual a donde esta entonces lo pinta como hovered
 
-        debug_draw_menu(debug_state, debug_state->root_var);
+            Al final de todo setea hot = next_hot, next_hot = 0
+
+            Donde hace handlea el active?
+        */
+
+        {
+            if(rect_contains_point(r1, mouse_p))
+            {
+                debug_state->next_hot_variable = btn1;
+            }
+            u32 color = 0xFFFFFFFF;
+            if(debug_state->hot_variable == btn1)
+            {
+                color = 0xFF00FFFF;
+            }
+            draw_rect(&global_pixel_buffer, r1.x, r1.y, r1.w, r1.h, color);
+
+            if(rect_contains_point(r2, mouse_p))
+            {
+                debug_state->next_hot_variable = btn2;
+            }
+            color = 0xFFFFFFFF;
+            if(debug_state->hot_variable == btn2)
+            {
+                color = 0xFF00FFFF;
+            }
+            draw_rect(&global_pixel_buffer, r2.x, r2.y, r2.w, r2.h, color);
+
+            if(rect_contains_point(r3, mouse_p))
+            {
+                debug_state->next_hot_variable = btn3;
+            }
+            color = 0xFFFFFFFF;
+                if(debug_state->hot_variable == btn3)
+                {
+                    color = 0xFF00FFFF;
+                }
+            draw_rect(&global_pixel_buffer, r3.x, r3.y, r3.w, r3.h, color);
+        }
+
 
         if(debug_state->active_interaction)
         {
@@ -596,15 +587,12 @@ int main()
                     {
                         switch(debug_state->active_variable->type)
                         {
-                            case DebugVariableType_Group:
+                            case DebugVariableType_Button:
                             {
-                                debug_state->active_variable->group.expanded = !debug_state->active_variable->group.expanded;
+                                //debug_state->active_variable->group.expanded = !debug_state->active_variable->group.expanded;
+                                debug_state->active_variable->button.color = debug_state->active_variable->button.colors[0];
                             } break;
                         }
-                    } break;
-                    case DebugInteractionType_DragHierarchy:
-                    {
-
                     } break;
                 }
 
@@ -619,27 +607,37 @@ int main()
             if(input_click_left_down(&global_input))
             {
                 // DEBUGBeginInteract()
-                if(debug_state->hot_variable)
+                if (debug_state->hot_interaction)
                 {
-                    switch(debug_state->hot_variable->type)
+                    // this never gets hit for now!
+                    debug_state->active_interaction = debug_state->hot_interaction;
+                }
+                else
+                {
+                    if(debug_state->hot_variable)
                     {
-                        case DebugVariableType_Group:
+                        switch(debug_state->hot_variable->type)
                         {
-                            debug_state->active_interaction = DebugInteractionType_Toggle;
-                        } break;
-                    }
+                            case DebugVariableType_Button:
+                            {
+                                debug_state->active_interaction = DebugInteractionType_Toggle;
+                            } break;
+                        }
 
-                    if(debug_state->active_interaction)
-                    {
-                        debug_state->active_variable = debug_state->hot_variable;
+                        if(debug_state->active_interaction)
+                        {
+                            debug_state->active_variable = debug_state->hot_variable;
+                        }
                     }
                 }
             }
         }
 
-            char* c  = "Test!";
-            draw_text(&global_pixel_buffer, 0, 100, c, font_info.font_table);
-
+        if(debug_state->active_variable)
+        {
+            char* c  = "Hot!";
+            draw_text(&global_pixel_buffer, 200, 300, c, font_info.font_table);
+        }
 
         //debug_state->active = 0;
         // DEBUGEnd()
@@ -647,119 +645,41 @@ int main()
         debug_state->next_hot_interaction = DebugInteractionType_None;
         //debug_state->hot = debug_state->next_hot;
         
-
+        
         OS_Window_Dimension win_dim = os_win32_get_window_dimension(global_w32_window.handle);
         HDC device_context = GetDC(global_w32_window.handle);
         os_win32_display_buffer(device_context, &global_pixel_buffer, win_dim.width, win_dim.height);
         ReleaseDC(global_w32_window.handle, device_context);
         input_update(&global_input);
     };
+    debug_draw_menu(debug_state, debug_state->root_var);
 }
 
 void debug_draw_menu(DebugState *debug_state, DebugVariable *var)
 {
-    u32 tab_size = 4;
     assert(var->group.first_child);
     var = var->group.first_child;
-    debug_state->AtX =  0;
-    debug_state->AtY = 0;
-    char buf[4096];
-    char *at = buf;
-    char *end = buf + sizeof(buf);
+    char temp[4096];
+    char *at = temp;
+    char *end = temp + sizeof(temp);
+    u32 depth = 0;
     while(var)
     {
-        u32 inc = 0;
-        Str8 text;
-        if(var->type == DebugVariableType_Group)
+        for(u32 d = 0; d < depth; d++)
         {
-            if (var->group.expanded)
-            {
-                //inc = _snprintf_s(at, (size_t)(end - at), (size_t)(end - at), "[-] %s", var->name.str);
-                inc = _snprintf_s(buf, (size_t)(end - buf), (size_t)(end - buf), "[-] %s", var->name.str);
-                text = str8(buf, inc);
-                //text = str8_fmt("[-] %s", var->name.str);
-            }
-            else
-            {
-                inc = _snprintf_s(buf, (size_t)(end - buf), (size_t)(end - buf), "[+] %s", var->name.str);
-                text = str8(buf, inc);
-
-                //inc = _snprintf_s(at, (size_t)(end - at), (size_t)(end - at), "[+] %s", var->name.str);
-            }
+            *at++ = ' ';
+            *at++ = ' ';
+            *at++ = ' ';
+            *at++ = ' ';
         }
-        else
-        {
-            switch(var->type) 
-            {
-                case DebugVariableType_Mat4x4:
-                {
-                    at += _snprintf_s(at, (size_t)(end - at), (size_t)(end - at), "%s: \n\t[", var->name.str);
-
-                    for(u32 i = 0; i < 4; i++)
-                    {
-                        for(u32 j = 0; j < 4; j++)
-                        {
-
-                            if (j != 3)
-                            {
-                                at += _snprintf_s(at, (size_t)(end - at), (size_t)(end - at), "%2.f, ", var->mat4x4_value.m[j][i]);
-                            }
-                            else
-                            {
-                                at += _snprintf_s(at, (size_t)(end - at), (size_t)(end - at), "%2.f]", var->mat4x4_value.m[j][i]);
-
-                            }
-
-                            if (j == 3 && i != 3) 
-                            {
-                                at += _snprintf_s(at, (size_t)(end - at), (size_t)(end - at), "\n\t[");
-                            }
-                        }
-                    }
-                    text = str8(buf, at - buf);
-                } break;
-                default:
-                {
-                    text = var->name;
-                } break;
-            }
-            //inc = _snprintf_s(at, (size_t)(end - at), (size_t)(end - at), "%s", var->name.str);
-        }
-
-        TextSize text_size = font_get_text_size(&debug_state->font_info, text);
-        Point2D mouse_p;
-        mouse_p.x = global_input.curr_mouse_state.x;
-        mouse_p.y = global_input.curr_mouse_state.y;
-
-        Rect2D bbox = {debug_state->AtX + 200.0f, (200.0f + debug_state->AtY) - debug_state->font_info.ascent, text_size.w, text_size.h};
-        if(rect_contains_point(bbox, mouse_p))
-        {
-            debug_state->next_hot_variable = var;
-        }
-
-
-        u32 text_color = 0xFFFFFFFF;
-        if(var == debug_state->hot_variable)
-        {
-            text_color = 0xFF00FFFF;
-            draw_line(&global_pixel_buffer, bbox.x, bbox.y , bbox.x + bbox.w, bbox.y, 0xFFFFFF00);
-            draw_line(&global_pixel_buffer, bbox.x, bbox.y + bbox.h, bbox.x + bbox.w, bbox.y + bbox.h, 0xFFFFFF00);
-
-            draw_line(&global_pixel_buffer, bbox.x, bbox.y, bbox.x, bbox.y + bbox.h, 0xFFFFFF00);
-            draw_line(&global_pixel_buffer, bbox.x + bbox.w, bbox.y , bbox.x + bbox.w, bbox.y + bbox.h, 0xFFFFFF00);
-        }
-        draw_text(&global_pixel_buffer, bbox.x, bbox.y + debug_state->font_info.ascent, text, debug_state->font_info.font_table, text_color);
-        //if(str8_equals(var->name, str8("Group 2"))){
-
-        //}
-
-        //debug_state->AtY += debug_state->font_info.ascent + debug_state->font_info.descent + 20;
-        debug_state->AtY += (debug_state->font_info.ascent + debug_state->font_info.descent) * text_size.lines + 10;
+        at += _snprintf_s(at, (size_t)(end - at), (size_t)(end - at), "%s", var->name.str);
+        draw_text(&global_pixel_buffer, 200, 500, at, debug_state->font_info.font_table);
+        //printf("%.*s\n", (u32) var->name.size, var->name.str);
         if (var->type == DebugVariableType_Group && var->group.expanded)
         {
-            debug_state->AtX +=  tab_size * debug_state->font_info.max_char_width >> 6;
             if(var->group.first_child)
             {
+                depth++;
                 var = var->group.first_child;
             }
         }
@@ -775,7 +695,7 @@ void debug_draw_menu(DebugState *debug_state, DebugVariable *var)
                 }else
                 {
                     var = var->parent;
-                    debug_state->AtX -= tab_size * debug_state->font_info.max_char_width >> 6;
+                    depth--;
                 }
             }
 

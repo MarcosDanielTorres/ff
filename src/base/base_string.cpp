@@ -9,6 +9,18 @@ Str8 str8(char* str, size_t size) {
     return result;
 }
 
+/*
+TODO
+    ver que psaria si hago
+
+    Str8 some; 
+    {
+        char *str = "hola"; 
+        some = str8(str);
+    }
+    printf("%s\n", some.str);
+
+*/
 Str8 str8(char* str) {
     Str8 result = {0};
     result.str = (u8*) str;
@@ -47,5 +59,16 @@ b32 str8_equals(Str8 str_a, Str8 str_b) {
         }
     }
 
+    return result;
+}
+
+
+// TODO fix this
+Str8 str8_fmt(char* fmt, char* str)
+{
+    Str8 result = {0};
+    char buf[100];
+    char *end = buf + sizeof(buf);
+    result.size = _snprintf_s(buf, (size_t)(end - buf), (size_t)(end - buf), fmt, str);
     return result;
 }

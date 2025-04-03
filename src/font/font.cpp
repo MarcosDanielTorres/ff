@@ -50,21 +50,24 @@ font_load(Arena* arena)
         FT_Error set_char_size_err = FT_Set_Char_Size(face, 4 * 64, 4 * 64, 300, 300);
         info.ascent = face->size->metrics.ascender >> 6;    // Distance from baseline to top (positive)
         info.descent = - (face->size->metrics.descender >> 6); // Distance from baseline to bottom (positive)
+        //u32 text_height = face->size->metrics.height >> 6;
+        //u32 line_skip = text_height - (info.ascent + info.descent);
+        //info.line_height = text_height + line_skip;
         info.line_height = face->size->metrics.height >> 6;
 
         {
             //aim_profiler_time_block("font_table creation")
             for(u32 codepoint = '!'; codepoint <= '~'; codepoint++) {
                 //font_table[u32(codepoint)] = load_glyph(face, char(codepoint));
-                info.font_table[u32(codepoint)] = load_font_glyph(face, char(codepoint), &info);
+                info.font_table[u32(codepoint)] = font_load_glyph(face, char(codepoint), &info);
             }
-            info.font_table[u32(' ')] = load_font_glyph(face, char(' '), &info);
+            info.font_table[u32(' ')] = font_load_glyph(face, char(' '), &info);
         }
     }
     return info;
 }
 
-FontGlyph load_font_glyph(FT_Face face, char codepoint, FontInfo *info) {
+FontGlyph font_load_glyph(FT_Face face, char codepoint, FontInfo *info) {
     FontGlyph result = {0};
     // The index has nothing to do with the codepoint
     u32 glyph_index = FT_Get_Char_Index(face, codepoint);
@@ -102,3 +105,44 @@ FontGlyph load_font_glyph(FT_Face face, char codepoint, FontInfo *info) {
     }
     return result;
 }
+
+internal TextSize 
+font_get_text_size(FontInfo *font_info, Str8 text)
+{
+    // todo remove from here put it in font_info
+    u32 tab_size = 4;
+    TextSize text_size = {0};
+    u32 new_lines = 1;
+
+    b32 multiline = 0;
+    u32 max_width = 0;
+
+    u32 char_count_per_line = 0;
+    for(u32 i = 0; i < text.size; i++)
+    {
+        if(text.str[i] == '\n')
+        {
+            max_width = max(max_width, char_count_per_line);
+            char_count_per_line = 0;
+            new_lines++;
+            multiline = 1;
+        }
+        else
+        {
+            if(text.str[i] == '\t')
+            {
+                char_count_per_line += tab_size;
+            }
+            else
+            {
+                char_count_per_line++;
+            }
+        }
+    }
+    //text_size.w = f32((font_info->max_char_width >> 6) * (text_size));
+    text_size.w = f32((font_info->max_char_width >> 6) * (multiline ? max_width : text.size));
+    text_size.h = f32((font_info->descent + font_info->ascent) * new_lines);
+    text_size.lines = new_lines;
+    return text_size;
+}
+

@@ -143,6 +143,12 @@ draw_rect(OS_PixelBuffer* buffer, i32 dest_x, i32 dest_y, i32 width, i32 height,
     }
 }
 
+internal void
+draw_rect(OS_PixelBuffer* buffer, Rect2D r, u32 color, DrawRectFlags flags) 
+{
+    draw_rect(buffer, r.x, r.y, r.w, r.h, color, flags);
+}
+
 internal void 
 clear_buffer(OS_PixelBuffer *buffer, u32 color) 
 {

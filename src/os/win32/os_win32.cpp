@@ -84,8 +84,22 @@ void os_win32_display_buffer(HDC device_context, OS_PixelBuffer* buffer, i32 win
 
 typedef LRESULT (CALLBACK *WIN32MAINCALLBACK) (HWND Window, UINT Message, WPARAM wParam, LPARAM lParam);
 
-OS_Window os_win32_open_window(RECT rect, WIN32MAINCALLBACK w32_main_callback) {
-    
+OS_Window os_win32_open_window(const char* window_name, u32 window_width, u32 window_height, WIN32MAINCALLBACK w32_main_callback, WindowOpenFlags flags) 
+{
+    RECT window_rect = {0};
+    if(flags & WindowOpenFlags_Centered)
+    {
+        u32 screen_width = GetSystemMetrics(SM_CXSCREEN);
+        u32 screen_height = GetSystemMetrics(SM_CYSCREEN);
+        SetRect(&window_rect,
+                (screen_width / 2) - (window_width / 2),
+                (screen_height / 2) - (window_height / 2),
+                (screen_width / 2) + (window_width / 2),
+                (screen_height / 2) + (window_height / 2));
+    } 
+
+    AdjustWindowRect(&window_rect, WS_OVERLAPPEDWINDOW | WS_VISIBLE, false);
+
     OS_Window result = {0};
     WNDCLASSA WindowClass = {0};
     {
@@ -102,16 +116,16 @@ OS_Window os_win32_open_window(RECT rect, WIN32MAINCALLBACK w32_main_callback) {
     HWND handle = CreateWindowExA(
         0,
         "graphical-window", //[in, optional] LPCSTR    lpClassName,
-        "main window", //[in, optional] LPCSTR    lpWindowName,
+        window_name, //[in, optional] LPCSTR    lpWindowName,
         WS_OVERLAPPEDWINDOW | WS_VISIBLE, //[in]           DWORD     dwStyle,
         //CW_USEDEFAULT, //[in]           int       X,
         //CW_USEDEFAULT, //[in]           int       Y,
         //rect.right - rect.left,//[in]           int       nWidth,
         //rect.bottom - rect.top, //[in]           int       nHeight,
-        rect.left, //[in]           int       X,
-        rect.top, //[in]           int       Y,
-        rect.right - rect.left,//[in]           int       nWidth,
-        rect.bottom - rect.top, //[in]           int       nHeight,
+        window_rect.left, //[in]           int       X,
+        window_rect.top, //[in]           int       Y,
+        window_rect.right - window_rect.left,//[in]           int       nWidth,
+        window_rect.bottom - window_rect.top, //[in]           int       nHeight,
         0, //[in, optional] HWND      hWndParent,
         0, //[in, optional] HMENU     hMenu,
         // TODO Same here, is instance useful?

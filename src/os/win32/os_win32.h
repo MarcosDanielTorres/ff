@@ -4,6 +4,12 @@
 #include <processthreadsapi.h>
 
 
+typedef u32 WindowOpenFlags;
+enum
+{
+    WindowOpenFlags_Centered = (1 << 0),
+};
+
 struct OS_Window
 {
     HWND handle;

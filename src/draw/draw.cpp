@@ -157,10 +157,10 @@ clear_buffer(OS_PixelBuffer *buffer, u32 color)
 }
 
 internal void
-draw_text(OS_PixelBuffer *buffer, i32 x, i32 y, char* text, FontGlyph* font_table, u32 text_color)
+draw_text(OS_PixelBuffer *buffer, i32 x, i32 y, const char* text, FontGlyph* font_table, u32 text_color)
 {
     u32 line_offset = x;
-    for(char* c = text; *c != '\0'; c++)
+    for(const char* c = text; *c != '\0'; c++)
     {
         // todo see how he does the `DEBUGTextOut`
         // todo see how does he get the correct bitmap font

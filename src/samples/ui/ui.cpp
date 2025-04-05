@@ -223,9 +223,10 @@ enum DebugInteractionType
 
 enum DebugVariableType
 {
-    DebugVariableType_B32,
-    DebugVariableType_U32,
-    DebugVariableType_F32,
+    DebugVariableType_b32,
+    DebugVariableType_u32,
+    DebugVariableType_Str8,
+    DebugVariableType_f32,
     DebugVariableType_Mat4x4,
     DebugVariableType_Button,
     DebugVariableType_Group,
@@ -530,17 +531,7 @@ int main()
 
     u32 window_width = 1280;
     u32 window_height = 720;
-    u32 screenWidth = GetSystemMetrics(SM_CXSCREEN);
-    u32 screenHeight = GetSystemMetrics(SM_CYSCREEN);
-    RECT window_rect = {0};
-    SetRect(&window_rect,
-    (screenWidth / 2) - (window_width / 2),
-    (screenHeight / 2) - (window_height / 2),
-    (screenWidth / 2) + (window_width / 2),
-    (screenHeight / 2) + (window_height / 2));
-
-    AdjustWindowRect(&window_rect, WS_OVERLAPPEDWINDOW | WS_VISIBLE, false);
-    global_w32_window =  os_win32_open_window(window_rect, win32_main_callback);
+    global_w32_window =  os_win32_open_window("UI example", window_width, window_height, win32_main_callback, WindowOpenFlags_Centered);
     global_pixel_buffer = os_win32_create_buffer(window_width, window_height);
 
     // fonts
@@ -573,8 +564,8 @@ int main()
     {
         debug_begin_group(&debug_context, str8("Group 1"));
         {
-            debug_add_var(&debug_context, str8("elem 1"), DebugVariableType_B32);
-            debug_add_var(&debug_context, str8("elem 2"), DebugVariableType_B32);
+            debug_add_var(&debug_context, str8("elem 1"), DebugVariableType_u32);
+            debug_add_var(&debug_context, str8("elem 2"), DebugVariableType_Str8);
             DebugVariable *debug_var_rot_mat = debug_add_var(&debug_context, str8("Rotation matrix"), DebugVariableType_Mat4x4);
             debug_var_rot_mat->mat4x4_value = rot_mat;
         }
@@ -582,17 +573,17 @@ int main()
 
         debug_begin_group(&debug_context, str8("Group 2"));
         {
-            debug_add_var(&debug_context, str8("elem 1"), DebugVariableType_B32);
+            debug_add_var(&debug_context, str8("elem 1"), DebugVariableType_b32);
             DebugVariable *var = debug_begin_group(&debug_context, str8("Group 3"));
             var->group.expanded = false;
             {
-                debug_add_var(&debug_context, str8("elem 1"), DebugVariableType_B32);
+                debug_add_var(&debug_context, str8("elem 1"), DebugVariableType_b32);
             }
             debug_end_group(&debug_context);
         }
         debug_end_group(&debug_context);
 
-        debug_add_var(&debug_context, str8("groupless item"), DebugVariableType_B32);
+        debug_add_var(&debug_context, str8("groupless item"), DebugVariableType_b32);
 
 
         DebugVariable *btn1;
@@ -607,18 +598,17 @@ int main()
             btn3 = debug_add_var(&debug_context, str8("btn 3"), DebugVariableType_Button);
         }
         debug_end_group(&debug_context);
-
     }
 
-    #if 0
+    #if 1
     debug_end_hierarchy(&debug_context);
 
     debug_begin_hierarchy(&debug_context, 500, 300);
     {
         debug_begin_group(&debug_context, str8("Group 1"));
         {
-            debug_add_var(&debug_context, str8("elem 1"), DebugVariableType_B32);
-            debug_add_var(&debug_context, str8("elem 2"), DebugVariableType_B32);
+            debug_add_var(&debug_context, str8("elem 1"), DebugVariableType_b32);
+            debug_add_var(&debug_context, str8("elem 2"), DebugVariableType_b32);
             DebugVariable *debug_var_rot_mat = debug_add_var(&debug_context, str8("Rotation matrix"), DebugVariableType_Mat4x4);
             debug_var_rot_mat->mat4x4_value = rot_mat;
         }
@@ -626,8 +616,20 @@ int main()
 
     }
     debug_end_hierarchy(&debug_context);
-    #endif
 
+    debug_begin_hierarchy(&debug_context, 500, 100);
+    {
+        debug_begin_group(&debug_context, str8("Santiago Caci"));
+        {
+            debug_add_var(&debug_context, str8("Edad"), DebugVariableType_u32);
+            debug_add_var(&debug_context, str8("Mail"), DebugVariableType_Str8);
+        }
+        debug_end_group(&debug_context);
+
+    }
+    debug_end_hierarchy(&debug_context);
+
+    #endif
 
     while (global_w32_window.is_running)
     {
@@ -660,11 +662,9 @@ int main()
 
 
         debug_draw_menu(debug_state);
-        if(debug_state->active_hierarchy)
-        {
-            DebugHierarchyNode *hierarchy = debug_state->active_hierarchy;
             if(debug_state->active_interaction)
             {
+                DebugHierarchyNode *hierarchy = debug_state->active_hierarchy;
                 if(input_click_left_up(&global_input))
                 {
                     // DEBUGEndInteract()
@@ -679,37 +679,52 @@ int main()
                         {
                             switch(debug_state->active_variable->type)
                             {
+                                // TODO: this is fucking ugly, the logic is splitted
                                 case DebugVariableType_Group:
                                 {
                                     debug_state->active_variable->group.expanded = !debug_state->active_variable->group.expanded;
+                                } break;
+                                case DebugVariableType_b32:
+                                {
+                                    debug_state->active_variable->b32_value = !debug_state->active_variable->b32_value;
                                 } break;
                             }
                         } break;
                         case DebugInteractionType_DragHierarchy:
                         {
-                            f32 dx = debug_state->dmouse_p.x;
-                            f32 dy = debug_state->dmouse_p.y;
                         } break;
                     }
 
                     debug_state->active_variable = 0;
                     debug_state->active_interaction = DebugInteractionType_None;
                 }
-                if(input_click_left_down(&global_input))
+                else
                 {
-                    if(debug_state->active_interaction == DebugInteractionType_DragHierarchy)
+                    if(input_click_left_down(&global_input))
                     {
-                        {
-                            char buf[200];
-                            char *at = buf;
-                            char *end = buf + sizeof(buf);
 
-                            at += _snprintf_s(at, (size_t)(end - at), (size_t)(end - at), "(%2.f, %2.f)", debug_state->dmouse_p.x, debug_state->dmouse_p.y);
-                            Str8 text = str8(buf, at - buf);
-                            draw_text(&global_pixel_buffer, 100, 200, text, font_info.font_table);
+                        if(debug_state->hot_interaction == DebugInteractionType_DragHierarchy)
+                        {
+                            debug_state->active_interaction = DebugInteractionType_DragHierarchy;
+                            if(debug_state->active_hierarchy)
+                            {
+                                if(debug_state->active_interaction == DebugInteractionType_DragHierarchy)
+                                {
+                                    {
+                                        char buf[200];
+                                        char *at = buf;
+                                        char *end = buf + sizeof(buf);
+
+                                        at += _snprintf_s(at, (size_t)(end - at), (size_t)(end - at), "(%2.f, %2.f)", debug_state->dmouse_p.x, debug_state->dmouse_p.y);
+                                        Str8 text = str8(buf, at - buf);
+                                        draw_text(&global_pixel_buffer, 100, 200, text, font_info.font_table);
+                                    }
+                                    debug_state->active_hierarchy->AtX += debug_state->dmouse_p.x;
+                                    debug_state->active_hierarchy->AtY += debug_state->dmouse_p.y;
+
+                                }
+                            }
                         }
-                        hierarchy->AtX += debug_state->dmouse_p.x;
-                        hierarchy->AtY += debug_state->dmouse_p.y;
                     }
                 }
             }
@@ -717,54 +732,55 @@ int main()
             {
                 debug_state->hot_variable = debug_state->next_hot_variable;
                 debug_state->hot_interaction = debug_state->next_hot_interaction;
+                debug_state->hot_hierarchy = debug_state->next_hot_hierarchy;
                 if(input_click_left_down(&global_input))
                 {
-                   debug_state->active_hierarchy = debug_state->hot_hierarchy;
+                    //debug_state->active_hierarchy = debug_state->hot_hierarchy;
                     // DEBUGBeginInteract()
-                    if(debug_state->hot_variable)
-                    //if(debug_state->active_hierarchy)
+                    if(debug_state->hot_hierarchy && debug_state->hot_interaction == DebugInteractionType_DragHierarchy)
                     {
-                        switch(debug_state->hot_variable->type)
+                        debug_state->active_interaction = DebugInteractionType_DragHierarchy;
+                        debug_state->active_hierarchy = debug_state->hot_hierarchy;
+                    }
+                    else
+                    {
+                        if(debug_state->hot_variable)
+                        //if(debug_state->active_hierarchy)
                         {
-                            case DebugVariableType_Group:
+                            switch(debug_state->hot_variable->type)
                             {
-
-                                if(debug_state->hot_interaction == DebugInteractionType_DragHierarchy)
-                                {
-                                    debug_state->active_interaction = DebugInteractionType_DragHierarchy;
-                                }
-                                else
+                                // TODO: this is fucking ugly, the logic is splitted
+                                case DebugVariableType_Group:
                                 {
                                     debug_state->active_interaction = DebugInteractionType_Toggle;
-                                }
-                            } break;
-                        }
+                                } break;
+                                case DebugVariableType_b32:
+                                {
+                                    debug_state->active_interaction = DebugInteractionType_Toggle;
+                                } break;
+                            }
 
-                        if(debug_state->active_interaction)
-                        {
-                            debug_state->active_variable = debug_state->hot_variable;
+                            if(debug_state->active_interaction)
+                            {
+                                debug_state->active_variable = debug_state->hot_variable;
+                            }
                         }
                     }
                 }
             }
-        }
-        else
-        {
-            debug_state->hot_hierarchy = debug_state->next_hot_hierarchy;
-            debug_state->active_hierarchy = debug_state->hot_hierarchy;
-        }
 
-            char* c  = "Test!";
-            draw_text(&global_pixel_buffer, 0, 100, c, font_info.font_table);
+        const char* c  = "Test!";
+        draw_text(&global_pixel_buffer, 0, 100, c, font_info.font_table);
 
 
         //debug_state->active = 0;
         // DEBUGEnd()
         debug_state->next_hot_variable = 0;
         debug_state->next_hot_interaction = DebugInteractionType_None;
-        debug_state->hot_hierarchy = 0;
         debug_state->next_hot_hierarchy = 0;
         //debug_state->hot = debug_state->next_hot;
+        //debug_state->hot_hierarchy = 0;
+        //debug_state->active_hierarchy = 0;
         
 
         OS_Window_Dimension win_dim = os_win32_get_window_dimension(global_w32_window.handle);
@@ -779,15 +795,29 @@ void debug_draw_menu(DebugState *debug_state)
 {
     for(DebugHierarchyNode* h_node = debug_state->root_hierarchy.first; h_node; h_node = h_node->next)
     {
+        /* OBS: I could also modify the position of the hierarchy here
+        like: 
+        ```
+        f32 AtX = h_node->AtX;
+        f32 AtY = h_node->AtY;
+        if (debug_state->hot_hierarchy == h_node) 
+        {
+            AtX = h_node->AtX;
+            AtY = h_node->AtY;
+        }
+
+        ```
+        */
+
         f32 AtX = h_node->AtX;
         f32 AtY = h_node->AtY;
         //DebugVariable *var = var->group.first_child;
         DebugVariable *var = h_node->root_var->group.first_child;
-        char buf[4096];
-        char *at = buf;
-        char *end = buf + sizeof(buf);
         while(var)
         {
+            char buf[4096];
+            char *at = buf;
+            char *end = buf + sizeof(buf);
             u32 inc = 0;
             Str8 text;
             if(var->type == DebugVariableType_Group)
@@ -838,6 +868,11 @@ void debug_draw_menu(DebugState *debug_state)
                         }
                         text = str8(buf, at - buf);
                     } break;
+                    case DebugVariableType_b32:
+                    {
+                        at += _snprintf_s(at, (size_t)(end - at), (size_t)(end - at), "%.*s: %s", u32(var->name.size), var->name.str, var->b32_value ? "true" : "false");
+                        text = str8(buf, at - buf);
+                    } break;
                     default:
                     {
                         text = var->name;
@@ -869,11 +904,15 @@ void debug_draw_menu(DebugState *debug_state)
             if(var == debug_state->hot_variable)
             {
                 text_color = 0xFF00FFFF;
+
+                // draw bounding box selection
+                #if 0
                 draw_line(&global_pixel_buffer, bbox.x, bbox.y , bbox.x + bbox.w, bbox.y, 0xFFFFFF00);
                 draw_line(&global_pixel_buffer, bbox.x, bbox.y + bbox.h, bbox.x + bbox.w, bbox.y + bbox.h, 0xFFFFFF00);
 
                 draw_line(&global_pixel_buffer, bbox.x, bbox.y, bbox.x, bbox.y + bbox.h, 0xFFFFFF00);
                 draw_line(&global_pixel_buffer, bbox.x + bbox.w, bbox.y , bbox.x + bbox.w, bbox.y + bbox.h, 0xFFFFFF00);
+                #endif
             }
             draw_text(&global_pixel_buffer, bbox.x, bbox.y + debug_state->font_info.ascent, text, debug_state->font_info.font_table, text_color);
             //if(str8_equals(var->name, str8("Group 2"))){
@@ -905,11 +944,7 @@ void debug_draw_menu(DebugState *debug_state)
                         AtX -= debug_state->tab_size * debug_state->font_info.max_char_width >> 6;
                     }
                 }
-
             }
-
         }
-            
     }
-
 }

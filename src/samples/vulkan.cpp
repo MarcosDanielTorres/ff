@@ -12,6 +12,8 @@
 #include <vulkan/vulkan.h>
 #include <vulkan/vulkan_win32.h>
 
+const char* k_def_validation_layer[] = {"VK_LAYER_KHRONOS_validation"};
+
 #define VK_ASSERT(func)                                            \
   {                                                                \
     const VkResult vk_assert_result = func;                        \
@@ -39,8 +41,8 @@ LRESULT CALLBACK win32_main_callback(HWND Window, UINT Message, WPARAM wParam, L
     }
     return result;
 }
-
-b32 has_extension(const char *ext, VkExtensionProperties *props, u32 count) {
+internal b32
+vulkan_has_extension(const char *ext, VkExtensionProperties *props, u32 count) {
     b32 result = 0;
     for (u32 i = 0; i < count; i++) {
         VkExtensionProperties *p = props + i;
@@ -53,16 +55,15 @@ b32 has_extension(const char *ext, VkExtensionProperties *props, u32 count) {
     return result;
 }
 
+struct VulkanDeviceHWDesc
+{
+    char name[200] = {0};
+    u64 guid = 0;
+    VkPhysicalDeviceType type;
+};
 
 struct VulkanQueryDeviceResult
 {
-    struct VulkanDeviceHWDesc
-    {
-        char name[200] = {0};
-        u64 guid = 0;
-        VkPhysicalDeviceType type;
-    };
-
     u32 num_compatible_devices;
     VulkanDeviceHWDesc out_devices[8];
 };
@@ -70,10 +71,13 @@ struct VulkanQueryDeviceResult
 struct VulkanContext
 {
     VkInstance instance;
+    VkPhysicalDevice physical_device;
     VkDevice device;
+    b32 enabled_validation_layers;
 };
 
-VulkanQueryDeviceResult vulkan_query_devices(Arena *arena, VulkanContext context, VkPhysicalDeviceType desired_type)
+internal VulkanQueryDeviceResult
+vulkan_query_devices(Arena *arena, VulkanContext context, VkPhysicalDeviceType desired_type)
 {
     VulkanQueryDeviceResult result = {0};
     u32 device_count = 0;
@@ -115,17 +119,13 @@ VulkanQueryDeviceResult vulkan_query_devices(Arena *arena, VulkanContext context
     return result;
 }
 
-
-
-// OBS: probably just a handle. Store a HANDLE custom type inside the custom type window that can link to the actual OS window?
-VulkanContext vulkan_create_context_with_swapchain(Arena *arena, OS_Window window, u32 width, u32 height)
+internal VulkanContext
+vulkan_create_context(Arena *arena)
 {
     VulkanContext context = {0};
-
     {
         // Instance creation
         TempArena temp_arena = temp_begin(arena);
-        const char* k_default_validation_layers[] = {"VK_LAYER_KHRONOS_validation"};
         u32 num_layer_props = 0;
         vkEnumerateInstanceLayerProperties(&num_layer_props, 0);
         printf("layer props: %d\n", num_layer_props);
@@ -134,7 +134,6 @@ VulkanContext vulkan_create_context_with_swapchain(Arena *arena, OS_Window windo
         vkEnumerateInstanceLayerProperties(&num_layer_props, layer_props);
 
         b32 enabled_validation_layers = false;
-        const char *k_def_validation_layer[] = {"VK_LAYER_KHRONOS_validation"};
         {
             u32 layer_idx = 0;
             while(!enabled_validation_layers && layer_idx < num_layer_props)
@@ -162,6 +161,7 @@ VulkanContext vulkan_create_context_with_swapchain(Arena *arena, OS_Window windo
         }
         */
 
+        // NOTE here i decided to create a big enough stack array
         VkExtensionProperties all_instance_extensions[100];
         u32 all_instance_extensions_count = 0;
         {
@@ -206,7 +206,7 @@ VulkanContext vulkan_create_context_with_swapchain(Arena *arena, OS_Window windo
             *instance_extension_name++ = VK_KHR_PORTABILITY_ENUMERATION_EXTENSION_NAME;
         #endif
 
-        b32 has_debug_utils = has_extension(VK_EXT_DEBUG_UTILS_EXTENSION_NAME, all_instance_extensions, all_instance_extensions_count);
+        b32 has_debug_utils = vulkan_has_extension(VK_EXT_DEBUG_UTILS_EXTENSION_NAME, all_instance_extensions, all_instance_extensions_count);
 
         if (has_debug_utils) 
         {
@@ -327,6 +327,8 @@ VulkanContext vulkan_create_context_with_swapchain(Arena *arena, OS_Window windo
             printf("  %s\n", all_instance_extensions[i].extensionName);
         }
 
+        context.enabled_validation_layers = enabled_validation_layers;
+
         temp_end(temp_arena);
     }
 
@@ -372,17 +374,99 @@ VulkanContext vulkan_create_context_with_swapchain(Arena *arena, OS_Window windo
         #endif
     }
     #endif
-
-    {
-        VulkanQueryDeviceResult queried_devices = vulkan_query_devices(arena, context, VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU);
-        int x = 10;
-
-
-    }
     return context;
 }
 
-int main() {
+internal b32
+vulkan_is_host_visible_single_heap_memory(VkPhysicalDevice phys_dev) 
+{
+    b32 result = false;
+    VkPhysicalDeviceMemoryProperties mem_properties;
+
+    vkGetPhysicalDeviceMemoryProperties(phys_dev, &mem_properties);
+
+    if (mem_properties.memoryHeapCount == 1) {
+        u32 flag = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
+
+        for (u32 i = 0; i < mem_properties.memoryTypeCount; i++) {
+            if ((mem_properties.memoryTypes[i].propertyFlags & flag) == flag) {
+                result = true;
+                break;
+            }
+        }
+    }
+
+    return result;
+}
+
+internal VkExtensionProperties *
+vulkan_get_device_extension_props(Arena *arena, VkPhysicalDevice phys_dev, const char *validation_layer = 0)
+{
+    TempArena temp_arena = temp_begin(arena);
+    u32 num_extensions = 0;
+    vkEnumerateDeviceExtensionProperties(phys_dev, validation_layer, &num_extensions, 0);
+    VkExtensionProperties *all_device_extensions = arena_push_size(temp_arena.arena, VkExtensionProperties, num_extensions);
+    vkEnumerateDeviceExtensionProperties(phys_dev, validation_layer, &num_extensions, all_device_extensions);
+    // copy it back to arena?
+    memcpy((void*)temp_arena.pos, all_device_extensions, num_extensions);
+    temp_end(temp_arena);
+    return (VkExtensionProperties*) temp_arena.pos;
+}
+
+void vulkan_init_context(Arena *arena, VulkanContext *context, VulkanDeviceHWDesc *decs)
+{
+    TempArena temp_arena = temp_begin(arena);
+    context->physical_device = (VkPhysicalDevice) decs->guid;
+    b32 use_staging = !vulkan_is_host_visible_single_heap_memory(context->physical_device);
+
+
+    u32 all_device_extensions_count = 0;
+    VkExtensionProperties *all_device_extensions = vulkan_get_device_extension_props(temp_arena.arena, context->physical_device, 0);
+    {
+        //getDeviceExtensionProps(context->phsyical_device, all_device_extensions);
+        //if(context->enabled_validation_layers)
+        //{
+        //    for (const char* layer : kDefaultValidationLayers) {
+        //        getDeviceExtensionProps(vkPhysicalDevice_, all_device_extensions, layer);
+        //    }
+        //}
+        printf("all device extensions count is %d\n", all_device_extensions_count);
+    }
+
+
+    //if (vulkan_has_extension(VK_KHR_ACCELERATION_STRUCTURE_EXTENSION_NAME, allDeviceExtensions)) {
+    //    addNextPhysicalDeviceProperties(&accelerationStructureProperties_);
+    //}
+    //if (vulkan_has_extension(VK_KHR_RAY_TRACING_PIPELINE_EXTENSION_NAME, allDeviceExtensions)) {
+    //    addNextPhysicalDeviceProperties(&rayTracingPipelineProperties_);
+    //}
+
+    //vkGetPhysicalDeviceFeatures2(vkPhysicalDevice_, &vkFeatures10_);
+    //vkGetPhysicalDeviceProperties2(vkPhysicalDevice_, &vkPhysicalDeviceProperties2_);
+
+    temp_end(temp_arena);
+
+}
+
+void vulkan_init_swapchain(VulkanContext *context, u32 width, u32 height)
+{
+
+}
+
+// OBS: probably just a handle. Store a HANDLE custom type inside the custom type window that can link to the actual OS window?
+internal VulkanContext
+vulkan_create_context_with_swapchain(Arena *arena, OS_Window window, u32 width, u32 height)
+{
+    VulkanContext context = vulkan_create_context(arena);
+    VulkanQueryDeviceResult queried_devices = vulkan_query_devices(arena, context, VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU);
+    
+    vulkan_init_context(arena, &context, &queried_devices.out_devices[0]);
+
+    return context;
+}
+
+int main() 
+{
     u32 window_width = 1280;
     u32 window_height = 720;
     global_w32_window = os_win32_open_window("Vulkan example", window_width, window_height, win32_main_callback, WindowOpenFlags_Centered);

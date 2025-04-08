@@ -1,6 +1,7 @@
 #include "base/base_arena.h"
 
 #define arena_push_size(arena, value, count) (value*) _push_size(arena, sizeof(value) * count);
+#define arena_push_copy(arena, size, source) memcpy((void*) _push_size(arena, size), source, size);
 
 void arena_init(Arena* arena, size_t size) 
 {
@@ -10,8 +11,10 @@ void arena_init(Arena* arena, size_t size)
     arena->temp_count = 0;
 }
 
-void* _push_size(Arena* arena, size_t size) 
+void* _push_size(Arena* arena, size_t size)
 {
+
+    arena->len = align_pow2(arena->len, 8);
     gui_assert(arena->len + size <= arena->max_len, "Arena size exceeded!");
     void* result = arena->base + arena->len;
     //memset(arena->base, 0, size);

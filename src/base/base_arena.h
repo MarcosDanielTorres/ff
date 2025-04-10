@@ -17,6 +17,6 @@ struct TempArena
 
 
 void arena_init(Arena* arena, size_t size);
-void* _push_size(Arena* arena, size_t size);
+void* _push_size(Arena* arena, size_t size, u64 alignemnt = 8);
 TempArena temp_begin(Arena* arena);
 void temp_end(TempArena temp_arena);

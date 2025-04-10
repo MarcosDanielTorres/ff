@@ -1,0 +1,20 @@
+==34856==AddressSanitizer: libc interceptors initialized
+|| `[0x126e3e580000, 0x7fffffffffff]` || HighMem    ||
+|| `[0x04bc06230000, 0x126e3e57ffff]` || HighShadow ||
+|| `[0x02bc06230000, 0x04bc0622ffff]` || ShadowGap  ||
+|| `[0x026e3e580000, 0x02bc0622ffff]` || LowShadow  ||
+|| `[0x000000000000, 0x026e3e57ffff]` || LowMem     ||
+MemToShadow(shadow): 0x02bc06230000 0x02c5bf1c5fff 0x0305bf1c6000 0x04bc0622ffff
+redzone=16
+max_redzone=2048
+quarantine_size_mb=256M
+thread_local_quarantine_size_kb=1024K
+malloc_context_size=30
+SHADOW_SCALE: 3
+SHADOW_GRANULARITY: 8
+SHADOW_OFFSET: 0x26e3e580000
+==34856==T0: stack [0x00fde4c00000,0x00fde4d00000) size 0x100000; local=0x00fde4cfeba0
+==34856==AddressSanitizer Init done
+==34856==T1: stack [0x00fde5000000,0x00fde5100000) size 0x100000; local=0x00fde50ffe00
+==34856==T2: stack [0x00fde5100000,0x00fde5200000) size 0x100000; local=0x00fde51ffe00
+==34856==T3: stack [0x00fde5200000,0x00fde5300000) size 0x100000; local=0x00fde52ff820

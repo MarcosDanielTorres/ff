@@ -1,7 +1,7 @@
 #include "base/base_arena.h"
 
-#define arena_push_size(arena, value, count) (value*) _push_size(arena, sizeof(value) * count);
-#define arena_push_copy(arena, size, source) memcpy((void*) _push_size(arena, size), source, size);
+#define arena_push_size(arena, value, count, ...) (value*) _push_size(arena, sizeof(value) * count, ##__VA_ARGS__);
+#define arena_push_copy(arena, size, source, ...) memcpy((void*) _push_size(arena, size, ##__VA_ARGS__), source, size);
 
 void arena_init(Arena* arena, size_t size) 
 {
@@ -11,14 +11,25 @@ void arena_init(Arena* arena, size_t size)
     arena->temp_count = 0;
 }
 
-void* _push_size(Arena* arena, size_t size)
+void* _push_size(Arena* arena, size_t size, u64 alignment)
 {
+    /*
+        000000 
+    */
+    u64 result_ptr = (u64)arena->base + arena->len;
+    u64 alignment_offset = 0;
+    u64 alignment_mask = alignment - 1;
+    if(result_ptr & alignment_mask)
+    {
+        // align
+        alignment_offset = alignment - (result_ptr & alignment_mask);
 
-    arena->len = align_pow2(arena->len, 8);
+    }
+    size += alignment_offset;
     gui_assert(arena->len + size <= arena->max_len, "Arena size exceeded!");
-    void* result = arena->base + arena->len;
     //memset(arena->base, 0, size);
     arena->len += size;
+    void* result = (void*)(result_ptr + alignment_offset);
     return result;
 }
 

@@ -16,21 +16,239 @@ global_variable bool hasRayQuery_ = false;
 global_variable bool hasRayTracingPipeline_ = false;
 global_variable bool has8BitIndices_ = false;
 
+// TODO the fuck is this
+#define VMA_VULKAN_VERSION 1003000
+#define VMA_STATIC_VULKAN_FUNCTIONS 0
+#define VMA_DYNAMIC_VULKAN_FUNCTIONS 1
+
+#define LVK_VULKAN_USE_VMA 1
+
+
 #define VOLK_IMPLEMENTATION
-//#define VK_NO_PROTOTYPES
+#define VK_NO_PROTOTYPES 1
 #include <Volk/volk.h>
 #include <vulkan/vulkan_win32.h>
 #define VK_USE_PLATFORM_WIN32_KHR
+#include <vma/vk_mem_alloc.h>
 
 const char* k_def_validation_layer[] = {"VK_LAYER_KHRONOS_validation"};
+
+
+enum TextureUsageBits : uint8_t {
+  TextureUsageBits_Sampled = 1 << 0,
+  TextureUsageBits_Storage = 1 << 1,
+  TextureUsageBits_Attachment = 1 << 2,
+};
+
+enum Format : uint8_t {
+  Format_Invalid = 0,
+
+  Format_R_UN8,
+  Format_R_UI16,
+  Format_R_UI32,
+  Format_R_UN16,
+  Format_R_F16,
+  Format_R_F32,
+
+  Format_RG_UN8,
+  Format_RG_UI16,
+  Format_RG_UI32,
+  Format_RG_UN16,
+  Format_RG_F16,
+  Format_RG_F32,
+
+  Format_RGBA_UN8,
+  Format_RGBA_UI32,
+  Format_RGBA_F16,
+  Format_RGBA_F32,
+  Format_RGBA_SRGB8,
+
+  Format_BGRA_UN8,
+  Format_BGRA_SRGB8,
+
+  Format_ETC2_RGB8,
+  Format_ETC2_SRGB8,
+  Format_BC7_RGBA,
+
+  Format_Z_UN16,
+  Format_Z_UN24,
+  Format_Z_F32,
+  Format_Z_UN24_S_UI8,
+  Format_Z_F32_S_UI8,
+
+  Format_YUV_NV12,
+  Format_YUV_420p,
+};
+
+#define PROPS(fmt, bpb, ...) \
+  TextureFormatProperties { .format = Format_##fmt, .bytesPerBlock = bpb, ##__VA_ARGS__ }
+
+static constexpr TextureFormatProperties properties[] = {
+    PROPS(Invalid, 1),
+    PROPS(R_UN8, 1),
+    PROPS(R_UI16, 2),
+    PROPS(R_UI32, 4),
+    PROPS(R_UN16, 2),
+    PROPS(R_F16, 2),
+    PROPS(R_F32, 4),
+    PROPS(RG_UN8, 2),
+    PROPS(RG_UI16, 4),
+    PROPS(RG_UI32, 8),
+    PROPS(RG_UN16, 4),
+    PROPS(RG_F16, 4),
+    PROPS(RG_F32, 8),
+    PROPS(RGBA_UN8, 4),
+    PROPS(RGBA_UI32, 16),
+    PROPS(RGBA_F16, 8),
+    PROPS(RGBA_F32, 16),
+    PROPS(RGBA_SRGB8, 4),
+    PROPS(BGRA_UN8, 4),
+    PROPS(BGRA_SRGB8, 4),
+    PROPS(ETC2_RGB8, 8, .blockWidth = 4, .blockHeight = 4, .compressed = true),
+    PROPS(ETC2_SRGB8, 8, .blockWidth = 4, .blockHeight = 4, .compressed = true),
+    PROPS(BC7_RGBA, 16, .blockWidth = 4, .blockHeight = 4, .compressed = true),
+    PROPS(Z_UN16, 2, .depth = true),
+    PROPS(Z_UN24, 3, .depth = true),
+    PROPS(Z_F32, 4, .depth = true),
+    PROPS(Z_UN24_S_UI8, 4, .depth = true, .stencil = true),
+    PROPS(Z_F32_S_UI8, 5, .depth = true, .stencil = true),
+    PROPS(YUV_NV12, 24, .blockWidth = 4, .blockHeight = 4, .compressed = true, .numPlanes = 2), // Subsampled 420
+    PROPS(YUV_420p, 24, .blockWidth = 4, .blockHeight = 4, .compressed = true, .numPlanes = 3), // Subsampled 420
+};
+
+bool getNumImagePlanes(Format format) {
+  return properties[format].numPlanes;
+}
+
+
+
+
+VkResult setDebugObjectName(VkDevice device, VkObjectType type, uint64_t handle, const char* name) {
+  if (!name || !*name || !vkSetDebugUtilsObjectNameEXT) {
+    return VK_SUCCESS;
+  }
+  const VkDebugUtilsObjectNameInfoEXT ni = {
+      .sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_OBJECT_NAME_INFO_EXT,
+      .objectType = type,
+      .objectHandle = handle,
+      .pObjectName = name,
+  };
+  return vkSetDebugUtilsObjectNameEXT(device, &ni);
+}
+
+
+const char* getVulkanResultString(VkResult result) {
+#define RESULT_CASE(res) \
+  case res:              \
+    return #res
+  switch (result) {
+    RESULT_CASE(VK_SUCCESS);
+    RESULT_CASE(VK_NOT_READY);
+    RESULT_CASE(VK_TIMEOUT);
+    RESULT_CASE(VK_EVENT_SET);
+    RESULT_CASE(VK_EVENT_RESET);
+    RESULT_CASE(VK_INCOMPLETE);
+    RESULT_CASE(VK_ERROR_OUT_OF_HOST_MEMORY);
+    RESULT_CASE(VK_ERROR_OUT_OF_DEVICE_MEMORY);
+    RESULT_CASE(VK_ERROR_INITIALIZATION_FAILED);
+    RESULT_CASE(VK_ERROR_DEVICE_LOST);
+    RESULT_CASE(VK_ERROR_MEMORY_MAP_FAILED);
+    RESULT_CASE(VK_ERROR_LAYER_NOT_PRESENT);
+    RESULT_CASE(VK_ERROR_EXTENSION_NOT_PRESENT);
+    RESULT_CASE(VK_ERROR_FEATURE_NOT_PRESENT);
+    RESULT_CASE(VK_ERROR_INCOMPATIBLE_DRIVER);
+    RESULT_CASE(VK_ERROR_TOO_MANY_OBJECTS);
+    RESULT_CASE(VK_ERROR_FORMAT_NOT_SUPPORTED);
+    RESULT_CASE(VK_ERROR_SURFACE_LOST_KHR);
+    RESULT_CASE(VK_ERROR_OUT_OF_DATE_KHR);
+    RESULT_CASE(VK_ERROR_INCOMPATIBLE_DISPLAY_KHR);
+    RESULT_CASE(VK_ERROR_NATIVE_WINDOW_IN_USE_KHR);
+    RESULT_CASE(VK_ERROR_VALIDATION_FAILED_EXT);
+    RESULT_CASE(VK_ERROR_FRAGMENTED_POOL);
+    RESULT_CASE(VK_ERROR_UNKNOWN);
+    // Provided by VK_VERSION_1_1
+    RESULT_CASE(VK_ERROR_OUT_OF_POOL_MEMORY);
+    // Provided by VK_VERSION_1_1
+    RESULT_CASE(VK_ERROR_INVALID_EXTERNAL_HANDLE);
+    // Provided by VK_VERSION_1_2
+    RESULT_CASE(VK_ERROR_FRAGMENTATION);
+    // Provided by VK_VERSION_1_2
+    RESULT_CASE(VK_ERROR_INVALID_OPAQUE_CAPTURE_ADDRESS);
+    // Provided by VK_KHR_swapchain
+    RESULT_CASE(VK_SUBOPTIMAL_KHR);
+    // Provided by VK_NV_glsl_shader
+    RESULT_CASE(VK_ERROR_INVALID_SHADER_NV);
+#ifdef VK_ENABLE_BETA_EXTENSIONS
+    // Provided by VK_KHR_video_queue
+    RESULT_CASE(VK_ERROR_IMAGE_USAGE_NOT_SUPPORTED_KHR);
+#endif
+#ifdef VK_ENABLE_BETA_EXTENSIONS
+    // Provided by VK_KHR_video_queue
+    RESULT_CASE(VK_ERROR_VIDEO_PICTURE_LAYOUT_NOT_SUPPORTED_KHR);
+#endif
+#ifdef VK_ENABLE_BETA_EXTENSIONS
+    // Provided by VK_KHR_video_queue
+    RESULT_CASE(VK_ERROR_VIDEO_PROFILE_OPERATION_NOT_SUPPORTED_KHR);
+#endif
+#ifdef VK_ENABLE_BETA_EXTENSIONS
+    // Provided by VK_KHR_video_queue
+    RESULT_CASE(VK_ERROR_VIDEO_PROFILE_FORMAT_NOT_SUPPORTED_KHR);
+#endif
+#ifdef VK_ENABLE_BETA_EXTENSIONS
+    // Provided by VK_KHR_video_queue
+    RESULT_CASE(VK_ERROR_VIDEO_PROFILE_CODEC_NOT_SUPPORTED_KHR);
+#endif
+#ifdef VK_ENABLE_BETA_EXTENSIONS
+    // Provided by VK_KHR_video_queue
+    RESULT_CASE(VK_ERROR_VIDEO_STD_VERSION_NOT_SUPPORTED_KHR);
+#endif
+    // Provided by VK_EXT_image_drm_format_modifier
+    RESULT_CASE(VK_ERROR_INVALID_DRM_FORMAT_MODIFIER_PLANE_LAYOUT_EXT);
+    // Provided by VK_KHR_global_priority
+    RESULT_CASE(VK_ERROR_NOT_PERMITTED_KHR);
+    // Provided by VK_EXT_full_screen_exclusive
+    RESULT_CASE(VK_ERROR_FULL_SCREEN_EXCLUSIVE_MODE_LOST_EXT);
+    // Provided by VK_KHR_deferred_host_operations
+    RESULT_CASE(VK_THREAD_IDLE_KHR);
+    // Provided by VK_KHR_deferred_host_operations
+    RESULT_CASE(VK_THREAD_DONE_KHR);
+    // Provided by VK_KHR_deferred_host_operations
+    RESULT_CASE(VK_OPERATION_DEFERRED_KHR);
+    // Provided by VK_KHR_deferred_host_operations
+    RESULT_CASE(VK_OPERATION_NOT_DEFERRED_KHR);
+  default:
+    return "Unknown VkResult Value";
+  }
+#undef RESULT_CASE
+}
+
 
 #define VK_ASSERT(func)                                            \
   {                                                                \
     const VkResult vk_assert_result = func;                        \
     if (vk_assert_result != VK_SUCCESS) {                          \
+      printf("Vulkan API call failed: %s:%i\n  %s\n  %s\n",         \
+                    __FILE__,                                      \
+                    __LINE__,                                      \
+                    #func,                                         \
+                    getVulkanResultString(vk_assert_result));      \
       assert(false);                                               \
     }                                                              \
   }
+
+#define VK_ASSERT_RETURN(func)                                     \
+  {                                                                \
+    const VkResult vk_assert_result = func;                        \
+    if (vk_assert_result != VK_SUCCESS) {                          \
+      printf("Vulkan API call failed: %s:%i\n  %s\n  %s\n",         \
+                    __FILE__,                                      \
+                    __LINE__,                                      \
+                    #func,                                         \
+                    getVulkanResultString(vk_assert_result));      \
+      assert(false);                                               \
+    }                                                              \
+  }
+
 
 
 global_variable OS_Window global_w32_window;
@@ -143,13 +361,56 @@ struct DeviceQueues
     VkQueue computeQueue = VK_NULL_HANDLE;
 };
 
+struct TextureHandle 
+{
+
+};
+
 struct VulkanContext
 {
     VkInstance instance;
     VkPhysicalDevice physical_device;
     VkDevice device;
+
+
+    std::unique_ptr<lvk::VulkanImmediateCommands> immediate_;
+    std::unique_ptr<lvk::VulkanStagingDevice> stagingDevice_;
+
+
+    // Originalmente en una config
     b32 enabled_validation_layers;
+    size_t pipelineCacheDataSize;
+    const void* pipelineCacheData;
+    VkPipelineCache pipelineCache_;
+
+    // a texture/sampler was created since the last descriptor set update
+    mutable bool awaitingNewImmutableSamplers_ = false;
+
+    // Originalmente en una config
+
     DeviceQueues queues;
+    TextureHandle dummyTexture_;
+
+
+    // TODO borrar algunos de estos porque no todo es necesario para esta demo
+    VkResolveModeFlagBits depthResolveMode_ = VK_RESOLVE_MODE_SAMPLE_ZERO_BIT;
+    std::vector<VkFormat> deviceDepthFormats_;
+    std::vector<VkSurfaceFormatKHR> deviceSurfaceFormats_;
+    VkSurfaceCapabilitiesKHR deviceSurfaceCaps_;
+    std::vector<VkPresentModeKHR> devicePresentModes_;
+    // TODO borrar algunos de estos porque no todo es necesario para esta demo
+
+    u32 currentMaxTextures_ = 16;
+    u32 currentMaxSamplers_ = 16;
+    u32 currentMaxAccelStructs_ = 1;
+    VkDescriptorSetLayout vkDSL_ = VK_NULL_HANDLE;
+    VkDescriptorPool vkDPool_ = VK_NULL_HANDLE;
+    VkDescriptorSet vkDSet_ = VK_NULL_HANDLE;
+
+
+    lvk::Pool<lvk::Sampler, VkSampler> samplersPool_;
+    lvk::Pool<lvk::Texture, lvk::VulkanImage> texturesPool_;
+
 
     VkPhysicalDeviceRayTracingPipelinePropertiesKHR rayTracingPipelineProperties;
     VkPhysicalDeviceAccelerationStructurePropertiesKHR accelerationStructureProperties;
@@ -169,6 +430,204 @@ struct VulkanContext
     #endif
     
 };
+
+void deferredTask(VulkanContext* context, std::packaged_task<void()>&& task, SubmitHandle handle) const {
+  if (handle.empty()) {
+    handle = immediate_->getNextSubmitHandle();
+  }
+  pimpl_->deferredTasks_.emplace_back(std::move(task), handle);
+}
+
+
+growDescriptorPool(VulkanContext *context, u32 maxTextures, u32 maxSamplers, u32 maxAccelStructs) {
+  context->currentMaxTextures_ = maxTextures;
+  context->currentMaxSamplers_ = maxSamplers;
+  context->currentMaxAccelStructs_ = maxAccelStructs;
+
+#if LVK_VULKAN_PRINT_COMMANDS
+  LLOGL("growDescriptorPool(%u, %u)\n", maxTextures, maxSamplers);
+#endif // LVK_VULKAN_PRINT_COMMANDS
+
+  gui_assert(maxTextures <= context->vkPhysicalDeviceVulkan12Properties.maxDescriptorSetUpdateAfterBindSampledImages,
+     "Max Textures exceeded: %u (max %u)", maxTextures, context->vkPhysicalDeviceVulkan12Properties.maxDescriptorSetUpdateAfterBindSampledImages);
+
+#if 0
+  if (!LVK_VERIFY(maxSamplers <= context->vkPhysicalDeviceVulkan12Properties.maxDescriptorSetUpdateAfterBindSamplers)) {
+    LLOGW("Max Samplers exceeded %u (max %u)", maxSamplers, context->vkPhysicalDeviceVulkan12Properties.maxDescriptorSetUpdateAfterBindSamplers);
+  }
+#endif
+
+  if (vkDSL_ != VK_NULL_HANDLE) {
+    deferredTask(std::packaged_task<void()>([device = context->device, dsl = vkDSL_]() { vkDestroyDescriptorSetLayout(device, dsl, nullptr); }));
+  }
+  if (vkDPool_ != VK_NULL_HANDLE) {
+    deferredTask(std::packaged_task<void()>([device = context->device, dp = vkDPool_]() { vkDestroyDescriptorPool(device, dp, nullptr); }));
+  }
+
+  bool hasYUVImages = false;
+
+  // check if we have any YUV images
+  for (const auto& obj : texturesPool_.objects_) {
+    const VulkanImage* img = &obj.obj_;
+    // multisampled images cannot be directly accessed from shaders
+    const bool isTextureAvailable = (img->vkSamples_ & VK_SAMPLE_COUNT_1_BIT) == VK_SAMPLE_COUNT_1_BIT;
+    hasYUVImages = isTextureAvailable && img->isSampledImage() && getNumImagePlanes(img->vkImageFormat_) > 1;
+    if (hasYUVImages) {
+      break;
+    }
+  }
+
+  std::vector<VkSampler> immutableSamplers;
+  const VkSampler* immutableSamplersData = nullptr;
+
+  if (hasYUVImages) {
+    VkSampler dummySampler = samplersPool_.objects_[0].obj_;
+    immutableSamplers.reserve(texturesPool_.objects_.size());
+    for (const auto& obj : texturesPool_.objects_) {
+      const VulkanImage* img = &obj.obj_;
+      // multisampled images cannot be directly accessed from shaders
+      const bool isTextureAvailable = (img->vkSamples_ & VK_SAMPLE_COUNT_1_BIT) == VK_SAMPLE_COUNT_1_BIT;
+      const bool isYUVImage = isTextureAvailable && img->isSampledImage() && getNumImagePlanes(img->vkImageFormat_) > 1;
+      immutableSamplers.push_back(isYUVImage ? getOrCreateYcbcrSampler(vkFormatToFormat(img->vkImageFormat_)) : dummySampler);
+    }
+    immutableSamplersData = immutableSamplers.data();
+  }
+
+  // create default descriptor set layout which is going to be shared by graphics pipelines
+  VkShaderStageFlags stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_TESSELLATION_CONTROL_BIT |
+                                  VK_SHADER_STAGE_TESSELLATION_EVALUATION_BIT | VK_SHADER_STAGE_FRAGMENT_BIT | VK_SHADER_STAGE_COMPUTE_BIT;
+  if (hasRayTracingPipeline_) {
+    stageFlags |= VK_SHADER_STAGE_RAYGEN_BIT_KHR;
+  }
+  const VkDescriptorSetLayoutBinding bindings[kBinding_NumBindings] = {
+      getDSLBinding(kBinding_Textures, VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, maxTextures, stageFlags),
+      getDSLBinding(kBinding_Samplers, VK_DESCRIPTOR_TYPE_SAMPLER, maxSamplers, stageFlags),
+      getDSLBinding(kBinding_StorageImages, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, maxTextures, stageFlags),
+      getDSLBinding(
+          kBinding_YUVImages, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, immutableSamplers.size(), stageFlags, immutableSamplersData),
+      getDSLBinding(kBinding_AccelerationStructures, VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR, maxAccelStructs, stageFlags),
+  };
+  const uint32_t flags = VK_DESCRIPTOR_BINDING_UPDATE_AFTER_BIND_BIT | VK_DESCRIPTOR_BINDING_UPDATE_UNUSED_WHILE_PENDING_BIT |
+                         VK_DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT;
+  VkDescriptorBindingFlags bindingFlags[kBinding_NumBindings];
+  for (int i = 0; i < kBinding_NumBindings; ++i) {
+    bindingFlags[i] = flags;
+  }
+  const VkDescriptorSetLayoutBindingFlagsCreateInfo setLayoutBindingFlagsCI = {
+      .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_BINDING_FLAGS_CREATE_INFO_EXT,
+      .bindingCount = uint32_t(hasAccelerationStructure_ ? kBinding_NumBindings : kBinding_NumBindings - 1),
+      .pBindingFlags = bindingFlags,
+  };
+  const VkDescriptorSetLayoutCreateInfo dslci = {
+      .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
+      .pNext = &setLayoutBindingFlagsCI,
+      .flags = VK_DESCRIPTOR_SET_LAYOUT_CREATE_UPDATE_AFTER_BIND_POOL_BIT_EXT,
+      .bindingCount = uint32_t(hasAccelerationStructure_ ? kBinding_NumBindings : kBinding_NumBindings - 1),
+      .pBindings = bindings,
+  };
+  VK_ASSERT(vkCreateDescriptorSetLayout(vkDevice_, &dslci, nullptr, &vkDSL_));
+  VK_ASSERT(setDebugObjectName(
+      vkDevice_, VK_OBJECT_TYPE_DESCRIPTOR_SET_LAYOUT, (uint64_t)vkDSL_, "Descriptor Set Layout: VulkanContext::vkDSL_"));
+
+  {
+    // create default descriptor pool and allocate 1 descriptor set
+    const VkDescriptorPoolSize poolSizes[kBinding_NumBindings]{
+        VkDescriptorPoolSize{VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, maxTextures},
+        VkDescriptorPoolSize{VK_DESCRIPTOR_TYPE_SAMPLER, maxSamplers},
+        VkDescriptorPoolSize{VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, maxTextures},
+        VkDescriptorPoolSize{VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, maxTextures},
+        VkDescriptorPoolSize{VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR, maxAccelStructs},
+    };
+    const VkDescriptorPoolCreateInfo ci = {
+        .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
+        .flags = VK_DESCRIPTOR_POOL_CREATE_UPDATE_AFTER_BIND_BIT,
+        .maxSets = 1,
+        .poolSizeCount = uint32_t(hasAccelerationStructure_ ? kBinding_NumBindings : kBinding_NumBindings - 1),
+        .pPoolSizes = poolSizes,
+    };
+    VK_ASSERT_RETURN(vkCreateDescriptorPool(vkDevice_, &ci, nullptr, &vkDPool_));
+    const VkDescriptorSetAllocateInfo ai = {
+        .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
+        .descriptorPool = vkDPool_,
+        .descriptorSetCount = 1,
+        .pSetLayouts = &vkDSL_,
+    };
+    VK_ASSERT_RETURN(vkAllocateDescriptorSets(vkDevice_, &ai, &vkDSet_));
+  }
+
+  awaitingNewImmutableSamplers_ = false;
+
+  return Result();
+}
+
+SamplerHandle createSampler(VulkanContext *context, const VkSamplerCreateInfo& ci,
+                                                     Format yuvFormat,
+                                                     const char* debugName) {
+  //LVK_PROFILER_FUNCTION_COLOR(LVK_PROFILER_COLOR_CREATE);
+
+  VkSamplerCreateInfo cinfo = ci;
+
+  if (yuvFormat != Format_Invalid) {
+    cinfo.pNext = getOrCreateYcbcrConversionInfo(yuvFormat);
+    // must be CLAMP_TO_EDGE
+    // https://vulkan.lunarg.com/doc/view/1.3.268.0/windows/1.3-extensions/vkspec.html#VUID-VkSamplerCreateInfo-addressModeU-01646
+    cinfo.addressModeU = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+    cinfo.addressModeV = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+    cinfo.addressModeW = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+    cinfo.anisotropyEnable = VK_FALSE;
+    cinfo.unnormalizedCoordinates = VK_FALSE;
+  }
+
+  VkSampler sampler = VK_NULL_HANDLE;
+  VK_ASSERT(vkCreateSampler(context->device, &cinfo, nullptr, &sampler));
+  VK_ASSERT(setDebugObjectName(context->device, VK_OBJECT_TYPE_SAMPLER, (uint64_t)sampler, debugName));
+
+  SamplerHandle handle = context->samplersPool_.create(VkSampler(sampler));
+
+  context->awaitingCreation_ = true;
+
+  return handle;
+}
+
+
+
+
+void querySurfaceCapabilities(VulkanContext *context) {
+  // enumerate only the formats we are using
+  const VkFormat depthFormats[] = {
+      VK_FORMAT_D32_SFLOAT_S8_UINT, VK_FORMAT_D24_UNORM_S8_UINT, VK_FORMAT_D16_UNORM_S8_UINT, VK_FORMAT_D32_SFLOAT, VK_FORMAT_D16_UNORM};
+  for (const VkFormat& depthFormat : depthFormats) {
+    VkFormatProperties formatProps;
+    vkGetPhysicalDeviceFormatProperties(context->phsyical_device, depthFormat, &formatProps);
+
+    if (formatProps.optimalTilingFeatures) {
+      context->deviceDepthFormats_.push_back(depthFormat);
+    }
+  }
+
+  if (context->surface == VK_NULL_HANDLE) {
+    return;
+  }
+
+  vkGetPhysicalDeviceSurfaceCapabilitiesKHR(context->physical_device, context->surface, &context->deviceSurfaceCaps_);
+
+  uint32_t formatCount;
+  vkGetPhysicalDeviceSurfaceFormatsKHR(context->physical_device, context->surface, &formatCount, nullptr);
+
+  if (formatCount) {
+    deviceSurfaceFormats_.resize(formatCount);
+    vkGetPhysicalDeviceSurfaceFormatsKHR(context->physical_device, context->surface, &formatCount, context->deviceSurfaceFormats_.data());
+  }
+
+  uint32_t presentModeCount;
+  vkGetPhysicalDeviceSurfacePresentModesKHR(context->physical_device, context->surface, &presentModeCount, nullptr);
+
+  if (presentModeCount) {
+    context->devicePresentModes_.resize(presentModeCount);
+    vkGetPhysicalDeviceSurfacePresentModesKHR(context->physical_device, context->surface, &presentModeCount, context->devicePresentModes_.data());
+  }
+}
+
 
 internal VulkanQueryDeviceResult
 vulkan_query_devices(Arena *arena, VulkanContext* context, VkPhysicalDeviceType desired_type)
@@ -213,8 +672,298 @@ vulkan_query_devices(Arena *arena, VulkanContext* context, VkPhysicalDeviceType 
     return result;
 }
 
+internal VulkanContext
+vulkan_create_context_inside(Arena *transient, HWND handle)
+{
+    VulkanContext context = {0};
+    if(volkInitialize() != VK_SUCCESS)
+    {
+        abort();
+    }
+    // Instance creation
+    TempArena temp_arena = temp_begin(transient);
+    u32 num_layer_props = 0;
+    vkEnumerateInstanceLayerProperties(&num_layer_props, 0);
+    printf("layer props: %d\n", num_layer_props);
+
+    VkLayerProperties *layer_props = arena_push_size(temp_arena.arena, VkLayerProperties, num_layer_props);
+    vkEnumerateInstanceLayerProperties(&num_layer_props, layer_props);
+
+    b32 enabled_validation_layers = false;
+    {
+        u32 layer_idx = 0;
+        while(!enabled_validation_layers && layer_idx < num_layer_props)
+        {
+            VkLayerProperties *layer_prop = layer_props + layer_idx;
+            if(!strcmp(layer_prop->layerName, k_def_validation_layer[0]))
+            {
+                enabled_validation_layers = true;
+            }
+            layer_idx++;
+        }
+    }
+
+    // NOTE here i decided to create a big enough stack array
+    VkExtensionProperties all_instance_extensions[100];
+    u32 all_instance_extensions_count = 0;
+    {
+        VK_ASSERT(vkEnumerateInstanceExtensionProperties(0, &all_instance_extensions_count, 0));
+        VK_ASSERT(vkEnumerateInstanceExtensionProperties(0, &all_instance_extensions_count, all_instance_extensions));
+        printf("all instance Count is %d\n", all_instance_extensions_count);
+    }
+
+    // collect instance extensions from all validation layers
+    if (enabled_validation_layers) 
+    {
+        u32 count = 0;
+        VK_ASSERT(vkEnumerateInstanceExtensionProperties(k_def_validation_layer[0], &count, 0));
+        if (count > 0) 
+        {
+            printf("Count is %d\n", count);
+            const size_t sz = all_instance_extensions_count;
+            VK_ASSERT(vkEnumerateInstanceExtensionProperties(k_def_validation_layer[0], &count, all_instance_extensions + sz));
+            all_instance_extensions_count += count;
+        }
+    }
+
+    //printf("%d %s %s\n: ", all_instance_extensions_count, all_instance_extensions[0].extensionName, all_instance_extensions[all_instance_extensions_count - 1].extensionName);
+    const char **instance_extension_names = arena_push_size(temp_arena.arena, const char *, 50);
+    const char **instance_extension_name = instance_extension_names;
+    *instance_extension_name++ = VK_KHR_SURFACE_EXTENSION_NAME;
+    #if defined(_WIN32)
+        *instance_extension_name++ = VK_KHR_WIN32_SURFACE_EXTENSION_NAME;
+    #elif defined(VK_USE_PLATFORM_ANDROID_KHR)
+        *instance_extension_name++ = VK_KHR_ANDROID_SURFACE_EXTENSION_NAME;
+    #elif defined(__linux__)
+    #if defined(VK_USE_PLATFORM_WAYLAND_KHR)
+        *instance_extension_name++ = VK_KHR_WAYLAND_SURFACE_EXTENSION_NAME;
+    #else
+        *instance_extension_name++ = VK_KHR_XLIB_SURFACE_EXTENSION_NAME;
+    #endif
+    #elif defined(__APPLE__)
+        *instance_extension_name++ = VK_EXT_LAYER_SETTINGS_EXTENSION_NAME;
+        *instance_extension_name++ = VK_MVK_MACOS_SURFACE_EXTENSION_NAME;
+    #endif
+    #if defined(LVK_WITH_VULKAN_PORTABILITY)
+        *instance_extension_name++ = VK_KHR_PORTABILITY_ENUMERATION_EXTENSION_NAME;
+    #endif
+
+    b32 has_debug_utils = vulkan_has_extension(VK_EXT_DEBUG_UTILS_EXTENSION_NAME, all_instance_extensions, all_instance_extensions_count);
+
+    if (has_debug_utils) 
+    {
+        *instance_extension_name++ = VK_EXT_DEBUG_UTILS_EXTENSION_NAME;
+    }
+
+    if (enabled_validation_layers) {
+        *instance_extension_name++ = VK_EXT_VALIDATION_FEATURES_EXTENSION_NAME;
+    }
+
+    //if (config_.enableHeadlessSurface) {
+    //    instanceExtensionNames.push_back(VK_EXT_HEADLESS_SURFACE_EXTENSION_NAME);
+    //}
+
+    //for (const char* ext : config_.extensionsInstance) {
+    //    if (ext) {
+    //    instanceExtensionNames.push_back(ext);
+    //    }
+    //}
+
+
+    #if !defined(ANDROID)
+        // GPU Assisted Validation doesn't work on Android.
+        // It implicitly requires vertexPipelineStoresAndAtomics feature that's not supported even on high-end devices.
+        VkValidationFeatureEnableEXT validationFeaturesEnabled[] = {
+            VK_VALIDATION_FEATURE_ENABLE_GPU_ASSISTED_EXT,
+            VK_VALIDATION_FEATURE_ENABLE_GPU_ASSISTED_RESERVE_BINDING_SLOT_EXT,
+        };
+    #endif // ANDROID
+
+    #if defined(__APPLE__)
+        // Shader validation doesn't work in MoltenVK for SPIR-V 1.6 under Vulkan 1.3:
+        // "Invalid SPIR-V binary version 1.6 for target environment SPIR-V 1.5 (under Vulkan 1.2 semantics)."
+        VkValidationFeatureDisableEXT validationFeaturesDisabled[] = {
+            VK_VALIDATION_FEATURE_DISABLE_SHADERS_EXT,
+            VK_VALIDATION_FEATURE_DISABLE_SHADER_VALIDATION_CACHE_EXT,
+        };
+    #endif // __APPLE__
+
+    VkValidationFeaturesEXT features = 
+    {
+        .sType = VK_STRUCTURE_TYPE_VALIDATION_FEATURES_EXT,
+        .pNext = nullptr,
+    #if !defined(ANDROID)
+        .enabledValidationFeatureCount = enabled_validation_layers ? array_count(validationFeaturesEnabled) : 0u,
+        .pEnabledValidationFeatures = enabled_validation_layers ? validationFeaturesEnabled : nullptr,
+    #endif
+    #if defined(__APPLE__)
+        .disabledValidationFeatureCount = enabled_validation_layers ? array_count(validationFeaturesDisabled) : 0u,
+        .pDisabledValidationFeatures = enabled_validation_layers ? validationFeaturesDisabled : nullptr,
+    #endif
+    };
+
+    #if defined(VK_EXT_layer_settings) && VK_EXT_layer_settings
+        // https://github.com/KhronosGroup/MoltenVK/blob/main/Docs/MoltenVK_Configuration_Parameters.md
+        const int useMetalArgumentBuffers = 1;
+        const VkBool32 gpuav_descriptor_checks = VK_FALSE; // https://github.com/KhronosGroup/Vulkan-ValidationLayers/issues/8688
+        const VkBool32 gpuav_indirect_draws_buffers = VK_FALSE; // https://github.com/KhronosGroup/Vulkan-ValidationLayers/issues/8579
+        const VkBool32 gpuav_post_process_descriptor_indexing = VK_FALSE; // https://github.com/KhronosGroup/Vulkan-ValidationLayers/issues/9222
+        #define LAYER_SETTINGS_BOOL32(name, var)                                                                                        \
+            VkLayerSettingEXT {                                                                                                           \
+                .pLayerName = k_def_validation_layer[0], .pSettingName = name, .type = VK_LAYER_SETTING_TYPE_BOOL32_EXT, .valueCount = 1, \
+                .pValues = var,                                                                                                             \
+            }
+
+        const VkLayerSettingEXT settings[] = {
+            LAYER_SETTINGS_BOOL32("gpuav_descriptor_checks", &gpuav_descriptor_checks),
+            LAYER_SETTINGS_BOOL32("gpuav_indirect_draws_buffers", &gpuav_indirect_draws_buffers),
+            LAYER_SETTINGS_BOOL32("gpuav_post_process_descriptor_indexing", &gpuav_post_process_descriptor_indexing),
+            {"MoltenVK", "MVK_CONFIG_USE_METAL_ARGUMENT_BUFFERS", VK_LAYER_SETTING_TYPE_INT32_EXT, 1, &useMetalArgumentBuffers},
+        };
+        #undef LAYER_SETTINGS_BOOL32
+        const VkLayerSettingsCreateInfoEXT layerSettingsCreateInfo = {
+            .sType = VK_STRUCTURE_TYPE_LAYER_SETTINGS_CREATE_INFO_EXT,
+            .pNext = enabled_validation_layers ? &features : nullptr,
+            .settingCount = array_count(settings),
+            .pSettings = settings,
+        };
+    #endif // defined(VK_EXT_layer_settings) && VK_EXT_layer_settings
+
+
+    VkApplicationInfo app_info = {
+    .sType = VK_STRUCTURE_TYPE_APPLICATION_INFO,
+    .pNext = 0,
+    .pApplicationName = "Vulkan",
+    .applicationVersion = VK_MAKE_VERSION(1, 0, 0),
+    .pEngineName = "Vulkan",
+    .engineVersion = VK_MAKE_VERSION(1, 0, 0),
+    .apiVersion = VK_API_VERSION_1_3,
+    };
+
+    VkInstanceCreateFlags flags = 0;
+    #if defined(LVK_WITH_VULKAN_PORTABILITY)
+        flags |= VK_INSTANCE_CREATE_ENUMERATE_PORTABILITY_BIT_KHR;
+    #endif
+    VkInstanceCreateInfo ci = {
+        .sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO,
+    #if defined(VK_EXT_layer_settings) && VK_EXT_layer_settings
+        .pNext = &layerSettingsCreateInfo,
+    #else
+        .pNext = enabled_validation_layers ? &features : nullptr,
+    #endif // defined(VK_EXT_layer_settings) && VK_EXT_layer_settings
+        .flags = flags,
+        .pApplicationInfo = &app_info,
+        .enabledLayerCount = enabled_validation_layers ? 1 : 0u,
+        .ppEnabledLayerNames = enabled_validation_layers ? k_def_validation_layer : nullptr,
+        .enabledExtensionCount = u32(instance_extension_name - instance_extension_names),
+        .ppEnabledExtensionNames = instance_extension_names,
+    };
+    VK_ASSERT(vkCreateInstance(&ci, nullptr, &context.instance));
+
+
+    // TODO: see what does it do
+    volkLoadInstance(context.instance);
+
+    printf("\nVulkan instance extensions:\n");
+
+    for (u32 i = 0; i < all_instance_extensions_count; i++) {
+        printf("  %s\n", all_instance_extensions[i].extensionName);
+    }
+
+    context.enabled_validation_layers = enabled_validation_layers;
+
+    temp_end(temp_arena);
+
+    #if 0
+    {
+        // surface creation
+        #if defined(VK_USE_PLATFORM_WIN32_KHR)
+        const VkWin32SurfaceCreateInfoKHR ci = {
+            .sType = VK_STRUCTURE_TYPE_WIN32_SURFACE_CREATE_INFO_KHR,
+            .hinstance = GetModuleHandle(nullptr),
+            .hwnd = (HWND)handle,
+        };
+        VK_ASSERT(vkCreateWin32SurfaceKHR(context.instance, &ci, nullptr, &vkSurface_));
+        #elif defined(VK_USE_PLATFORM_ANDROID_KHR)
+        const VkAndroidSurfaceCreateInfoKHR ci = {
+            .sType = VK_STRUCTURE_TYPE_ANDROID_SURFACE_CREATE_INFO_KHR, .pNext = nullptr, .flags = 0, .window = (ANativeWindow*)window};
+        VK_ASSERT(vkCreateAndroidSurfaceKHR(vkInstance_, &ci, nullptr, &vkSurface_));
+        #elif defined(VK_USE_PLATFORM_XLIB_KHR)
+        const VkXlibSurfaceCreateInfoKHR ci = {
+            .sType = VK_STRUCTURE_TYPE_XLIB_SURFACE_CREATE_INFO_KHR,
+            .flags = 0,
+            .dpy = (Display*)display,
+            .window = (Window)window,
+        };
+        VK_ASSERT(vkCreateXlibSurfaceKHR(vkInstance_, &ci, nullptr, &vkSurface_));
+        #elif defined(VK_USE_PLATFORM_WAYLAND_KHR)
+        const VkWaylandSurfaceCreateInfoKHR ci = {
+            .sType = VK_STRUCTURE_TYPE_WAYLAND_SURFACE_CREATE_INFO_KHR,
+            .flags = 0,
+            .display = (wl_display*)display,
+            .surface = (wl_surface*)window,
+        };
+        VK_ASSERT(vkCreateWaylandSurfaceKHR(vkInstance_, &ci, nullptr, &vkSurface_));
+        #elif defined(VK_USE_PLATFORM_MACOS_MVK)
+        const VkMacOSSurfaceCreateInfoMVK ci = {
+            .sType = VK_STRUCTURE_TYPE_MACOS_SURFACE_CREATE_INFO_MVK,
+            .flags = 0,
+            .pView = window,
+        };
+        VK_ASSERT(vkCreateMacOSSurfaceMVK(vkInstance_, &ci, nullptr, &vkSurface_));
+        #else
+        #error Implement for other platforms
+        #endif
+    }
+    #endif
+
+    #if 1
+     context.rayTracingPipelineProperties = 
+    { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RAY_TRACING_PIPELINE_PROPERTIES_KHR};
+     context.accelerationStructureProperties = 
+    { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_ACCELERATION_STRUCTURE_PROPERTIES_KHR};
+
+    // provided by Vulkan 1.2
+    context.vkPhysicalDeviceDepthStencilResolveProperties = 
+    {
+        VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DEPTH_STENCIL_RESOLVE_PROPERTIES,
+        nullptr,
+    };
+    context.vkPhysicalDeviceDriverProperties = 
+    {
+        VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DRIVER_PROPERTIES,
+        &context.vkPhysicalDeviceDepthStencilResolveProperties,
+    };
+
+    context.vkPhysicalDeviceVulkan12Properties = 
+    {
+        VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_PROPERTIES,
+        &context.vkPhysicalDeviceDriverProperties,
+    };
+    // provided by Vulkan 1.1
+     context.vkPhysicalDeviceProperties2 = 
+    {
+        VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2,
+        &context.vkPhysicalDeviceVulkan12Properties,
+        VkPhysicalDeviceProperties{},
+    };
+    
+     context.vkFeatures13 = {
+        .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES};
+     context.vkFeatures12 = {
+        .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES,
+        .pNext = &context.vkFeatures13};
+     context.vkFeatures11 = {
+        .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_1_FEATURES,
+        .pNext = &context.vkFeatures12};
+     context.vkFeatures10 = {
+        .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2,
+        .pNext = &context.vkFeatures11};
+    #endif
+    return context;
+}
 internal void
-vulkan_create_context(Arena *arena, Arena *transient, HWND handle, VulkanContext* context)
+vulkan_create_context(Arena *transient, HWND handle, VulkanContext* context)
 {
     if(volkInitialize() != VK_SUCCESS)
     {
@@ -723,14 +1472,15 @@ vkGetPhysicalDeviceProperties2(context->physical_device, &context->vkPhysicalDev
     }
     #endif
 
-    context->queues.graphicsQueueFamilyIndex = findQueueFamilyIndex(context->physical_device, VK_QUEUE_GRAPHICS_BIT);
-    context->queues.computeQueueFamilyIndex = findQueueFamilyIndex(context->physical_device, VK_QUEUE_COMPUTE_BIT);
+    DeviceQueues &queues = context->queues;
+    queues.graphicsQueueFamilyIndex = findQueueFamilyIndex(context->physical_device, VK_QUEUE_GRAPHICS_BIT);
+    queues.computeQueueFamilyIndex = findQueueFamilyIndex(context->physical_device, VK_QUEUE_COMPUTE_BIT);
 
-    if (context->queues.graphicsQueueFamilyIndex == DeviceQueues::INVALID) {
+    if (queues.graphicsQueueFamilyIndex == DeviceQueues::INVALID) {
         abort();
     }
 
-    if (context->queues.computeQueueFamilyIndex == DeviceQueues::INVALID) {
+    if (queues.computeQueueFamilyIndex == DeviceQueues::INVALID) {
         abort();
     }
 
@@ -739,13 +1489,13 @@ vkGetPhysicalDeviceProperties2(context->physical_device, &context->vkPhysicalDev
     VkDeviceQueueCreateInfo ciQueue[2] = {
         {
             .sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO,
-            .queueFamilyIndex = context->queues.graphicsQueueFamilyIndex,
+            .queueFamilyIndex = queues.graphicsQueueFamilyIndex,
             .queueCount = 1,
             .pQueuePriorities = &queuePriority,
         },
         {
             .sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO,
-            .queueFamilyIndex = context->queues.computeQueueFamilyIndex,
+            .queueFamilyIndex = queues.computeQueueFamilyIndex,
             .queueCount = 1,
             .pQueuePriorities = &queuePriority,
         },
@@ -1168,12 +1918,183 @@ auto addOptionalExtensions = [&allDeviceExtensions, &deviceExtensionNames, &crea
   }
 
 
+    VkDeviceCreateInfo ci = {
+        .sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO,
+        .pNext = createInfoNext,
+        .queueCreateInfoCount = num_queues,
+        .pQueueCreateInfos = ciQueue,
+        .enabledExtensionCount = (uint32_t)deviceExtensionNames.size(),
+        .ppEnabledExtensionNames = deviceExtensionNames.data(),
+        .pEnabledFeatures = &deviceFeatures10,
+    };
+    VK_ASSERT_RETURN(vkCreateDevice(context->physical_device, &ci, nullptr, &context->device));
+    volkLoadDevice(context->device);
 
+    #if defined(__APPLE__)
+        vkCmdBeginRendering = vkCmdBeginRenderingKHR;
+        vkCmdEndRendering = vkCmdEndRenderingKHR;
+        vkCmdSetDepthWriteEnable = vkCmdSetDepthWriteEnableEXT;
+        vkCmdSetDepthTestEnable = vkCmdSetDepthTestEnableEXT;
+        vkCmdSetDepthCompareOp = vkCmdSetDepthCompareOpEXT;
+        vkCmdSetDepthBiasEnable = vkCmdSetDepthBiasEnableEXT;
+    #endif
 
+    vkGetDeviceQueue(context->device, queues.graphicsQueueFamilyIndex, 0, &queues.graphicsQueue);
+    vkGetDeviceQueue(context->device, queues.computeQueueFamilyIndex, 0, &queues.computeQueue);
+
+    VK_ASSERT(setDebugObjectName(context->device, VK_OBJECT_TYPE_DEVICE, (uint64_t)context->device, "Device: VulkanContext::device"));
+
+    // select a depth-resolve mode
+    //TODO whats the use of a lambda?
+    //context->depthResolveMode_ = [this]() -> VkResolveModeFlagBits {
+    //    const VkResolveModeFlags modes = context->vkPhysicalDeviceDepthStencilResolveProperties.supportedDepthResolveModes;
+    //    if (modes & VK_RESOLVE_MODE_AVERAGE_BIT)
+    //    return VK_RESOLVE_MODE_AVERAGE_BIT;
+    //    // this mode is always available
+    //    return VK_RESOLVE_MODE_SAMPLE_ZERO_BIT;
+    //}();
+
+    {
+        const VkResolveModeFlags modes = context->vkPhysicalDeviceDepthStencilResolveProperties.supportedDepthResolveModes;
+        if (modes & VK_RESOLVE_MODE_AVERAGE_BIT)
+        {
+            context->depthResolveMode_ = VK_RESOLVE_MODE_AVERAGE_BIT;
+        }
+        else
+        {
+            context->depthResolveMode_ = VK_RESOLVE_MODE_SAMPLE_ZERO_BIT;
+        }
+    }
+
+    context->immediate_ =
+        std::make_unique<VulkanImmediateCommands>(context->device, queues.graphicsQueueFamilyIndex, "VulkanContext::immediate_");
+
+    // create Vulkan pipeline cache
+    {
+        const VkPipelineCacheCreateInfo ci = {
+            VK_STRUCTURE_TYPE_PIPELINE_CACHE_CREATE_INFO,
+            nullptr,
+            VkPipelineCacheCreateFlags(0),
+            context->pipelineCacheDataSize,
+            context->pipelineCacheData,
+        };
+        vkCreatePipelineCache(context->device, &ci, nullptr, &context->pipelineCache_);
+    }
+
+    if (LVK_VULKAN_USE_VMA) {
+        pimpl_->vma_ = createVmaAllocator(
+            context->physical_device, context->device, context->instance, api_version > VK_API_VERSION_1_3 ? VK_API_VERSION_1_3 : api_version);
+        assert(pimpl_->vma_ != VK_NULL_HANDLE);
+    }
+
+    stagingDevice_ = std::make_unique<VulkanStagingDevice>(*this);
+
+    // default texture
+    {
+        const uint32_t pixel = 0xFF000000;
+        Result result;
+        context->dummyTexture_ = createTexture(
+                                {
+                                    .format = Format_RGBA_UN8,
+                                    .dimensions = {1, 1, 1},
+                                    .usage = TextureUsageBits_Sampled | TextureUsageBits_Storage,
+                                    .data = &pixel,
+                                },
+                                "Dummy 1x1 (black)",
+                                &result)
+                            .release();
+        #if 0
+        if (!LVK_VERIFY(result.isOk())) {
+        return result;
+        }
+        #endif
+        assert(texturesPool_.numObjects() == 1);
+    }
+
+    // default sampler
+    assert(samplersPool_.numObjects() == 0);
+    createSampler(
+        context,
+        {
+            .sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO,
+            .pNext = nullptr,
+            .flags = 0,
+            .magFilter = VK_FILTER_LINEAR,
+            .minFilter = VK_FILTER_LINEAR,
+            .mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR,
+            .addressModeU = VK_SAMPLER_ADDRESS_MODE_REPEAT,
+            .addressModeV = VK_SAMPLER_ADDRESS_MODE_REPEAT,
+            .addressModeW = VK_SAMPLER_ADDRESS_MODE_REPEAT,
+            .mipLodBias = 0.0f,
+            .anisotropyEnable = VK_FALSE,
+            .maxAnisotropy = 0.0f,
+            .compareEnable = VK_FALSE,
+            .compareOp = VK_COMPARE_OP_ALWAYS,
+            .minLod = 0.0f,
+            .maxLod = static_cast<float>(LVK_MAX_MIP_LEVELS - 1),
+            .borderColor = VK_BORDER_COLOR_INT_OPAQUE_BLACK,
+            .unnormalizedCoordinates = VK_FALSE,
+        },
+        nullptr,
+        Format_Invalid,
+        "Sampler: default");
+
+    growDescriptorPool(context, context->currentMaxTextures_, context->currentMaxSamplers_, context->currentMaxAccelStructs_);
+
+    querySurfaceCapabilities(context);
+
+    #if defined(LVK_WITH_TRACY_GPU)
+    std::vector<VkTimeDomainEXT> timeDomains;
+
+    if (hasCalibratedTimestamps_) {
+        uint32_t numTimeDomains = 0;
+        VK_ASSERT(vkGetPhysicalDeviceCalibrateableTimeDomainsEXT(context->physical_device, &numTimeDomains, nullptr));
+        timeDomains.resize(numTimeDomains);
+        VK_ASSERT(vkGetPhysicalDeviceCalibrateableTimeDomainsEXT(context->physical_device, &numTimeDomains, timeDomains.data()));
+    }
+
+    const bool hasHostQuery = vkFeatures12_.hostQueryReset && [&timeDomains]() -> bool {
+        for (VkTimeDomainEXT domain : timeDomains)
+        if (domain == VK_TIME_DOMAIN_CLOCK_MONOTONIC_RAW_EXT || domain == VK_TIME_DOMAIN_QUERY_PERFORMANCE_COUNTER_EXT)
+            return true;
+        return false;
+    }();
+
+    if (hasHostQuery) {
+        pimpl_->tracyVkCtx_ = TracyVkContextHostCalibrated(
+            context->physical_device, context->device, vkResetQueryPool, vkGetPhysicalDeviceCalibrateableTimeDomainsEXT, vkGetCalibratedTimestampsEXT);
+    } else {
+        const VkCommandPoolCreateInfo ciCommandPool = {
+            .sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO,
+            .flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT | VK_COMMAND_POOL_CREATE_TRANSIENT_BIT,
+            .queueFamilyIndex = queues.graphicsQueueFamilyIndex,
+        };
+        VK_ASSERT(vkCreateCommandPool(context->device, &ciCommandPool, nullptr, &pimpl_->tracyCommandPool_));
+        setDebugObjectName(
+            context->device, VK_OBJECT_TYPE_COMMAND_POOL, (uint64_t)pimpl_->tracyCommandPool_, "Command Pool: VulkanContextImpl::tracyCommandPool_");
+        const VkCommandBufferAllocateInfo aiCommandBuffer = {
+            .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
+            .commandPool = pimpl_->tracyCommandPool_,
+            .level = VK_COMMAND_BUFFER_LEVEL_PRIMARY,
+            .commandBufferCount = 1,
+        };
+        VK_ASSERT(vkAllocateCommandBuffers(context->device, &aiCommandBuffer, &pimpl_->tracyCommandBuffer_));
+        if (hasCalibratedTimestamps_) {
+        pimpl_->tracyVkCtx_ = TracyVkContextCalibrated(context->physical_device,
+                                                        context->device,
+                                                        queues.graphicsQueue,
+                                                        pimpl_->tracyCommandBuffer_,
+                                                        vkGetPhysicalDeviceCalibrateableTimeDomainsEXT,
+                                                        vkGetCalibratedTimestampsEXT);
+        } else {
+        pimpl_->tracyVkCtx_ = TracyVkContext(context->physical_device, context->device, queues.graphicsQueue, pimpl_->tracyCommandBuffer_);
+        };
+    }
+    assert(pimpl_->tracyVkCtx_);
+    #endif // LVK_WITH_TRACY_GPU
 
 
     temp_end(temp_arena);
-
 }
 
 void vulkan_init_swapchain(VulkanContext *context, u32 width, u32 height)
@@ -1186,13 +2107,18 @@ internal void
 vulkan_create_context_with_swapchain(Arena *arena, Arena *transient, OS_Window window, u32 width, u32 height)
 {
 
-    //VulkanContext* context = (VulkanContext*)arena_push_size(arena, VulkanContext, 1);
-    VulkanContext context = {0};
 
-    vulkan_create_context(arena, transient, window.handle, &context);
-    VulkanQueryDeviceResult queried_devices = vulkan_query_devices(transient, &context, VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU);
+    #if 0
+    VulkanContext context = {0};
+    context = vulkan_create_context_inside(transient, window.handle);
+    #else
+    VulkanContext* context = (VulkanContext*)arena_push_size(arena, VulkanContext, 1);
+    //VulkanContext context = {0};
+    vulkan_create_context(transient, window.handle, context);
+    #endif
+    VulkanQueryDeviceResult queried_devices = vulkan_query_devices(transient, context, VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU);
     
-    vulkan_init_context(arena, transient, &context, &queried_devices.out_devices[0]);
+    vulkan_init_context(arena, transient, context, &queried_devices.out_devices[0]);
 
 }
 
@@ -1206,6 +2132,7 @@ int main()
     Arena transient_arena {};
     arena_init(&transient_arena, mb(10));
     vulkan_create_context_with_swapchain(&arena, &transient_arena, global_w32_window, window_width, window_height);
+
     while(global_w32_window.is_running)
     {
         

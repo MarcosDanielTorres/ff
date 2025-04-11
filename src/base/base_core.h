@@ -28,7 +28,26 @@ typedef u32 b32;
 
 #define align_pow2(x,b) (((x) + (b) - 1)&(~((b) - 1)))
 
-#define assert(expr) do{if(!(expr)) {__debugbreak();}}while(0)
+
+#define assert(expr) do{                                    \
+    if(!(expr)) {                                       \
+        __debugbreak();\
+    }\
+}while(0)
+
+#define assert_msg(expr, ...) do{                                    \
+    if(!(expr)) {                                       \
+        char _msg_buf[1024];                                                  \
+                snprintf(_msg_buf, sizeof(_msg_buf),                                        \
+            "Assertion failed!\n\n"                                                 \
+            "File: %s\n"                                                            \
+            "Line: %d\n"                                                            \
+            "Condition: %s\n\n"                                                     \
+            __FILE__, __LINE__, #expr, __VA_ARGS__);                                \
+        __debugbreak();\
+    }\
+}while(0)
+
 //#define gui_assert(expr, msg) do{if(!(expr)) {MessageBox(0, msg, 0, MB_OK | MB_ICONERROR); __debugbreak();}}while(0)
 #define gui_assert(expr, fmt, ...) do {                                       \
     if (!(expr)) {                                                            \

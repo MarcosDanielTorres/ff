@@ -963,30 +963,108 @@ vulkan_immediate_commands_create(VulkanImmediateCommands *immediate, VkDevice de
     }
 }
 
+internal void
+vulkan_immediate_commands_purge(VulkanImmediateCommands *immediate)
+{
+    //LVK_PROFILER_FUNCTION();
+
+    u32 numBuffers = static_cast<u32>array_count(immediate->buffers);
+
+    for (u32 i = 0; i != numBuffers; i++) {
+        // always start checking with the oldest submitted buffer, then wrap around
+        CommandBufferWrapper& buf = immediate->buffers[(i + immediate->lastSubmitHandle_.bufferIndex_ + 1) % numBuffers];
+
+        if (buf.cmdBuf_ == VK_NULL_HANDLE || buf.isEncoding_) 
+        {
+            continue;
+        }
+
+        const VkResult result = vkWaitForFences(immediate->device, 1, &buf.fence_, VK_TRUE, 0);
+
+        if (result == VK_SUCCESS) 
+        {
+            VK_ASSERT(vkResetCommandBuffer(buf.cmdBuf_, VkCommandBufferResetFlags{0}));
+            VK_ASSERT(vkResetFences(immediate->device, 1, &buf.fence_));
+            buf.cmdBuf_ = VK_NULL_HANDLE;
+            immediate->numAvailableCommandBuffers_++;
+        } 
+        else 
+        {
+            if (result != VK_TIMEOUT) 
+            {
+                VK_ASSERT(result);
+            }
+        }
+    }
+}
+
 internal CommandBufferWrapper *
 vulkan_immediate_commands_acquire(VulkanImmediateCommands *immediate)
 {
+    if(immediate->numAvailableCommandBuffers_)
+    {
+        vulkan_immediate_commands_purge(immediate);
+    }
 
+    while(!immediate->numAvailableCommandBuffers_)
+    {
+        printf("waiting for command buffers...\n");
+        vulkan_immediate_commands_purge(immediate);
+    }
+
+      CommandBufferWrapper* current = nullptr;
+
+    // we are ok with any available buffer
+    //for (CommandBufferWrapper& buf : immediate->buffers) {
+    for (u32 i = 0; i != immediate->kMaxCommandBuffers; i++) {
+        if (immediate->buffers[i].cmdBuf_ == VK_NULL_HANDLE) 
+        {
+            current = &immediate->buffers[i];
+            break;
+        }
+    }
+
+    // make clang happy
+    assert(current);
+
+    gui_assert(immediate->numAvailableCommandBuffers_, "No available command buffers");
+    gui_assert(current, "No available command buffers");
+    assert(current->cmdBufAllocated_ != VK_NULL_HANDLE);
+
+    current->handle_.submitId_ = immediate->submitCounter_;
+    immediate->numAvailableCommandBuffers_--;
+
+    current->cmdBuf_ = current->cmdBufAllocated_;
+    current->isEncoding_ = true;
+    const VkCommandBufferBeginInfo bi = {
+        .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
+        .flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT,
+    };
+    VK_ASSERT(vkBeginCommandBuffer(current->cmdBuf_, &bi));
+
+    immediate->nextSubmitHandle_ = current->handle_;
+
+    return current;
 }
 
 internal SubmitHandle
 vulkan_immediate_commands_submit(VulkanImmediateCommands *immediate, CommandBufferWrapper *wrapper)
 {
     //LVK_PROFILER_FUNCTION_COLOR(LVK_PROFILER_COLOR_SUBMIT);
-    assert(wrapper.isEncoding_);
-    VK_ASSERT(vkEndCommandBuffer(wrapper.cmdBuf_));
+    assert(wrapper->isEncoding_);
+    VK_ASSERT(vkEndCommandBuffer(wrapper->cmdBuf_));
 
     VkSemaphoreSubmitInfo waitSemaphores[] = {{}, {}};
     uint32_t numWaitSemaphores = 0;
     if (immediate->waitSemaphore_.semaphore) {
         waitSemaphores[numWaitSemaphores++] = immediate->waitSemaphore_;
     }
-    if (lastSubmitSemaphore_.semaphore) {
+    if (immediate->lastSubmitSemaphore_.semaphore) {
         waitSemaphores[numWaitSemaphores++] = immediate->lastSubmitSemaphore_;
     }
     VkSemaphoreSubmitInfo signalSemaphores[] = {
         VkSemaphoreSubmitInfo{.sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO,
-                                .semaphore = wrapper.semaphore_,
+                                .semaphore = wrapper->semaphore_,
                                 .stageMask = VK_PIPELINE_STAGE_ALL_COMMANDS_BIT},
         {},
     };
@@ -1001,7 +1079,7 @@ vulkan_immediate_commands_submit(VulkanImmediateCommands *immediate, CommandBuff
     #endif // LVK_VULKAN_PRINT_COMMANDS
     const VkCommandBufferSubmitInfo bufferSI = {
         .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_SUBMIT_INFO,
-        .commandBuffer = wrapper.cmdBuf_,
+        .commandBuffer = wrapper->cmdBuf_,
     };
     const VkSubmitInfo2 si = {
         .sType = VK_STRUCTURE_TYPE_SUBMIT_INFO_2,
@@ -1012,16 +1090,16 @@ vulkan_immediate_commands_submit(VulkanImmediateCommands *immediate, CommandBuff
         .signalSemaphoreInfoCount = numSignalSemaphores,
         .pSignalSemaphoreInfos = signalSemaphores,
     };
-    VK_ASSERT(vkQueueSubmit2(immediate->queue_, 1u, &si, wrapper.fence_));
+    VK_ASSERT(vkQueueSubmit2(immediate->queue, 1u, &si, wrapper->fence_));
     //LVK_PROFILER_ZONE_END();
 
-    immediate->lastSubmitSemaphore_.semaphore = wrapper.semaphore_;
-    lastSubmitHandle_ = wrapper.handle_;
+    immediate->lastSubmitSemaphore_.semaphore = wrapper->semaphore_;
+    immediate->lastSubmitHandle_ = wrapper->handle_;
     immediate->waitSemaphore_.semaphore = VK_NULL_HANDLE;
     immediate->signalSemaphore_.semaphore = VK_NULL_HANDLE;
 
     // reset
-    const_cast<CommandBufferWrapper&>(wrapper).isEncoding_ = false;
+    //const_cast<CommandBufferWrapper&>(wrapper).isEncoding_ = false;
     immediate->submitCounter_++;
 
     if (!immediate->submitCounter_) {
@@ -1054,6 +1132,11 @@ struct VulkanStagingDevice
 
 
 
+struct YcbcrConversionData {
+    VkSamplerYcbcrConversionInfo info;
+    //Holder<SamplerHandle> sampler;
+    Handle sampler;
+};
 
 struct VulkanContext
 {
@@ -1065,7 +1148,11 @@ struct VulkanContext
     VulkanImmediateCommands *immediate_;
     VulkanStagingDevice *stagingDevice_;
 
+    // NOTE unique_ptr<VulkanContextImpl> pimpl_;
     VmaAllocator vma;
+    YcbcrConversionData ycbcrConversionData_[256]; // indexed by lvk::Format
+    u32 numYcbcrSamplers_ = 0;
+
 
 
     // Originalmente en una config
@@ -1132,9 +1219,10 @@ struct VulkanContext
 };
 
 
-VkPhysicalDeviceProperties
+internal VkPhysicalDeviceProperties
 vulkan_get_physical_device_props(VulkanContext *context)
 {
+    // getVkPhysicalDeviceProperties()
     return context->vkPhysicalDeviceProperties2.properties;
 }
 
@@ -1169,6 +1257,358 @@ vulkan_image_view_create(VulkanImage *image,
     return vkView;
 }
 
+internal VkFormat
+formatToVkFormat(Format format)
+{
+  using TextureFormat = Format;
+  switch (format) {
+  case Format_Invalid:
+    return VK_FORMAT_UNDEFINED;
+  case Format_R_UN8:
+    return VK_FORMAT_R8_UNORM;
+  case Format_R_UN16:
+    return VK_FORMAT_R16_UNORM;
+  case Format_R_F16:
+    return VK_FORMAT_R16_SFLOAT;
+  case Format_R_UI16:
+    return VK_FORMAT_R16_UINT;
+  case Format_R_UI32:
+    return VK_FORMAT_R32_UINT;
+  case Format_RG_UN8:
+    return VK_FORMAT_R8G8_UNORM;
+  case Format_RG_UI16:
+    return VK_FORMAT_R16G16_UINT;
+  case Format_RG_UI32:
+    return VK_FORMAT_R32G32_UINT;
+  case Format_RG_UN16:
+    return VK_FORMAT_R16G16_UNORM;
+  case Format_BGRA_UN8:
+    return VK_FORMAT_B8G8R8A8_UNORM;
+  case Format_RGBA_UN8:
+    return VK_FORMAT_R8G8B8A8_UNORM;
+  case Format_RGBA_SRGB8:
+    return VK_FORMAT_R8G8B8A8_SRGB;
+  case Format_BGRA_SRGB8:
+    return VK_FORMAT_B8G8R8A8_SRGB;
+  case Format_RG_F16:
+    return VK_FORMAT_R16G16_SFLOAT;
+  case Format_RG_F32:
+    return VK_FORMAT_R32G32_SFLOAT;
+  case Format_R_F32:
+    return VK_FORMAT_R32_SFLOAT;
+  case Format_RGBA_F16:
+    return VK_FORMAT_R16G16B16A16_SFLOAT;
+  case Format_RGBA_UI32:
+    return VK_FORMAT_R32G32B32A32_UINT;
+  case Format_RGBA_F32:
+    return VK_FORMAT_R32G32B32A32_SFLOAT;
+  case Format_ETC2_RGB8:
+    return VK_FORMAT_ETC2_R8G8B8_UNORM_BLOCK;
+  case Format_ETC2_SRGB8:
+    return VK_FORMAT_ETC2_R8G8B8_SRGB_BLOCK;
+  case Format_BC7_RGBA:
+    return VK_FORMAT_BC7_UNORM_BLOCK;
+  case Format_Z_UN16:
+    return VK_FORMAT_D16_UNORM;
+  case Format_Z_UN24:
+    return VK_FORMAT_D24_UNORM_S8_UINT;
+  case Format_Z_F32:
+    return VK_FORMAT_D32_SFLOAT;
+  case Format_Z_UN24_S_UI8:
+    return VK_FORMAT_D24_UNORM_S8_UINT;
+  case Format_Z_F32_S_UI8:
+    return VK_FORMAT_D32_SFLOAT_S8_UINT;
+  case Format_YUV_NV12:
+    return VK_FORMAT_G8_B8R8_2PLANE_420_UNORM;
+  case Format_YUV_420p:
+    return VK_FORMAT_G8_B8_R8_3PLANE_420_UNORM;
+    default: 
+    return VK_FORMAT_UNDEFINED;
+  }
+
+}
+
+enum SamplerFilter : uint8_t { SamplerFilter_Nearest = 0, SamplerFilter_Linear };
+enum SamplerMip : uint8_t { SamplerMip_Disabled = 0, SamplerMip_Nearest, SamplerMip_Linear };
+enum SamplerWrap : uint8_t { SamplerWrap_Repeat = 0, SamplerWrap_Clamp, SamplerWrap_MirrorRepeat };
+
+
+VkFilter samplerFilterToVkFilter(SamplerFilter filter) {
+    switch (filter) 
+    {
+        case SamplerFilter_Nearest:
+            return VK_FILTER_NEAREST;
+        case SamplerFilter_Linear:
+            return VK_FILTER_LINEAR;
+    }
+    gui_assert(false, "SamplerFilter value not handled: %d", (int)filter);
+    return VK_FILTER_LINEAR;
+}
+
+VkSamplerMipmapMode samplerMipMapToVkSamplerMipmapMode(SamplerMip filter) {
+    switch (filter) {
+        case SamplerMip_Disabled:
+        case SamplerMip_Nearest:
+            return VK_SAMPLER_MIPMAP_MODE_NEAREST;
+        case SamplerMip_Linear:
+            return VK_SAMPLER_MIPMAP_MODE_LINEAR;
+    }
+    gui_assert(false, "SamplerMipMap value not handled: %d", (int)filter);
+    return VK_SAMPLER_MIPMAP_MODE_NEAREST;
+}
+
+VkSamplerAddressMode samplerWrapModeToVkSamplerAddressMode(SamplerWrap mode) {
+    switch (mode) 
+    {
+        case SamplerWrap_Repeat:
+            return VK_SAMPLER_ADDRESS_MODE_REPEAT;
+        case SamplerWrap_Clamp:
+            return VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+        case SamplerWrap_MirrorRepeat:
+            return VK_SAMPLER_ADDRESS_MODE_MIRRORED_REPEAT;
+    }
+    gui_assert(false, "SamplerWrapMode value not handled: %d", (int)mode);
+    return VK_SAMPLER_ADDRESS_MODE_REPEAT;
+}
+
+enum CompareOp : uint8_t {
+  CompareOp_Never = 0,
+  CompareOp_Less,
+  CompareOp_Equal,
+  CompareOp_LessEqual,
+  CompareOp_Greater,
+  CompareOp_NotEqual,
+  CompareOp_GreaterEqual,
+  CompareOp_AlwaysPass
+};
+
+struct SamplerStateDesc {
+  SamplerFilter minFilter = SamplerFilter_Linear;
+  SamplerFilter magFilter = SamplerFilter_Linear;
+  SamplerMip mipMap = SamplerMip_Disabled;
+  SamplerWrap wrapU = SamplerWrap_Repeat;
+  SamplerWrap wrapV = SamplerWrap_Repeat;
+  SamplerWrap wrapW = SamplerWrap_Repeat;
+  CompareOp depthCompareOp = CompareOp_LessEqual;
+  u8 mipLodMin = 0;
+  u8 mipLodMax = 15;
+  u8 maxAnisotropic = 1;
+  b32 depthCompareEnabled = false;
+  const char* debugName = "";
+};
+
+internal VkCompareOp
+compareOpToVkCompareOp(CompareOp func)
+{
+ switch (func) 
+ {
+    case CompareOp_Never:
+        return VK_COMPARE_OP_NEVER;
+    case CompareOp_Less:
+        return VK_COMPARE_OP_LESS;
+    case CompareOp_Equal:
+        return VK_COMPARE_OP_EQUAL;
+    case CompareOp_LessEqual:
+        return VK_COMPARE_OP_LESS_OR_EQUAL;
+    case CompareOp_Greater:
+        return VK_COMPARE_OP_GREATER;
+    case CompareOp_NotEqual:
+        return VK_COMPARE_OP_NOT_EQUAL;
+    case CompareOp_GreaterEqual:
+        return VK_COMPARE_OP_GREATER_OR_EQUAL;
+    case CompareOp_AlwaysPass:
+        return VK_COMPARE_OP_ALWAYS;
+ }
+    gui_assert(false, "CompareFunction value not handled: %d", (int)func);
+    return VK_COMPARE_OP_ALWAYS;
+}
+
+internal VkSamplerCreateInfo
+samplerStateDescToVkSamplerCreateInfo(const SamplerStateDesc& desc, const VkPhysicalDeviceLimits& limits)
+{
+    gui_assert(desc.mipLodMax >= desc.mipLodMin,
+               "mipLodMax (%d) must be greater than or equal to mipLodMin (%d)",
+               (int)desc.mipLodMax,
+               (int)desc.mipLodMin);
+
+    VkSamplerCreateInfo ci = 
+    {
+        .sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO,
+        .pNext = nullptr,
+        .flags = 0,
+        .magFilter = samplerFilterToVkFilter(desc.magFilter),
+        .minFilter = samplerFilterToVkFilter(desc.minFilter),
+        .mipmapMode = samplerMipMapToVkSamplerMipmapMode(desc.mipMap),
+        .addressModeU = samplerWrapModeToVkSamplerAddressMode(desc.wrapU),
+        .addressModeV = samplerWrapModeToVkSamplerAddressMode(desc.wrapV),
+        .addressModeW = samplerWrapModeToVkSamplerAddressMode(desc.wrapW),
+        .mipLodBias = 0.0f,
+        .anisotropyEnable = VK_FALSE,
+        .maxAnisotropy = 0.0f,
+        .compareEnable = desc.depthCompareEnabled ? VK_TRUE : VK_FALSE,
+        .compareOp = desc.depthCompareEnabled ? compareOpToVkCompareOp(desc.depthCompareOp) : VK_COMPARE_OP_ALWAYS,
+        .minLod = float(desc.mipLodMin),
+        .maxLod = desc.mipMap == SamplerMip_Disabled ? float(desc.mipLodMin) : float(desc.mipLodMax),
+        .borderColor = VK_BORDER_COLOR_INT_OPAQUE_BLACK,
+        .unnormalizedCoordinates = VK_FALSE,
+    };
+
+    if (desc.maxAnisotropic > 1) 
+    {
+        const bool isAnisotropicFilteringSupported = limits.maxSamplerAnisotropy > 1;
+        gui_assert(isAnisotropicFilteringSupported, "Anisotropic filtering is not supported by the device.");
+        ci.anisotropyEnable = isAnisotropicFilteringSupported ? VK_TRUE : VK_FALSE;
+
+        if (limits.maxSamplerAnisotropy < desc.maxAnisotropic) 
+        {
+            printf( "Supplied sampler anisotropic value greater than max supported by the device, setting to %.0f\n", static_cast<double>(limits.maxSamplerAnisotropy));
+        }
+        ci.maxAnisotropy = min((float)limits.maxSamplerAnisotropy, (float)desc.maxAnisotropic);
+    }
+    return ci;
+}
+
+
+//TOOD see this cyclick thing!
+internal Handle vulkan_sampler_create(VulkanContext *context, const VkSamplerCreateInfo& ci, Format yuvFormat, const char* debugName);
+
+internal VkSamplerYcbcrConversionInfo *
+getOrCreateYcbcrConversionInfo(VulkanContext *context, Format format)
+{
+    if (context->ycbcrConversionData_[format].info.sType) 
+    {
+        return &context->ycbcrConversionData_[format].info;
+    }
+
+    if (!(context->vkFeatures11.samplerYcbcrConversion)) 
+    {
+        gui_assert(false, "Ycbcr samplers are not supported");
+        return nullptr;
+    }
+
+    const VkFormat vkFormat = formatToVkFormat(format);
+
+    VkFormatProperties props;
+    vkGetPhysicalDeviceFormatProperties(context->physical_device, vkFormat, &props);
+
+    const bool cosited = (props.optimalTilingFeatures & VK_FORMAT_FEATURE_COSITED_CHROMA_SAMPLES_BIT) != 0;
+    const bool midpoint = (props.optimalTilingFeatures & VK_FORMAT_FEATURE_MIDPOINT_CHROMA_SAMPLES_BIT) != 0;
+
+    if (!(cosited || midpoint)) 
+    {
+        gui_assert(cosited || midpoint, "Unsupported Ycbcr feature");
+        return nullptr;
+    }
+
+    const VkSamplerYcbcrConversionCreateInfo ci = {
+        .sType = VK_STRUCTURE_TYPE_SAMPLER_YCBCR_CONVERSION_CREATE_INFO,
+        .format = vkFormat,
+        .ycbcrModel = VK_SAMPLER_YCBCR_MODEL_CONVERSION_YCBCR_709,
+        .ycbcrRange = VK_SAMPLER_YCBCR_RANGE_ITU_FULL,
+        .components =
+            {
+                VK_COMPONENT_SWIZZLE_IDENTITY,
+                VK_COMPONENT_SWIZZLE_IDENTITY,
+                VK_COMPONENT_SWIZZLE_IDENTITY,
+                VK_COMPONENT_SWIZZLE_IDENTITY,
+            },
+        .xChromaOffset = midpoint ? VK_CHROMA_LOCATION_MIDPOINT : VK_CHROMA_LOCATION_COSITED_EVEN,
+        .yChromaOffset = midpoint ? VK_CHROMA_LOCATION_MIDPOINT : VK_CHROMA_LOCATION_COSITED_EVEN,
+        .chromaFilter = VK_FILTER_LINEAR,
+        .forceExplicitReconstruction = VK_FALSE,
+    };
+
+    VkSamplerYcbcrConversionInfo info = 
+    {
+        .sType = VK_STRUCTURE_TYPE_SAMPLER_YCBCR_CONVERSION_INFO,
+        .pNext = nullptr,
+    };
+    vkCreateSamplerYcbcrConversion(context->device, &ci, nullptr, &info.conversion);
+
+    // check properties
+    VkSamplerYcbcrConversionImageFormatProperties samplerYcbcrConversionImageFormatProps = 
+    {
+        .sType = VK_STRUCTURE_TYPE_SAMPLER_YCBCR_CONVERSION_IMAGE_FORMAT_PROPERTIES,
+    };
+    VkImageFormatProperties2 imageFormatProps = 
+    {
+        .sType = VK_STRUCTURE_TYPE_IMAGE_FORMAT_PROPERTIES_2,
+        .pNext = &samplerYcbcrConversionImageFormatProps,
+    };
+    VkPhysicalDeviceImageFormatInfo2 imageFormatInfo = 
+    {
+        .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_IMAGE_FORMAT_INFO_2,
+        .format = vkFormat,
+        .type = VK_IMAGE_TYPE_2D,
+        .tiling = VK_IMAGE_TILING_OPTIMAL,
+        .usage = VK_IMAGE_USAGE_SAMPLED_BIT,
+        .flags = VK_IMAGE_CREATE_DISJOINT_BIT,
+    };
+    vkGetPhysicalDeviceImageFormatProperties2(context->physical_device, &imageFormatInfo, &imageFormatProps);
+
+    assert(samplerYcbcrConversionImageFormatProps.combinedImageSamplerDescriptorCount <= 3);
+
+    VkSamplerCreateInfo cinfo = samplerStateDescToVkSamplerCreateInfo({}, vulkan_get_physical_device_props(context).limits);
+
+    context->ycbcrConversionData_[format].info = info;
+    context->ycbcrConversionData_[format].sampler = {context, vulkan_sampler_create(context, cinfo, format, "YUV sampler")};
+    context->numYcbcrSamplers_++;
+    context->awaitingNewImmutableSamplers_ = true;
+
+    return &context->ycbcrConversionData_[format].info;
+}
+
+// TODO internal SamplerHandle
+internal Handle
+vulkan_sampler_create(VulkanContext *context, const VkSamplerCreateInfo& ci, Format yuvFormat, const char* debugName) 
+{
+    //LVK_PROFILER_FUNCTION_COLOR(LVK_PROFILER_COLOR_CREATE);
+    VkSamplerCreateInfo cinfo = ci;
+
+    if (yuvFormat != Format_Invalid) {
+        cinfo.pNext = getOrCreateYcbcrConversionInfo(context, yuvFormat);
+        // must be CLAMP_TO_EDGE
+        // https://vulkan.lunarg.com/doc/view/1.3.268.0/windows/1.3-extensions/vkspec.html#VUID-VkSamplerCreateInfo-addressModeU-01646
+        cinfo.addressModeU = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+        cinfo.addressModeV = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+        cinfo.addressModeW = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+        cinfo.anisotropyEnable = VK_FALSE;
+        cinfo.unnormalizedCoordinates = VK_FALSE;
+    }
+
+    VkSampler sampler = VK_NULL_HANDLE;
+    VK_ASSERT(vkCreateSampler(context->device, &cinfo, nullptr, &sampler));
+    VK_ASSERT(setDebugObjectName(context->device, VK_OBJECT_TYPE_SAMPLER, (uint64_t)sampler, debugName));
+
+    Handle handle = context->samplersPool_.create(VkSampler(sampler));
+
+    context->awaitingCreation_ = true;
+
+    return handle;
+}
+
+
+
+
+
+
+
+#if 0
+
+its not yet used!!!!!!!!
+
+internal VkSampler
+getOrCreateYcbcrSampler(VulkanContext *context, Format format)
+{
+    const VkSamplerYcbcrConversionInfo* info = getOrCreateYcbcrConversionInfo(context, format);
+
+    if (!info) {
+        return VK_NULL_HANDLE;
+    }
+
+    return *samplersPool_.get(pimpl_->ycbcrConversionData_[format].sampler);
+}
+#endif
 
 internal void
 vulkan_staging_device_create(VulkanStagingDevice *staging_device, VulkanContext *context)
@@ -1333,6 +1773,7 @@ enum Swizzle : uint8_t {
   Swizzle_B,
   Swizzle_A,
 };
+
 
 struct ComponentMapping {
   Swizzle r = Swizzle_Default;
@@ -1566,7 +2007,7 @@ generateMipmap(VulkanContext *context, Handle handle)
         return;
     }
     assert(tex->vkImageLayout_ != VK_IMAGE_LAYOUT_UNDEFINED);
-    CommandBufferWrapper* wrapper = vulkan_immediate_commands_acquire(context->immediate_);
+    CommandBufferWrapper *wrapper = vulkan_immediate_commands_acquire(context->immediate_);
     vulkan_image_generate_mipmap(tex, wrapper->cmdBuf_);
     //context->immediate_->submit(wrapper);
     vulkan_immediate_commands_submit(context->immediate_, wrapper);
@@ -1628,76 +2069,6 @@ getClosestDepthStencilFormat(Format desiredFormat, VulkanContext *context)
     return !context->deviceDepthFormats_.empty() ? context->deviceDepthFormats_[0] : VK_FORMAT_D24_UNORM_S8_UINT;
 }
 
-internal VkFormat
-formatToVkFormat(Format format)
-{
-  using TextureFormat = Format;
-  switch (format) {
-  case Format_Invalid:
-    return VK_FORMAT_UNDEFINED;
-  case Format_R_UN8:
-    return VK_FORMAT_R8_UNORM;
-  case Format_R_UN16:
-    return VK_FORMAT_R16_UNORM;
-  case Format_R_F16:
-    return VK_FORMAT_R16_SFLOAT;
-  case Format_R_UI16:
-    return VK_FORMAT_R16_UINT;
-  case Format_R_UI32:
-    return VK_FORMAT_R32_UINT;
-  case Format_RG_UN8:
-    return VK_FORMAT_R8G8_UNORM;
-  case Format_RG_UI16:
-    return VK_FORMAT_R16G16_UINT;
-  case Format_RG_UI32:
-    return VK_FORMAT_R32G32_UINT;
-  case Format_RG_UN16:
-    return VK_FORMAT_R16G16_UNORM;
-  case Format_BGRA_UN8:
-    return VK_FORMAT_B8G8R8A8_UNORM;
-  case Format_RGBA_UN8:
-    return VK_FORMAT_R8G8B8A8_UNORM;
-  case Format_RGBA_SRGB8:
-    return VK_FORMAT_R8G8B8A8_SRGB;
-  case Format_BGRA_SRGB8:
-    return VK_FORMAT_B8G8R8A8_SRGB;
-  case Format_RG_F16:
-    return VK_FORMAT_R16G16_SFLOAT;
-  case Format_RG_F32:
-    return VK_FORMAT_R32G32_SFLOAT;
-  case Format_R_F32:
-    return VK_FORMAT_R32_SFLOAT;
-  case Format_RGBA_F16:
-    return VK_FORMAT_R16G16B16A16_SFLOAT;
-  case Format_RGBA_UI32:
-    return VK_FORMAT_R32G32B32A32_UINT;
-  case Format_RGBA_F32:
-    return VK_FORMAT_R32G32B32A32_SFLOAT;
-  case Format_ETC2_RGB8:
-    return VK_FORMAT_ETC2_R8G8B8_UNORM_BLOCK;
-  case Format_ETC2_SRGB8:
-    return VK_FORMAT_ETC2_R8G8B8_SRGB_BLOCK;
-  case Format_BC7_RGBA:
-    return VK_FORMAT_BC7_UNORM_BLOCK;
-  case Format_Z_UN16:
-    return VK_FORMAT_D16_UNORM;
-  case Format_Z_UN24:
-    return VK_FORMAT_D24_UNORM_S8_UINT;
-  case Format_Z_F32:
-    return VK_FORMAT_D32_SFLOAT;
-  case Format_Z_UN24_S_UI8:
-    return VK_FORMAT_D24_UNORM_S8_UINT;
-  case Format_Z_F32_S_UI8:
-    return VK_FORMAT_D32_SFLOAT_S8_UINT;
-  case Format_YUV_NV12:
-    return VK_FORMAT_G8_B8R8_2PLANE_420_UNORM;
-  case Format_YUV_420p:
-    return VK_FORMAT_G8_B8_R8_3PLANE_420_UNORM;
-    default: 
-    return VK_FORMAT_UNDEFINED;
-  }
-
-}
 
 
 // NOTE replaced by just a Handle
@@ -1970,7 +2341,7 @@ vulkan_create_texture(VulkanContext *context, const TextureDesc& requestedDesc, 
         .a = VkComponentSwizzle(desc.swizzle.a),
     };
 
-    const VkSamplerYcbcrConversionInfo* ycbcrInfo = isDisjoint ? getOrCreateYcbcrConversionInfo(desc.format) : nullptr;
+    const VkSamplerYcbcrConversionInfo* ycbcrInfo = isDisjoint ? getOrCreateYcbcrConversionInfo(context, desc.format) : nullptr;
 
     image.imageView_ = vulkan_image_view_create(&image,
         context->device, vkImageViewType, vkFormat, aspect, 0, VK_REMAINING_MIP_LEVELS, 0, numLayers, mapping, ycbcrInfo, debugNameImageView);
@@ -2039,34 +2410,6 @@ Holder<SamplerHandle> VulkanContext::createSampler(const SamplerStateDesc& desc,
 
 
 
-SamplerHandle createSampler(VulkanContext *context, const VkSamplerCreateInfo& ci,
-                                                     Format yuvFormat,
-                                                     const char* debugName) {
-  //LVK_PROFILER_FUNCTION_COLOR(LVK_PROFILER_COLOR_CREATE);
-
-  VkSamplerCreateInfo cinfo = ci;
-
-  if (yuvFormat != Format_Invalid) {
-    cinfo.pNext = getOrCreateYcbcrConversionInfo(yuvFormat);
-    // must be CLAMP_TO_EDGE
-    // https://vulkan.lunarg.com/doc/view/1.3.268.0/windows/1.3-extensions/vkspec.html#VUID-VkSamplerCreateInfo-addressModeU-01646
-    cinfo.addressModeU = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
-    cinfo.addressModeV = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
-    cinfo.addressModeW = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
-    cinfo.anisotropyEnable = VK_FALSE;
-    cinfo.unnormalizedCoordinates = VK_FALSE;
-  }
-
-  VkSampler sampler = VK_NULL_HANDLE;
-  VK_ASSERT(vkCreateSampler(context->device, &cinfo, nullptr, &sampler));
-  VK_ASSERT(setDebugObjectName(context->device, VK_OBJECT_TYPE_SAMPLER, (uint64_t)sampler, debugName));
-
-  SamplerHandle handle = context->samplersPool_.create(VkSampler(sampler));
-
-  context->awaitingCreation_ = true;
-
-  return handle;
-}
 #endif
 
 

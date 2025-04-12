@@ -553,7 +553,7 @@ getPipelineStageAccess(VkImageLayout layout)
 [[nodiscard]] inline b32 vulkan_image_is_depth_attachment(VkImageUsageFlags vkUsageFlags_) { return (vkUsageFlags_ & VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT) > 0; }
 [[nodiscard]] inline b32 vulkan_image_is_attachment(VkImageUsageFlags vkUsageFlags_) { return (vkUsageFlags_ & (VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT|VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT)) > 0; }
 
-internal VkImageAspectFlags
+internal void
 vulkan_image_transition_layout(VulkanImage *image, VkCommandBuffer commandBuffer, VkImageLayout newImageLayout, VkImageSubresourceRange subresourceRange)
 {
     //LVK_PROFILER_FUNCTION_COLOR(LVK_PROFILER_COLOR_BARRIER);
@@ -796,6 +796,34 @@ vulkan_image_is_stencil_format(VkFormat format)
     return result; 
 }
 
+struct Handle
+{
+    // NOTE I can try using a zero index for the invalid one!
+    // ZII
+    u32 idx = 0;
+    u32 gen = 0;
+};
+
+b32 handle_is_empty(Handle *handle)
+{
+    b32 result = false;
+    if (handle->gen == 0)
+    {
+        result = true;
+    }
+    return result;
+}
+
+b32 handle_is_valid(Handle *handle)
+{
+    b32 result = false;
+    if (handle->gen != 0)
+    {
+        result = true;
+    }
+    return result;
+}
+
 
 
 struct TextureHandle 
@@ -820,26 +848,81 @@ enum PoolType
 
 struct PoolEntry
 {
-    void* data;
+    //void* data;
     u32 gen = 1;
+    VulkanImage image;
 };
 
 struct Pool
 {
     PoolType type;
 
-    u32 count;
-    PoolEntry entry[15];
+    u32 count = 1;
+    PoolEntry entries[15];
 };
 
+/*
+    TODO Como hace Casey para lidiar con esto? 
+    Cuando quiere instanciar una struct que tiene una union, segun el type el objecto va a ser distinto. Se me ocurre que al no usar funciones es mas simple.
+    Sino se tiene que hacer una funcion para cada combinacion diferente de type y dato. Deberia exitir un ejemplo de esto en HandmadeHero!
+    La otra es tener un Pool por cada typo alltogether asi:
+        struct PoolTexture
+        {
+            struct PoolEntry
+            {
+                VulkanImage image;
+                u32 gen = 1;
+            };
+            u32 count = 1;
+            PoolEntry entries[15];
+        }
 
-struct Handle
+        struct PoolSamplers
+        {
+            struct PoolEntry
+            {
+                VkSampler sampler;
+                u32 gen = 1;
+            };
+            u32 count = 1;
+            PoolEntry entries[15];
+        }
+
+
+    Otra variante es: internal Handle pool_create(Pool *pool, PoolType type, void *data)
+                            if type == TexturesPool
+                                (VulkanImage*) data
+
+    Otra variante es:
+        Pool pool = {0}
+        pool->type = TexturesPool
+        pool->data = (VulkanImage*)data;
+*/
+internal Handle
+pool_create(Pool *pool, VulkanImage image)
 {
-    // NOTE I can try using a zero index for the invalid one!
-    // ZII
-    u32 idx = 0;
-    u32 gen = 0;
-};
+    Handle result;
+    assert(pool->count < array_count(pool->entries));
+    result.idx = pool->count++;
+    result.gen = 1;
+    PoolEntry new_entry = {.gen = result.gen, .image = image};
+    pool->entries[result.idx] = new_entry;
+    return result; 
+}
+
+internal VulkanImage *
+pool_get(Pool *pool, Handle handle)
+{
+    VulkanImage *result = 0;
+    if(handle_is_valid(&handle))
+    {
+        PoolEntry *entry = &pool->entries[handle.idx];
+        result = &entry->image;
+    }
+    return result; 
+}
+
+
 
 // struct Holder -> Handle (it knows what pool it has, i guess)
 // Holder calls the respective destruction method for this
@@ -1162,6 +1245,7 @@ struct VulkanContext
     VkPipelineCache pipelineCache_;
 
     // a texture/sampler was created since the last descriptor set update
+    mutable bool awaitingCreation_ = false;
     mutable bool awaitingNewImmutableSamplers_ = false;
 
     // Originalmente en una config
@@ -1551,7 +1635,10 @@ getOrCreateYcbcrConversionInfo(VulkanContext *context, Format format)
     VkSamplerCreateInfo cinfo = samplerStateDescToVkSamplerCreateInfo({}, vulkan_get_physical_device_props(context).limits);
 
     context->ycbcrConversionData_[format].info = info;
-    context->ycbcrConversionData_[format].sampler = {context, vulkan_sampler_create(context, cinfo, format, "YUV sampler")};
+    // NOTE this is Holder<SamplerHandle>
+    //context->ycbcrConversionData_[format].sampler = {context, vulkan_sampler_create(context, cinfo, format, "YUV sampler")};
+    // Le saque el context por ahora
+    context->ycbcrConversionData_[format].sampler = vulkan_sampler_create(context, cinfo, format, "YUV sampler");
     context->numYcbcrSamplers_++;
     context->awaitingNewImmutableSamplers_ = true;
 
@@ -1580,7 +1667,8 @@ vulkan_sampler_create(VulkanContext *context, const VkSamplerCreateInfo& ci, For
     VK_ASSERT(vkCreateSampler(context->device, &cinfo, nullptr, &sampler));
     VK_ASSERT(setDebugObjectName(context->device, VK_OBJECT_TYPE_SAMPLER, (uint64_t)sampler, debugName));
 
-    Handle handle = context->samplersPool_.create(VkSampler(sampler));
+    //Handle handle = context->samplersPool_.create(VkSampler(sampler));
+    Handle handle = {0};
 
     context->awaitingCreation_ = true;
 
@@ -1996,12 +2084,13 @@ getBindImageMemoryInfo(const VkBindImagePlaneMemoryInfo* next, VkImage image, Vk
 internal void
 generateMipmap(VulkanContext *context, Handle handle)
 {
-    if(handle.empty())
+    if(handle_is_empty(&handle))
     {
         return;
     }
 
-    VulkanImage* tex = context->texturesPool_.get(handle);
+    //VulkanImage* tex = context->texturesPool_.get(handle);
+    VulkanImage* tex = pool_get(&context->texturesPool_, handle);
     if(tex->numLevels_ <= 1)
     {
         return;
@@ -2070,6 +2159,38 @@ getClosestDepthStencilFormat(Format desiredFormat, VulkanContext *context)
 }
 
 
+#if 0
+internal void
+vulkan_staging_device()
+{
+
+}
+
+internal void
+vulkan_upload(VulkanContext *context, Handle buffer_handle, const void *data, size_t size, size_t offset)
+{
+    b32 result = true;
+    if (!(data)) {
+        result = true;
+    }
+
+    gui_assert(size, "Data size should be non-zero");
+
+    lvk::VulkanBuffer* buf = buffersPool_.get(handle);
+
+    if (!(buf)) {
+        result = true;
+    }
+
+    if (!(offset + size <= buf->bufferSize_)) {
+        result = false;
+    }
+
+    context->stagingDevice_->bufferSubData(*buf, offset, size, data);
+
+    return lvk::Result();
+}
+#endif
 
 // NOTE replaced by just a Handle
 //internal Holder<TextureHandle> 
@@ -2359,10 +2480,9 @@ vulkan_create_texture(VulkanContext *context, const TextureDesc& requestedDesc, 
         return {};
     }
 
-    #if 0
-    // TODO fix
     //TextureHandle handle = texturesPool_.create(std::move(image));
-    Handle handle = texturesPool_.create(std::move(image));
+    //Handle handle = texturesPool_.create(std::move(image));
+    Handle handle = pool_create(&context->texturesPool_, image);
 
     context->awaitingCreation_ = true;
 
@@ -2370,7 +2490,8 @@ vulkan_create_texture(VulkanContext *context, const TextureDesc& requestedDesc, 
         assert(desc.type == TextureType_2D || desc.type == TextureType_Cube);
         assert(desc.dataNumMipLevels <= desc.numMipLevels);
         const uint32_t numLayers = desc.type == TextureType_Cube ? 6 : 1;
-        b32 res = upload(handle, {.dimensions = desc.dimensions, .numLayers = numLayers, .numMipLevels = desc.dataNumMipLevels}, desc.data);
+        //b32 res = upload(handle, {.dimensions = desc.dimensions, .numLayers = numLayers, .numMipLevels = desc.dataNumMipLevels}, desc.data);
+        b32 res = true;
         if (!res) {
         return {};
         }
@@ -2379,8 +2500,7 @@ vulkan_create_texture(VulkanContext *context, const TextureDesc& requestedDesc, 
         }
     }
 
-    #endif
-    return {0};
+    return handle;
 }
 
 
@@ -3830,6 +3950,7 @@ auto addOptionalExtensions = [&allDeviceExtensions, &deviceExtensionNames, &crea
                                     .dimensions = {1, 1, 1},
                                     .usage = TextureUsageBits_Sampled | TextureUsageBits_Storage,
                                     .data = &pixel,
+                                    .generateMipmaps = true
                                 }, "Dummy 1x1 (black)");
                             //.release();
         printf("idx: %d, gen: %d\n", context->dummyTexture_.idx, context->dummyTexture_.gen);

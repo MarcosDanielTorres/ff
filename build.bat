@@ -23,7 +23,7 @@ if "%vulkan%"=="1" set vulkan_lib_path=%VULKAN_SDK%\Lib
 set compile_flags=
 set compile_flags=-std:c++20 -nologo /EHsc %inc_files% -Zi -Od
 
-set compile=call cl /fsanitize=address %compile_flags% 
+set compile=call cl %compile_flags% 
 
 if not exist build mkdir build
 

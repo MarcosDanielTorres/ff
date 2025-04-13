@@ -15,6 +15,7 @@ set ui=0
 set opengl=0
 set vulkan=1
 set cmdline=0
+set meta=1
 
 @rem TODO combine them together!
 if "%vulkan%"=="1" set inc_files=%inc_files% -I%VULKAN_SDK%\Include
@@ -29,6 +30,14 @@ if not exist build mkdir build
 
 pushd build
 del *.obj
+if "%meta%"=="1"                %compile% ..\src\samples\metagen\meta.cpp /link user32.lib gdi32.lib
+if "%meta%"=="1" (
+    popd
+    build\meta.exe > .\src\generated\generated.h
+    build\meta.exe > .\src\samples\metagen\generated.h
+    pushd build
+)
+if "%meta%"=="1"                %compile% ..\src\samples\metagen\program.cpp
 if "%main%"=="1"                %compile% ..\src\main.cpp /link /LIBPATH:%freetype_lib_path% libfreetype.lib user32.lib gdi32.lib comdlg32.lib
 if "%cmdline%"=="1"             %compile% ..\src\samples\cmdline.cpp /link user32.lib gdi32.lib
 if "%opengl%"=="1"              %compile% ..\src\samples\opengl.cpp /link user32.lib gdi32.lib opengl32.lib

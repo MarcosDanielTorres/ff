@@ -33,6 +33,8 @@ global_variable bool has8BitIndices_ = false;
 #include <vma/vk_mem_alloc.h>
 #include <vulkan/vulkan_win32.h>
 
+#include "generated/generated.h"
+
 const char* k_def_validation_layer[] = {"VK_LAYER_KHRONOS_validation"};
 
 
@@ -833,8 +835,8 @@ struct TextureHandle
 
 /*
 Do these versions:
-- runtime checks
 - boilerplate
+- runtime checks
 - macro
 - metaprogramming
 - template (imaginary)
@@ -1279,8 +1281,9 @@ struct VulkanContext
     // TODO
     //Pool<Sampler, VkSampler> samplersPool_;
     //Pool<Texture, VulkanImage> texturesPool_;
-    Pool samplersPool_;
-    Pool texturesPool_;
+    Pool_Sampler samplersPool_;
+    Pool_Texture texturesPool_;
+    Pool_Buffer buffersPool_;
 
 
     VkPhysicalDeviceRayTracingPipelinePropertiesKHR rayTracingPipelineProperties;
@@ -3962,6 +3965,8 @@ auto addOptionalExtensions = [&allDeviceExtensions, &deviceExtensionNames, &crea
         assert(context->texturesPool_.count == 1);
     }
 
+
+    // CONTINUE HERE
 #if 0
     // default sampler
     assert(samplersPool_.count == 0);

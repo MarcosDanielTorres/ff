@@ -1,0 +1,51 @@
+somewhere around video 55 where he starts with the entities he mentions a function that allocates in world chunks the entities
+and then create a freelist. i guess is connected with code in 649 EnsureRegionIsUnpacked 
+
+
+
+
+Metagen:
+
+DEFINE_POOL(VkSampler, samplersPool, 15) 
+struct Pool_VkSampler_Entry
+{
+
+};
+struct Pool_VkSampler
+{
+    u32 count = 1;
+    Pool_VkSampler_Entry entries[15];
+}
+struct SamplerHandle
+{
+    u32 idx;
+    u32 gen;
+};
+
+b32 handle_is_valid(SamplerHandle handle)
+{
+
+}
+
+b32 handle_is_empty(SamplerHandle handle)
+{
+
+}
+
+
+VkSampler
+VulkanImage
+VulkanBuffer
+
+#define POOL(IGNORED, IGNORED)
+struct VulkanContext
+{
+    // lo reemplaza por: Pool_VulkanImage texturesPool?
+    // La duda mas grande es si se reemplazan las cosas dentro del mismo .c file o se manda a otro archivo
+    // usage: 
+        TextureHandle handle = {0};
+        TextureHandle pool_create(VulkanImage image), VulkanImage pool_get(TextureHandle)
+    POOL(VulkanImage texturesPool);
+    POOL(VkSampler samplersPool);
+    POOL(VulkanBuffer buffersPool);
+};

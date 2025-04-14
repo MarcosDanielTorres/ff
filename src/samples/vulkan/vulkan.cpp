@@ -2,6 +2,7 @@
 #include <iostream>
 #include <string>
 #include <vector>
+#include <future>
 #include <deque>
 #include <set>
 #include "base/base_core.h"
@@ -33,9 +34,21 @@ global_variable bool has8BitIndices_ = false;
 #include <vma/vk_mem_alloc.h>
 #include <vulkan/vulkan_win32.h>
 
+#include "vulkan_types.h"
 #include "generated/generated.h"
 
 const char* k_def_validation_layer[] = {"VK_LAYER_KHRONOS_validation"};
+// These bindings should match GLSL declarations injected into shaders in VulkanContext::createShaderModule().
+enum Bindings {
+  kBinding_Textures = 0,
+  kBinding_Samplers = 1,
+  kBinding_StorageImages = 2,
+  kBinding_YUVImages = 3,
+  kBinding_AccelerationStructures = 4,
+  kBinding_NumBindings = 5,
+};
+
+
 
 
 /*
@@ -313,6 +326,25 @@ LRESULT CALLBACK win32_main_callback(HWND Window, UINT Message, WPARAM wParam, L
     return result;
 }
 
+void Win32ProcessPendingMessages() {
+    MSG Message;
+    while(PeekMessage(&Message, 0, 0, 0, PM_REMOVE))
+    {
+        TranslateMessage(&Message);
+        switch(Message.message)
+        {
+            case WM_QUIT:
+            {
+                global_w32_window.is_running = false;
+            } break;
+            default:
+            {
+                DispatchMessageA(&Message);
+            } break;
+        }
+    }
+}
+
 
 
 bool hasExtension(const char* ext, const std::vector<VkExtensionProperties>& props) {
@@ -348,8 +380,6 @@ vulkan_has_extension(const char *ext, VkExtensionProperties *props, u32 count) {
     return result;
 }
 
-enum { LVK_MAX_COLOR_ATTACHMENTS = 8 };
-enum { LVK_MAX_MIP_LEVELS = 16 };
 
 
 struct VulkanDeviceHWDesc
@@ -460,33 +490,6 @@ struct DeviceQueues
     VkQueue computeQueue = VK_NULL_HANDLE;
 };
 
-struct VulkanImage
-{
-    VkImage vkImage_ = VK_NULL_HANDLE;
-    VkImageUsageFlags vkUsageFlags_ = 0;
-    VkDeviceMemory vkMemory_[3] = {VK_NULL_HANDLE, VK_NULL_HANDLE, VK_NULL_HANDLE};
-    VmaAllocation vmaAllocation_ = VK_NULL_HANDLE;
-    VkFormatProperties vkFormatProperties_ = {};
-    VkExtent3D vkExtent_ = {0, 0, 0};
-    VkImageType vkType_ = VK_IMAGE_TYPE_MAX_ENUM;
-    VkFormat vkImageFormat_ = VK_FORMAT_UNDEFINED;
-    VkSampleCountFlagBits vkSamples_ = VK_SAMPLE_COUNT_1_BIT;
-    void* mappedPtr_ = nullptr;
-    b32 isSwapchainImage_ = false;
-    b32 isOwningVkImage_ = true;
-    b32 isResolveAttachment = false; // autoset by cmdBeginRendering() for extra synchronization
-    uint32_t numLevels_ = 1u;
-    uint32_t numLayers_ = 1u;
-    b32 isDepthFormat_ = false;
-    b32 isStencilFormat_ = false;
-    char debugName_[256] = {0};
-    // current image layout
-    mutable VkImageLayout vkImageLayout_ = VK_IMAGE_LAYOUT_UNDEFINED;
-    // precached image views - owned by this VulkanImage
-    VkImageView imageView_ = VK_NULL_HANDLE; // default view with all mip-levels
-    VkImageView imageViewStorage_ = VK_NULL_HANDLE; // default view with identity swizzle (all mip-levels)
-    VkImageView imageViewForFramebuffer_[LVK_MAX_MIP_LEVELS][6] = {}; // max 6 faces for cubemap rendering
-};
 
 
 
@@ -617,6 +620,21 @@ vulkan_image_get_image_aspect_flags(VulkanImage *image)
     return flags;
 
 }
+
+internal VkDescriptorSetLayoutBinding getDSLBinding(uint32_t binding,
+                                                VkDescriptorType descriptorType,
+                                                uint32_t descriptorCount,
+                                                VkShaderStageFlags stageFlags,
+                                                const VkSampler* immutableSamplers = nullptr) {
+  return VkDescriptorSetLayoutBinding{
+      .binding = binding,
+      .descriptorType = descriptorType,
+      .descriptorCount = descriptorCount,
+      .stageFlags = stageFlags,
+      .pImmutableSamplers = immutableSamplers,
+  };
+}
+
 
 internal void
 imageMemoryBarrier2(VkCommandBuffer buffer,
@@ -827,21 +845,15 @@ b32 handle_is_valid(Handle *handle)
 }
 
 
-
-struct TextureHandle 
-{
-
-};
+#if 0
+//Do these versions:
+//- boilerplate
+//- runtime checks
+//- macro
+//- metaprogramming
+//- template (imaginary)
 
 /*
-Do these versions:
-- boilerplate
-- runtime checks
-- macro
-- metaprogramming
-- template (imaginary)
-*/
-
 enum PoolType
 {
     TexturesPool,
@@ -924,6 +936,7 @@ pool_get(Pool *pool, Handle handle)
     return result; 
 }
 
+#endif
 
 
 // struct Holder -> Handle (it knows what pool it has, i guess)
@@ -956,6 +969,24 @@ struct CommandBufferWrapper
     VkSemaphore semaphore_ = VK_NULL_HANDLE;
     bool isEncoding_ = false;
 };
+
+VkSemaphore createSemaphoreTimeline(VkDevice device, uint64_t initialValue, const char* debugName) {
+  const VkSemaphoreTypeCreateInfo semaphoreTypeCreateInfo = {
+      .sType = VK_STRUCTURE_TYPE_SEMAPHORE_TYPE_CREATE_INFO,
+      .semaphoreType = VK_SEMAPHORE_TYPE_TIMELINE,
+      .initialValue = initialValue,
+  };
+  const VkSemaphoreCreateInfo ci = {
+      .sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO,
+      .pNext = &semaphoreTypeCreateInfo,
+      .flags = 0,
+  };
+  VkSemaphore semaphore = VK_NULL_HANDLE;
+  VK_ASSERT(vkCreateSemaphore(device, &ci, nullptr, &semaphore));
+  VK_ASSERT(setDebugObjectName(device, VK_OBJECT_TYPE_SEMAPHORE, (uint64_t)semaphore, debugName));
+  return semaphore;
+}
+
 
 internal VkSemaphore
 vulkan_create_semaphore(VkDevice device, const char *debug_name)
@@ -1217,11 +1248,44 @@ struct VulkanStagingDevice
 
 
 
-struct YcbcrConversionData {
+// pimpl
+struct YcbcrConversionData 
+{
     VkSamplerYcbcrConversionInfo info;
     //Holder<SamplerHandle> sampler;
-    Handle sampler;
+    SamplerHandle sampler;
 };
+
+struct DeferredTask 
+{
+  DeferredTask(std::packaged_task<void()>&& task, SubmitHandle handle) : task_(std::move(task)), handle_(handle) {}
+  std::packaged_task<void()> task_;
+  SubmitHandle handle_;
+};
+
+// pimpl
+
+
+struct VulkanSwapchain
+{
+    enum { LVK_MAX_SWAPCHAIN_IMAGES = 16 };
+
+    VulkanContext *ctx_;
+    VkDevice device_ = VK_NULL_HANDLE;
+    VkQueue graphicsQueue_ = VK_NULL_HANDLE;
+    uint32_t width_ = 0;
+    uint32_t height_ = 0;
+    uint32_t numSwapchainImages_ = 0;
+    uint32_t currentImageIndex_ = 0; // [0...numSwapchainImages_)
+    uint64_t currentFrameIndex_ = 0; // [0...+inf)
+    bool getNextImage_ = true;
+    VkSwapchainKHR swapchain_ = VK_NULL_HANDLE;
+    VkSurfaceFormatKHR surfaceFormat_ = {.format = VK_FORMAT_UNDEFINED};
+    TextureHandle swapchainTextures_[LVK_MAX_SWAPCHAIN_IMAGES] = {};
+    VkSemaphore acquireSemaphore_[LVK_MAX_SWAPCHAIN_IMAGES] = {};
+    uint64_t timelineWaitValues_[LVK_MAX_SWAPCHAIN_IMAGES] = {};
+};
+
 
 struct VulkanContext
 {
@@ -1229,14 +1293,21 @@ struct VulkanContext
     VkPhysicalDevice physical_device;
     VkDevice device;
 
+    VkDebugUtilsMessengerEXT vkDebugUtilsMessenger_ = VK_NULL_HANDLE;
+
+    VulkanSwapchain *swapchain_;
+    VkSemaphore timelineSemaphore_;
 
     VulkanImmediateCommands *immediate_;
     VulkanStagingDevice *stagingDevice_;
 
+    // pimpl
     // NOTE unique_ptr<VulkanContextImpl> pimpl_;
     VmaAllocator vma;
     YcbcrConversionData ycbcrConversionData_[256]; // indexed by lvk::Format
     u32 numYcbcrSamplers_ = 0;
+    mutable std::deque<DeferredTask> deferredTasks_;
+    // pimpl
 
 
 
@@ -1255,7 +1326,7 @@ struct VulkanContext
     DeviceQueues queues;
     // NOTE instead of having a TextureHandle I'm going to have a Handle and know at runtime what to do. This is provisiory!
     // The same applies to Holder
-    Handle dummyTexture_;
+    TextureHandle dummyTexture_;
 
     // TODO borrar algunos de estos porque no todo es necesario para esta demo
     VkResolveModeFlagBits depthResolveMode_ = VK_RESOLVE_MODE_SAMPLE_ZERO_BIT;
@@ -1557,7 +1628,7 @@ samplerStateDescToVkSamplerCreateInfo(const SamplerStateDesc& desc, const VkPhys
 
 
 //TOOD see this cyclick thing!
-internal Handle vulkan_sampler_create(VulkanContext *context, const VkSamplerCreateInfo& ci, Format yuvFormat, const char* debugName);
+internal SamplerHandle vulkan_sampler_create(VulkanContext *context, const VkSamplerCreateInfo& ci, Format yuvFormat, const char* debugName);
 
 internal VkSamplerYcbcrConversionInfo *
 getOrCreateYcbcrConversionInfo(VulkanContext *context, Format format)
@@ -1639,6 +1710,8 @@ getOrCreateYcbcrConversionInfo(VulkanContext *context, Format format)
 
     context->ycbcrConversionData_[format].info = info;
     // NOTE this is Holder<SamplerHandle>
+    // IMPORTANT prestar atencion a esto es Holder
+    // Supongo que si no borro esto igual el validation layer va a romper las bolas
     //context->ycbcrConversionData_[format].sampler = {context, vulkan_sampler_create(context, cinfo, format, "YUV sampler")};
     // Le saque el context por ahora
     context->ycbcrConversionData_[format].sampler = vulkan_sampler_create(context, cinfo, format, "YUV sampler");
@@ -1648,8 +1721,7 @@ getOrCreateYcbcrConversionInfo(VulkanContext *context, Format format)
     return &context->ycbcrConversionData_[format].info;
 }
 
-// TODO internal SamplerHandle
-internal Handle
+internal SamplerHandle
 vulkan_sampler_create(VulkanContext *context, const VkSamplerCreateInfo& ci, Format yuvFormat, const char* debugName) 
 {
     //LVK_PROFILER_FUNCTION_COLOR(LVK_PROFILER_COLOR_CREATE);
@@ -1671,7 +1743,7 @@ vulkan_sampler_create(VulkanContext *context, const VkSamplerCreateInfo& ci, For
     VK_ASSERT(setDebugObjectName(context->device, VK_OBJECT_TYPE_SAMPLER, (uint64_t)sampler, debugName));
 
     //Handle handle = context->samplersPool_.create(VkSampler(sampler));
-    Handle handle = {0};
+    SamplerHandle handle = pool_create(&context->samplersPool_, VkSampler(sampler));
 
     context->awaitingCreation_ = true;
 
@@ -1714,23 +1786,20 @@ vulkan_staging_device_create(VulkanStagingDevice *staging_device, VulkanContext 
 }
 
 
-#if 0
-void deferredTask(VulkanContext* context, std::packaged_task<void()>&& task, SubmitHandle handle) const {
-  if (handle.empty()) {
-    handle = immediate_->getNextSubmitHandle();
-  }
-  pimpl_->deferredTasks_.emplace_back(std::move(task), handle);
-}
-#endif
+//void deferredTask(std::packaged_task<void()>&& task, SubmitHandle handle)  {
+//    if (handle.empty()) {
+//        handle = context->immediate_->nextSubmitHandle_;
+//    }
+//    context->deferredTasks_.emplace_back(std::move(task), handle);
+//}
 
-#if 0
-growDescriptorPool(VulkanContext *context, u32 maxTextures, u32 maxSamplers, u32 maxAccelStructs) {
+void growDescriptorPool(VulkanContext *context, u32 maxTextures, u32 maxSamplers, u32 maxAccelStructs) {
   context->currentMaxTextures_ = maxTextures;
   context->currentMaxSamplers_ = maxSamplers;
   context->currentMaxAccelStructs_ = maxAccelStructs;
 
 #if LVK_VULKAN_PRINT_COMMANDS
-  LLOGL("growDescriptorPool(%u, %u)\n", maxTextures, maxSamplers);
+  //LLOGL("growDescriptorPool(%u, %u)\n", maxTextures, maxSamplers);
 #endif // LVK_VULKAN_PRINT_COMMANDS
 
   gui_assert(maxTextures <= context->vkPhysicalDeviceVulkan12Properties.maxDescriptorSetUpdateAfterBindSampledImages,
@@ -1742,11 +1811,11 @@ growDescriptorPool(VulkanContext *context, u32 maxTextures, u32 maxSamplers, u32
   }
 #endif
 
-  if (vkDSL_ != VK_NULL_HANDLE) {
-    deferredTask(std::packaged_task<void()>([device = context->device, dsl = vkDSL_]() { vkDestroyDescriptorSetLayout(device, dsl, nullptr); }));
+  if (context->vkDSL_ != VK_NULL_HANDLE) {
+    //deferredTask(std::packaged_task<void()>([device = context->device, dsl = context->vkDSL_]() { vkDestroyDescriptorSetLayout(device, dsl, nullptr); }));
   }
-  if (vkDPool_ != VK_NULL_HANDLE) {
-    deferredTask(std::packaged_task<void()>([device = context->device, dp = vkDPool_]() { vkDestroyDescriptorPool(device, dp, nullptr); }));
+  if (context->vkDPool_ != VK_NULL_HANDLE) {
+    //deferredTask(std::packaged_task<void()>([device = context->device, dp = context->vkDPool_]() { vkDestroyDescriptorPool(device, dp, nullptr); }));
   }
 
   bool hasYUVImages = false;
@@ -1768,6 +1837,7 @@ growDescriptorPool(VulkanContext *context, u32 maxTextures, u32 maxSamplers, u32
   std::vector<VkSampler> immutableSamplers;
   const VkSampler* immutableSamplersData = nullptr;
 
+  #if 0
   if (hasYUVImages) {
     VkSampler dummySampler = samplersPool_.objects_[0].obj_;
     immutableSamplers.reserve(texturesPool_.objects_.size());
@@ -1780,6 +1850,7 @@ growDescriptorPool(VulkanContext *context, u32 maxTextures, u32 maxSamplers, u32
     }
     immutableSamplersData = immutableSamplers.data();
   }
+  #endif
 
   // create default descriptor set layout which is going to be shared by graphics pipelines
   VkShaderStageFlags stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_TESSELLATION_CONTROL_BIT |
@@ -1813,9 +1884,9 @@ growDescriptorPool(VulkanContext *context, u32 maxTextures, u32 maxSamplers, u32
       .bindingCount = uint32_t(hasAccelerationStructure_ ? kBinding_NumBindings : kBinding_NumBindings - 1),
       .pBindings = bindings,
   };
-  VK_ASSERT(vkCreateDescriptorSetLayout(vkDevice_, &dslci, nullptr, &vkDSL_));
+  VK_ASSERT(vkCreateDescriptorSetLayout(context->device, &dslci, nullptr, &context->vkDSL_));
   VK_ASSERT(setDebugObjectName(
-      vkDevice_, VK_OBJECT_TYPE_DESCRIPTOR_SET_LAYOUT, (uint64_t)vkDSL_, "Descriptor Set Layout: VulkanContext::vkDSL_"));
+      context->device, VK_OBJECT_TYPE_DESCRIPTOR_SET_LAYOUT, (uint64_t)context->vkDSL_, "Descriptor Set Layout: VulkanContext::vkDSL_"));
 
   {
     // create default descriptor pool and allocate 1 descriptor set
@@ -1833,21 +1904,24 @@ growDescriptorPool(VulkanContext *context, u32 maxTextures, u32 maxSamplers, u32
         .poolSizeCount = uint32_t(hasAccelerationStructure_ ? kBinding_NumBindings : kBinding_NumBindings - 1),
         .pPoolSizes = poolSizes,
     };
-    VK_ASSERT_RETURN(vkCreateDescriptorPool(vkDevice_, &ci, nullptr, &vkDPool_));
+    VK_ASSERT_RETURN(vkCreateDescriptorPool(context->device, &ci, nullptr, &context->vkDPool_));
     const VkDescriptorSetAllocateInfo ai = {
         .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
-        .descriptorPool = vkDPool_,
+        .descriptorPool = context->vkDPool_,
         .descriptorSetCount = 1,
-        .pSetLayouts = &vkDSL_,
+        .pSetLayouts = &context->vkDSL_,
     };
-    VK_ASSERT_RETURN(vkAllocateDescriptorSets(vkDevice_, &ai, &vkDSet_));
+    VK_ASSERT_RETURN(vkAllocateDescriptorSets(context->device, &ai, &context->vkDSet_));
   }
 
   context->awaitingNewImmutableSamplers_ = false;
-
-  return Result();
 }
-#endif
+
+enum ColorSpace : uint8_t {
+  ColorSpace_SRGB_LINEAR,
+  ColorSpace_SRGB_NONLINEAR,
+};
+
 
 enum TextureType : uint8_t {
   TextureType_2D,
@@ -2085,9 +2159,9 @@ getBindImageMemoryInfo(const VkBindImagePlaneMemoryInfo* next, VkImage image, Vk
 }
 
 internal void
-generateMipmap(VulkanContext *context, Handle handle)
+generateMipmap(VulkanContext *context, TextureHandle handle)
 {
-    if(handle_is_empty(&handle))
+    if(handle_is_empty(handle))
     {
         return;
     }
@@ -2169,6 +2243,7 @@ vulkan_staging_device()
 
 }
 
+// in createBuffer and createTexture
 internal void
 vulkan_upload(VulkanContext *context, Handle buffer_handle, const void *data, size_t size, size_t offset)
 {
@@ -2197,7 +2272,7 @@ vulkan_upload(VulkanContext *context, Handle buffer_handle, const void *data, si
 
 // NOTE replaced by just a Handle
 //internal Holder<TextureHandle> 
-internal Handle
+internal TextureHandle
 vulkan_create_texture(VulkanContext *context, const TextureDesc& requestedDesc, const char* debugName) 
 {
     //LVK_PROFILER_FUNCTION_COLOR(LVK_PROFILER_COLOR_CREATE);
@@ -2253,7 +2328,7 @@ vulkan_create_texture(VulkanContext *context, const TextureDesc& requestedDesc, 
         usageFlags |= VK_IMAGE_USAGE_SAMPLED_BIT;
     }
     if (desc.usage & TextureUsageBits_Storage) {
-        if(desc.numSamples <= 1) printf("Storage images cannot be multisampled\n");
+        if(desc.numSamples > 1) printf("Storage images cannot be multisampled\n");
         usageFlags |= VK_IMAGE_USAGE_STORAGE_BIT;
     }
     if (desc.usage & TextureUsageBits_Attachment) {
@@ -2485,7 +2560,7 @@ vulkan_create_texture(VulkanContext *context, const TextureDesc& requestedDesc, 
 
     //TextureHandle handle = texturesPool_.create(std::move(image));
     //Handle handle = texturesPool_.create(std::move(image));
-    Handle handle = pool_create(&context->texturesPool_, image);
+    TextureHandle handle = pool_create(&context->texturesPool_, image);
 
     context->awaitingCreation_ = true;
 
@@ -2618,6 +2693,90 @@ vulkan_query_devices(Arena *arena, VulkanContext* context, VkPhysicalDeviceType 
     temp_end(temp_arena);
     return result;
 }
+
+VKAPI_ATTR VkBool32 VKAPI_CALL vulkanDebugCallback(VkDebugUtilsMessageSeverityFlagBitsEXT msgSeverity,
+                                                   [[maybe_unused]] VkDebugUtilsMessageTypeFlagsEXT msgType,
+                                                   const VkDebugUtilsMessengerCallbackDataEXT* cbData,
+                                                   void* userData) {
+  if (msgSeverity < VK_DEBUG_UTILS_MESSAGE_SEVERITY_INFO_BIT_EXT) {
+    return VK_FALSE;
+  }
+
+  const bool isError = (msgSeverity & VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT) != 0;
+  const bool isWarning = (msgSeverity & VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT) != 0;
+
+  const size_t len = cbData->pMessage ? strlen(cbData->pMessage) : 128u;
+
+  assert(len < 65536);
+
+  char* errorName = (char*)alloca(len + 1);
+  int object = 0;
+  void* handle = nullptr;
+  char typeName[128] = {};
+  void* messageID = nullptr;
+
+//  minilog::eLogLevel level = minilog::Log;
+  if (isError) {
+    VulkanContext* ctx = (VulkanContext*)userData;
+    //level = ctx->config_.terminateOnValidationError ? minilog::FatalError : minilog::Warning;
+  }
+
+  if (!isError && !isWarning && cbData->pMessageIdName) {
+    if (strcmp(cbData->pMessageIdName, "Loader Message") == 0) {
+      return VK_FALSE;
+    }
+  }
+
+  if (sscanf(cbData->pMessage,
+             "Validation Error: [ %[^]] ] Object %i: handle = %p, type = %127s | MessageID = %p",
+             errorName,
+             &object,
+             &handle,
+             typeName,
+             &messageID) >= 2) {
+    const char* message = strrchr(cbData->pMessage, '|') + 1;
+
+    printf("%sValidation layer:\n Validation Error: %s \n Object %i: handle = %p, type = %s\n "
+                     "MessageID = %p \n%s \n",
+                     isError ? "\nERROR:\n" : "",
+                     errorName,
+                     object,
+                     handle,
+                     typeName,
+                     messageID,
+                     message);
+  } else {
+    printf("%sValidation layer:\n%s\n", isError ? "\nERROR:\n" : "", cbData->pMessage);
+  }
+
+  #if 0
+  if (isError) {
+    VulkanContext* ctx = (VulkanContext*)userData;
+
+    if (ctx->config_.shaderModuleErrorCallback != nullptr) {
+      // retrieve source code references - this is very experimental and depends a lot on the validation layer output
+      int line = 0;
+      int col = 0;
+      const char* substr1 = strstr(cbData->pMessage, "Shader validation error occurred at line ");
+      if (substr1 && sscanf(substr1, "Shader validation error occurred at line %d, column %d.", &line, &col) >= 1) {
+        const char* substr2 = strstr(cbData->pMessage, "Shader Module (Shader Module: ");
+        char* shaderModuleDebugName = (char*)alloca(len + 1);
+        VkShaderModule shaderModule = VK_NULL_HANDLE;
+#if VK_USE_64_BIT_PTR_DEFINES
+        if (substr2 && sscanf(substr2, "Shader Module (Shader Module: %[^)])(%p)", shaderModuleDebugName, &shaderModule) == 2) {
+#else
+        if (substr2 && sscanf(substr2, "Shader Module (Shader Module: %[^)])(%llu)", shaderModuleDebugName, &shaderModule) == 2) {
+#endif // VK_USE_64_BIT_PTR_DEFINES
+          ctx->invokeShaderModuleErrorCallback(line, col, shaderModuleDebugName, shaderModule);
+        }
+      }
+    }
+  }
+  #endif
+
+  return VK_FALSE;
+}
+
 
 internal VulkanContext
 vulkan_create_context_inside(Arena *transient, HWND handle)
@@ -2811,6 +2970,21 @@ vulkan_create_context_inside(Arena *transient, HWND handle)
     // TODO: see what does it do
     volkLoadInstance(context.instance);
 
+    // debug messenger
+    if (has_debug_utils) {
+        const VkDebugUtilsMessengerCreateInfoEXT ci = {
+            .sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT,
+            .messageSeverity = VK_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_SEVERITY_INFO_BIT_EXT |
+                            VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT,
+            .messageType = VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT |
+                        VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT,
+            .pfnUserCallback = &vulkanDebugCallback,
+            .pUserData = (void*)&context,
+        };
+        VK_ASSERT(vkCreateDebugUtilsMessengerEXT(context.instance, &ci, nullptr, &context.vkDebugUtilsMessenger_));
+    }
+
+
     printf("\nVulkan instance extensions:\n");
 
     for (u32 i = 0; i < all_instance_extensions_count; i++) {
@@ -2821,7 +2995,7 @@ vulkan_create_context_inside(Arena *transient, HWND handle)
 
     temp_end(temp_arena);
 
-    #if 0
+    #if 1
     {
         // surface creation
         #if defined(VK_USE_PLATFORM_WIN32_KHR)
@@ -2830,11 +3004,11 @@ vulkan_create_context_inside(Arena *transient, HWND handle)
             .hinstance = GetModuleHandle(nullptr),
             .hwnd = (HWND)handle,
         };
-        VK_ASSERT(vkCreateWin32SurfaceKHR(context.instance, &ci, nullptr, &vkSurface_));
+        VK_ASSERT(vkCreateWin32SurfaceKHR(context.instance, &ci, nullptr, &context.vkSurface_));
         #elif defined(VK_USE_PLATFORM_ANDROID_KHR)
         const VkAndroidSurfaceCreateInfoKHR ci = {
             .sType = VK_STRUCTURE_TYPE_ANDROID_SURFACE_CREATE_INFO_KHR, .pNext = nullptr, .flags = 0, .window = (ANativeWindow*)window};
-        VK_ASSERT(vkCreateAndroidSurfaceKHR(vkInstance_, &ci, nullptr, &vkSurface_));
+        VK_ASSERT(vkCreateAndroidSurfaceKHR(vkInstance_, &ci, nullptr, &context.vkSurface_));
         #elif defined(VK_USE_PLATFORM_XLIB_KHR)
         const VkXlibSurfaceCreateInfoKHR ci = {
             .sType = VK_STRUCTURE_TYPE_XLIB_SURFACE_CREATE_INFO_KHR,
@@ -2842,7 +3016,7 @@ vulkan_create_context_inside(Arena *transient, HWND handle)
             .dpy = (Display*)display,
             .window = (Window)window,
         };
-        VK_ASSERT(vkCreateXlibSurfaceKHR(vkInstance_, &ci, nullptr, &vkSurface_));
+        VK_ASSERT(vkCreateXlibSurfaceKHR(vkInstance_, &ci, nullptr, &context.vkSurface_));
         #elif defined(VK_USE_PLATFORM_WAYLAND_KHR)
         const VkWaylandSurfaceCreateInfoKHR ci = {
             .sType = VK_STRUCTURE_TYPE_WAYLAND_SURFACE_CREATE_INFO_KHR,
@@ -2850,14 +3024,14 @@ vulkan_create_context_inside(Arena *transient, HWND handle)
             .display = (wl_display*)display,
             .surface = (wl_surface*)window,
         };
-        VK_ASSERT(vkCreateWaylandSurfaceKHR(vkInstance_, &ci, nullptr, &vkSurface_));
+        VK_ASSERT(vkCreateWaylandSurfaceKHR(vkInstance_, &ci, nullptr, &context.vkSurface_));
         #elif defined(VK_USE_PLATFORM_MACOS_MVK)
         const VkMacOSSurfaceCreateInfoMVK ci = {
             .sType = VK_STRUCTURE_TYPE_MACOS_SURFACE_CREATE_INFO_MVK,
             .flags = 0,
             .pView = window,
         };
-        VK_ASSERT(vkCreateMacOSSurfaceMVK(vkInstance_, &ci, nullptr, &vkSurface_));
+        VK_ASSERT(vkCreateMacOSSurfaceMVK(vkInstance_, &ci, nullptr, &context.vkSurface_));
         #else
         #error Implement for other platforms
         #endif
@@ -3110,7 +3284,7 @@ vulkan_create_context(Arena *transient, HWND handle, VulkanContext* context)
 
     temp_end(temp_arena);
 
-    #if 0
+    #if 1
     {
         // surface creation
         #if defined(VK_USE_PLATFORM_WIN32_KHR)
@@ -3119,11 +3293,11 @@ vulkan_create_context(Arena *transient, HWND handle, VulkanContext* context)
             .hinstance = GetModuleHandle(nullptr),
             .hwnd = (HWND)handle,
         };
-        VK_ASSERT(vkCreateWin32SurfaceKHR(context.instance, &ci, nullptr, &vkSurface_));
+        VK_ASSERT(vkCreateWin32SurfaceKHR(context->instance, &ci, nullptr, &context->vkSurface_));
         #elif defined(VK_USE_PLATFORM_ANDROID_KHR)
         const VkAndroidSurfaceCreateInfoKHR ci = {
             .sType = VK_STRUCTURE_TYPE_ANDROID_SURFACE_CREATE_INFO_KHR, .pNext = nullptr, .flags = 0, .window = (ANativeWindow*)window};
-        VK_ASSERT(vkCreateAndroidSurfaceKHR(vkInstance_, &ci, nullptr, &vkSurface_));
+        VK_ASSERT(vkCreateAndroidSurfaceKHR(vkInstance_, &ci, nullptr, &context->vkSurface_));
         #elif defined(VK_USE_PLATFORM_XLIB_KHR)
         const VkXlibSurfaceCreateInfoKHR ci = {
             .sType = VK_STRUCTURE_TYPE_XLIB_SURFACE_CREATE_INFO_KHR,
@@ -3131,7 +3305,7 @@ vulkan_create_context(Arena *transient, HWND handle, VulkanContext* context)
             .dpy = (Display*)display,
             .window = (Window)window,
         };
-        VK_ASSERT(vkCreateXlibSurfaceKHR(vkInstance_, &ci, nullptr, &vkSurface_));
+        VK_ASSERT(vkCreateXlibSurfaceKHR(vkInstance_, &ci, nullptr, &context->vkSurface_));
         #elif defined(VK_USE_PLATFORM_WAYLAND_KHR)
         const VkWaylandSurfaceCreateInfoKHR ci = {
             .sType = VK_STRUCTURE_TYPE_WAYLAND_SURFACE_CREATE_INFO_KHR,
@@ -3139,14 +3313,14 @@ vulkan_create_context(Arena *transient, HWND handle, VulkanContext* context)
             .display = (wl_display*)display,
             .surface = (wl_surface*)window,
         };
-        VK_ASSERT(vkCreateWaylandSurfaceKHR(vkInstance_, &ci, nullptr, &vkSurface_));
+        VK_ASSERT(vkCreateWaylandSurfaceKHR(vkInstance_, &ci, nullptr, &context->vkSurface_));
         #elif defined(VK_USE_PLATFORM_MACOS_MVK)
         const VkMacOSSurfaceCreateInfoMVK ci = {
             .sType = VK_STRUCTURE_TYPE_MACOS_SURFACE_CREATE_INFO_MVK,
             .flags = 0,
             .pView = window,
         };
-        VK_ASSERT(vkCreateMacOSSurfaceMVK(vkInstance_, &ci, nullptr, &vkSurface_));
+        VK_ASSERT(vkCreateMacOSSurfaceMVK(vkInstance_, &ci, nullptr, &context->vkSurface_));
         #else
         #error Implement for other platforms
         #endif
@@ -3344,6 +3518,9 @@ vulkan_init_context(Arena *arena, Arena *transient, VulkanContext *context, Vulk
     context->physical_device = (VkPhysicalDevice) decs->guid;
     b32 use_staging = !vulkan_is_host_visible_single_heap_memory(context->physical_device);
 
+    context->currentMaxTextures_ = 16;
+    context->currentMaxSamplers_ = 16;
+    context->currentMaxAccelStructs_ = 1;
 
     /* NOTE 
       I'm going to keep doing this. I would need to have a dynamic array probably but
@@ -3410,8 +3587,8 @@ vkGetPhysicalDeviceProperties2(context->physical_device, &context->vkPhysicalDev
     //printf("Driver info: %s %s\n", vkPhysicalDeviceDriverProperties_.driverName, vkPhysicalDeviceDriverProperties_.driverInfo);
     printf("Driver info: %s %s\n", context->vkPhysicalDeviceDriverProperties.driverName, context->vkPhysicalDeviceDriverProperties.driverInfo);
 
-    #if 0
-    printf("Vulkan phsyical device extensions: %d\n", all_device_extensions.count);
+    #if 1
+    printf("Vulkan physical device extensions: %d\n", all_device_extensions.count);
     for(u32 i = 0; i < all_device_extensions.count; i++)
     {
         VkExtensionProperties *device_extension = all_device_extensions.extensions + i;
@@ -3953,7 +4130,6 @@ auto addOptionalExtensions = [&allDeviceExtensions, &deviceExtensionNames, &crea
                                     .dimensions = {1, 1, 1},
                                     .usage = TextureUsageBits_Sampled | TextureUsageBits_Storage,
                                     .data = &pixel,
-                                    .generateMipmaps = true
                                 }, "Dummy 1x1 (black)");
                             //.release();
         printf("idx: %d, gen: %d\n", context->dummyTexture_.idx, context->dummyTexture_.gen);
@@ -3966,11 +4142,11 @@ auto addOptionalExtensions = [&allDeviceExtensions, &deviceExtensionNames, &crea
     }
 
 
-    // CONTINUE HERE
-#if 0
+
+
     // default sampler
-    assert(samplersPool_.count == 0);
-    createSampler(
+    assert(context->samplersPool_.count == 0);
+    vulkan_sampler_create(
         context,
         {
             .sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO,
@@ -3992,10 +4168,10 @@ auto addOptionalExtensions = [&allDeviceExtensions, &deviceExtensionNames, &crea
             .borderColor = VK_BORDER_COLOR_INT_OPAQUE_BLACK,
             .unnormalizedCoordinates = VK_FALSE,
         },
-        nullptr,
         Format_Invalid,
         "Sampler: default");
 
+        // CONTINUE HERE
     growDescriptorPool(context, context->currentMaxTextures_, context->currentMaxSamplers_, context->currentMaxAccelStructs_);
 
     querySurfaceCapabilities(context);
@@ -4052,15 +4228,199 @@ auto addOptionalExtensions = [&allDeviceExtensions, &deviceExtensionNames, &crea
     assert(pimpl_->tracyVkCtx_);
     #endif // LVK_WITH_TRACY_GPU
     #endif
-#endif
 
     temp_end(temp_arena);
 }
 
+VkSurfaceFormatKHR chooseSwapSurfaceFormat(const std::vector<VkSurfaceFormatKHR>& formats, ColorSpace colorSpace) {
+    assert(!formats.empty());
 
-void vulkan_init_swapchain(VulkanContext *context, u32 width, u32 height)
+    auto isNativeSwapChainBGR = [](const std::vector<VkSurfaceFormatKHR>& formats) -> bool {
+        for (const VkSurfaceFormatKHR& fmt : formats) {
+        // The preferred format should be the one which is closer to the beginning of the formats
+        // container. If BGR is encountered earlier, it should be picked as the format of choice. If RGB
+        // happens to be earlier, take it.
+        if (fmt.format == VK_FORMAT_R8G8B8A8_UNORM || fmt.format == VK_FORMAT_R8G8B8A8_SRGB ||
+            fmt.format == VK_FORMAT_A2R10G10B10_UNORM_PACK32) {
+            return false;
+        }
+        if (fmt.format == VK_FORMAT_B8G8R8A8_UNORM || fmt.format == VK_FORMAT_B8G8R8A8_SRGB ||
+            fmt.format == VK_FORMAT_A2B10G10R10_UNORM_PACK32) {
+            return true;
+        }
+        }
+        return false;
+    };
+
+    auto colorSpaceToVkSurfaceFormat = [](ColorSpace colorSpace, bool isBGR) -> VkSurfaceFormatKHR {
+        switch (colorSpace) {
+        case ColorSpace_SRGB_LINEAR:
+        // the closest thing to sRGB linear
+        return VkSurfaceFormatKHR{isBGR ? VK_FORMAT_B8G8R8A8_UNORM : VK_FORMAT_R8G8B8A8_UNORM, VK_COLOR_SPACE_BT709_LINEAR_EXT};
+        case ColorSpace_SRGB_NONLINEAR:
+        [[fallthrough]];
+        default:
+        // default to normal sRGB non linear.
+        return VkSurfaceFormatKHR{isBGR ? VK_FORMAT_B8G8R8A8_SRGB : VK_FORMAT_R8G8B8A8_SRGB, VK_COLOR_SPACE_SRGB_NONLINEAR_KHR};
+        }
+    };
+
+    const VkSurfaceFormatKHR preferred = colorSpaceToVkSurfaceFormat(colorSpace, isNativeSwapChainBGR(formats));
+
+    for (const VkSurfaceFormatKHR& fmt : formats) {
+        if (fmt.format == preferred.format && fmt.colorSpace == preferred.colorSpace) {
+        return fmt;
+        }
+    }
+
+    // if we can't find a matching format and color space, fallback on matching only format
+    for (const VkSurfaceFormatKHR& fmt : formats) {
+        if (fmt.format == preferred.format) {
+        return fmt;
+        }
+    }
+
+    printf("Could not find a native swap chain format that matched our designed swapchain format. Defaulting to first supported format.\n");
+
+    return formats[0];
+}
+
+
+
+void vulkan_init_swapchain(Arena *arena, Arena *transient, VulkanContext *context, u32 width, u32 height)
 {
+    context->swapchain_ = (VulkanSwapchain*)arena_push_size(arena, VulkanSwapchain, 1);
+    //
+    context->swapchain_->ctx_ = context;
+    context->swapchain_->device_ = context->device;
+    context->swapchain_->graphicsQueue_ = context->queues.graphicsQueue;
+    context->swapchain_->width_ = width;
+    context->swapchain_->height_ = height;
+    VulkanSwapchain *swap = context->swapchain_;
+    swap->surfaceFormat_ = {.format = VK_FORMAT_UNDEFINED};
 
+    swap->surfaceFormat_ = chooseSwapSurfaceFormat(context->deviceSurfaceFormats_, ColorSpace_SRGB_LINEAR);
+
+    gui_assert(context->vkSurface_ != VK_NULL_HANDLE, "VulkanContext::Surface is empty!");
+    VkBool32 queueFamilySupportsPresentation = VK_FALSE;
+    VK_ASSERT(vkGetPhysicalDeviceSurfaceSupportKHR(
+        context->physical_device, context->queues.graphicsQueueFamilyIndex, context->vkSurface_, &queueFamilySupportsPresentation));
+    gui_assert(queueFamilySupportsPresentation == VK_TRUE, "The queue family used with the swapchain does not support presentation");
+
+    VulkanContext *ctx = context;
+    auto chooseSwapImageCount = [](const VkSurfaceCapabilitiesKHR& caps) -> uint32_t {
+        const uint32_t desired = caps.minImageCount + 1;
+        const bool exceeded = caps.maxImageCount > 0 && desired > caps.maxImageCount;
+        return exceeded ? caps.maxImageCount : desired;
+    };
+
+    auto chooseSwapPresentMode = [](const std::vector<VkPresentModeKHR>& modes) -> VkPresentModeKHR {
+    #if defined(__linux__) || defined(_M_ARM64)
+        if (std::find(modes.cbegin(), modes.cend(), VK_PRESENT_MODE_IMMEDIATE_KHR) != modes.cend()) {
+        return VK_PRESENT_MODE_IMMEDIATE_KHR;
+        }
+    #endif // __linux__
+        if (std::find(modes.cbegin(), modes.cend(), VK_PRESENT_MODE_MAILBOX_KHR) != modes.cend()) {
+        return VK_PRESENT_MODE_MAILBOX_KHR;
+        }
+        return VK_PRESENT_MODE_FIFO_KHR;
+    };
+
+    auto chooseUsageFlags = [](VkPhysicalDevice pd, VkSurfaceKHR surface, VkFormat format) -> VkImageUsageFlags {
+        VkImageUsageFlags usageFlags = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
+
+        VkSurfaceCapabilitiesKHR caps = {};
+        VK_ASSERT(vkGetPhysicalDeviceSurfaceCapabilitiesKHR(pd, surface, &caps));
+
+        VkFormatProperties props = {};
+        vkGetPhysicalDeviceFormatProperties(pd, format, &props);
+
+        const bool isStorageSupported = (caps.supportedUsageFlags & VK_IMAGE_USAGE_STORAGE_BIT) > 0;
+        const bool isTilingOptimalSupported = (props.optimalTilingFeatures & VK_IMAGE_USAGE_STORAGE_BIT) > 0;
+
+        if (isStorageSupported && isTilingOptimalSupported) {
+        usageFlags |= VK_IMAGE_USAGE_STORAGE_BIT;
+        }
+
+        return usageFlags;
+    };
+
+    const VkImageUsageFlags usageFlags = chooseUsageFlags(ctx->physical_device, ctx->vkSurface_, context->swapchain_->surfaceFormat_.format);
+    const bool isCompositeAlphaOpaqueSupported = (ctx->deviceSurfaceCaps_.supportedCompositeAlpha & VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR) != 0;
+    const VkSwapchainCreateInfoKHR ci = {
+        .sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR,
+        .surface = context->vkSurface_,
+        .minImageCount = chooseSwapImageCount(ctx->deviceSurfaceCaps_),
+        .imageFormat = context->swapchain_->surfaceFormat_.format,
+        .imageColorSpace = context->swapchain_->surfaceFormat_.colorSpace,
+        .imageExtent = {.width = width, .height = height},
+        .imageArrayLayers = 1,
+        .imageUsage = usageFlags,
+        .imageSharingMode = VK_SHARING_MODE_EXCLUSIVE,
+        .queueFamilyIndexCount = 1,
+        .pQueueFamilyIndices = &context->queues.graphicsQueueFamilyIndex,
+    #if defined(ANDROID)
+        .preTransform = VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR,
+    #else
+        .preTransform = context->deviceSurfaceCaps_.currentTransform,
+    #endif
+        .compositeAlpha = isCompositeAlphaOpaqueSupported ? VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR : VK_COMPOSITE_ALPHA_INHERIT_BIT_KHR,
+        .presentMode = chooseSwapPresentMode(context->devicePresentModes_),
+        .clipped = VK_TRUE,
+        .oldSwapchain = VK_NULL_HANDLE,
+    };
+    VK_ASSERT(vkCreateSwapchainKHR(context->device, &ci, nullptr, &context->swapchain_->swapchain_));
+
+    VkImage swapchainImages[VulkanSwapchain::LVK_MAX_SWAPCHAIN_IMAGES];
+    VK_ASSERT(vkGetSwapchainImagesKHR(context->device, context->swapchain_->swapchain_, &context->swapchain_->numSwapchainImages_, nullptr));
+    if (context->swapchain_->numSwapchainImages_ > VulkanSwapchain::LVK_MAX_SWAPCHAIN_IMAGES) {
+        assert(context->swapchain_->numSwapchainImages_ <= VulkanSwapchain::LVK_MAX_SWAPCHAIN_IMAGES);
+        context->swapchain_->numSwapchainImages_ = VulkanSwapchain::LVK_MAX_SWAPCHAIN_IMAGES;
+    }
+    VK_ASSERT(vkGetSwapchainImagesKHR(context->device, context->swapchain_->swapchain_, &context->swapchain_->numSwapchainImages_, swapchainImages));
+
+    assert(context->swapchain_->numSwapchainImages_ > 0);
+
+    char debugNameImage[256] = {0};
+    char debugNameImageView[256] = {0};
+
+    // create images, image views and framebuffers
+    for (uint32_t i = 0; i < context->swapchain_->numSwapchainImages_; i++) {
+        context->swapchain_->acquireSemaphore_[i] = vulkan_create_semaphore(context->device, "Semaphore: swapchain-acquire");
+
+        snprintf(debugNameImage, sizeof(debugNameImage) - 1, "Image: swapchain %u", i);
+        snprintf(debugNameImageView, sizeof(debugNameImageView) - 1, "Image View: swapchain %u", i);
+        VulkanImage image = {
+            .vkImage_ = swapchainImages[i],
+            .vkUsageFlags_ = usageFlags,
+            .vkExtent_ = VkExtent3D{.width = width, .height = height, .depth = 1},
+            .vkType_ = VK_IMAGE_TYPE_2D,
+            .vkImageFormat_ = context->swapchain_->surfaceFormat_.format,
+            .isSwapchainImage_ = true,
+            .isOwningVkImage_ = false,
+            .isDepthFormat_ = vulkan_image_is_depth_format(context->swapchain_->surfaceFormat_.format),
+            .isStencilFormat_ = vulkan_image_is_stencil_format(context->swapchain_->surfaceFormat_.format),
+        };
+
+        VK_ASSERT(setDebugObjectName(context->device, VK_OBJECT_TYPE_IMAGE, (uint64_t)image.vkImage_, debugNameImage));
+
+        image.imageView_ = vulkan_image_view_create(&image, context->device,
+                                                VK_IMAGE_VIEW_TYPE_2D,
+                                                context->swapchain_->surfaceFormat_.format,
+                                                VK_IMAGE_ASPECT_COLOR_BIT,
+                                                0,
+                                                VK_REMAINING_MIP_LEVELS,
+                                                0,
+                                                1,
+                                                {},
+                                                nullptr,
+                                                debugNameImageView);
+
+        context->swapchain_->swapchainTextures_[i] = pool_create(&context->texturesPool_, image);
+    }
+
+    //
+    context->timelineSemaphore_ = createSemaphoreTimeline(context->device, context->swapchain_->numSwapchainImages_, "Semaphore: VulkanContext::timelineSemaphore_");
 }
 
 // OBS: probably just a handle. Store a HANDLE custom type inside the custom type window that can link to the actual OS window?
@@ -4080,6 +4440,7 @@ vulkan_create_context_with_swapchain(Arena *arena, Arena *transient, OS_Window w
     VulkanQueryDeviceResult queried_devices = vulkan_query_devices(transient, context, VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU);
     
     vulkan_init_context(arena, transient, context, &queried_devices.out_devices[0]);
+    vulkan_init_swapchain(arena, transient, context, width, height);
 
 }
 
@@ -4096,6 +4457,6 @@ int main()
 
     while(global_w32_window.is_running)
     {
-        
+         Win32ProcessPendingMessages();       
     }
 }

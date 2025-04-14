@@ -528,7 +528,7 @@ int main()
             "    assert(pool->count < array_count(pool->entries));\n"
             "    handle.idx = pool->count++;\n"
             "    handle.gen = 1;\n"
-            "    Pool_%.*s_Entry entry = {.gen = 1, .data = data};\n"
+            "    Pool_%.*s::Pool_%.*s_Entry entry = {.gen = 1, .data = data};\n"
             "    pool->entries[handle.idx] = entry;\n"
             "    return handle;\n"
             "}\n\n"
@@ -537,7 +537,7 @@ int main()
             "    %.*s *result = 0;\n"
             "    if(handle_is_valid(handle));\n"
             "    {\n"
-            "        result = &pool->entries[handle.idx];\n"
+            "        result = &pool->entries[handle.idx].data;\n"
             "    }\n"
             "    return result;\n"
             "}\n",
@@ -554,6 +554,7 @@ int main()
             // pool_create
             (u32)handle.size, handle.data, (u32)pool_name.size, pool_name.data,
             (u32)type.size, type.data, (u32)handle.size, handle.data, 
+            (u32)pool_name.size, pool_name.data,
             (u32)pool_name.size, pool_name.data,
 
             // pool_get

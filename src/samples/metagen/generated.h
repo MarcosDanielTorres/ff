@@ -41,7 +41,7 @@ BufferHandle pool_create(Pool_Buffer *pool, VulkanBuffer data)
     assert(pool->count < array_count(pool->entries));
     handle.idx = pool->count++;
     handle.gen = 1;
-    Pool_Buffer_Entry entry = {.gen = 1, .data = data};
+    Pool_Buffer::Pool_Buffer_Entry entry = {.gen = 1, .data = data};
     pool->entries[handle.idx] = entry;
     return handle;
 }
@@ -51,7 +51,7 @@ VulkanBuffer *pool_get(Pool_Buffer *pool, BufferHandle handle)
     VulkanBuffer *result = 0;
     if(handle_is_valid(handle));
     {
-        result = &pool->entries[handle.idx];
+        result = &pool->entries[handle.idx].data;
     }
     return result;
 }
@@ -98,7 +98,7 @@ SamplerHandle pool_create(Pool_Sampler *pool, VkSampler data)
     assert(pool->count < array_count(pool->entries));
     handle.idx = pool->count++;
     handle.gen = 1;
-    Pool_Sampler_Entry entry = {.gen = 1, .data = data};
+    Pool_Sampler::Pool_Sampler_Entry entry = {.gen = 1, .data = data};
     pool->entries[handle.idx] = entry;
     return handle;
 }
@@ -108,7 +108,7 @@ VkSampler *pool_get(Pool_Sampler *pool, SamplerHandle handle)
     VkSampler *result = 0;
     if(handle_is_valid(handle));
     {
-        result = &pool->entries[handle.idx];
+        result = &pool->entries[handle.idx].data;
     }
     return result;
 }
@@ -155,7 +155,7 @@ TextureHandle pool_create(Pool_Texture *pool, VulkanImage data)
     assert(pool->count < array_count(pool->entries));
     handle.idx = pool->count++;
     handle.gen = 1;
-    Pool_Texture_Entry entry = {.gen = 1, .data = data};
+    Pool_Texture::Pool_Texture_Entry entry = {.gen = 1, .data = data};
     pool->entries[handle.idx] = entry;
     return handle;
 }
@@ -165,7 +165,7 @@ VulkanImage *pool_get(Pool_Texture *pool, TextureHandle handle)
     VulkanImage *result = 0;
     if(handle_is_valid(handle));
     {
-        result = &pool->entries[handle.idx];
+        result = &pool->entries[handle.idx].data;
     }
     return result;
 }

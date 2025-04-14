@@ -15,7 +15,7 @@ set ui=0
 set opengl=0
 set vulkan=1
 set cmdline=0
-set meta=1
+set meta=0
 
 @rem TODO combine them together!
 if "%vulkan%"=="1" set inc_files=%inc_files% -I%VULKAN_SDK%\Include
@@ -43,5 +43,5 @@ if "%cmdline%"=="1"             %compile% ..\src\samples\cmdline.cpp /link user3
 if "%opengl%"=="1"              %compile% ..\src\samples\opengl.cpp /link user32.lib gdi32.lib opengl32.lib
 if "%ui%"=="1"                  %compile% ..\src\samples\ui\ui.cpp /link /LIBPATH:%freetype_lib_path% libfreetype.lib user32.lib gdi32.lib comdlg32.lib
 @rem if "%vulkan%"=="1"              %compile% ..\src\samples\vulkan.cpp /link /LIBPATH:%freetype_lib_path% libfreetype.lib user32.lib gdi32.lib comdlg32.lib /LIBPATH:%vulkan_lib_path% vulkan-1.lib
-if "%vulkan%"=="1"              %compile% ..\src\samples\vulkan.cpp /link /INFERASANLIBS /LIBPATH:%freetype_lib_path% libfreetype.lib user32.lib gdi32.lib comdlg32.lib 
+if "%vulkan%"=="1"              %compile% ..\src\samples\vulkan\vulkan.cpp /link /INFERASANLIBS /LIBPATH:%freetype_lib_path% libfreetype.lib user32.lib gdi32.lib comdlg32.lib 
 popd

@@ -1007,6 +1007,15 @@ vulkan_immediate_commands_create(VulkanImmediateCommands *immediate, VkDevice de
     immediate->device = device;
     immediate->queue_family_index = queue_family_index;
     immediate->debug_name = debug_name;
+    immediate->lastSubmitSemaphore_ = {.sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO,
+                                              .stageMask = VK_PIPELINE_STAGE_ALL_COMMANDS_BIT};
+    immediate->waitSemaphore_ = {.sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO,
+                                            .stageMask = VK_PIPELINE_STAGE_ALL_COMMANDS_BIT}; // extra "wait" semaphore
+    immediate->signalSemaphore_ = {.sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO,
+                                            .stageMask = VK_PIPELINE_STAGE_ALL_COMMANDS_BIT}; // extra "signal" semaphore
+    immediate->numAvailableCommandBuffers_ = immediate->kMaxCommandBuffers;
+    immediate->submitCounter_ = 1;
+    // aca
 
     vkGetDeviceQueue(device, queue_family_index, 0, &immediate->queue);
 
@@ -1189,6 +1198,57 @@ vulkan_immediate_commands_submit(VulkanImmediateCommands *immediate, CommandBuff
     return immediate->lastSubmitHandle_;
 }
 
+// CONTINUE HERE
+lvk::SubmitHandle lvk::VulkanContext::submit(lvk::ICommandBuffer& commandBuffer, TextureHandle present) {
+  LVK_PROFILER_FUNCTION();
+
+  CommandBuffer* vkCmdBuffer = static_cast<CommandBuffer*>(&commandBuffer);
+
+  LVK_ASSERT(vkCmdBuffer);
+  LVK_ASSERT(vkCmdBuffer->ctx_);
+  LVK_ASSERT(vkCmdBuffer->wrapper_);
+
+#if defined(LVK_WITH_TRACY_GPU)
+  TracyVkCollect(pimpl_->tracyVkCtx_, vkCmdBuffer->wrapper_->cmdBuf_);
+#endif // LVK_WITH_TRACY_GPU
+
+  if (present) {
+    const lvk::VulkanImage& tex = *texturesPool_.get(present);
+
+    LVK_ASSERT(tex.isSwapchainImage_);
+
+    tex.transitionLayout(vkCmdBuffer->wrapper_->cmdBuf_,
+                         VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
+                         VkImageSubresourceRange{VK_IMAGE_ASPECT_COLOR_BIT, 0, VK_REMAINING_MIP_LEVELS, 0, VK_REMAINING_ARRAY_LAYERS});
+  }
+
+  const bool shouldPresent = hasSwapchain() && present;
+
+  if (shouldPresent) {
+    // if we a presenting a swapchain image, signal our timeline semaphore
+    const uint64_t signalValue = swapchain_->currentFrameIndex_ + swapchain_->getNumSwapchainImages();
+    // we wait for this value next time we want to acquire this swapchain image
+    swapchain_->timelineWaitValues_[swapchain_->currentImageIndex_] = signalValue;
+    immediate_->signalSemaphore(timelineSemaphore_, signalValue);
+  }
+
+  vkCmdBuffer->lastSubmitHandle_ = immediate_->submit(*vkCmdBuffer->wrapper_);
+
+  if (shouldPresent) {
+    swapchain_->present(immediate_->acquireLastSubmitSemaphore());
+  }
+
+  processDeferredTasks();
+
+  SubmitHandle handle = vkCmdBuffer->lastSubmitHandle_;
+
+  // reset
+  pimpl_->currentCommandBuffer_ = {};
+
+  return handle;
+}
+
+
 struct MemoryRegionDesc
 {
     u32 offset_ = 0;
@@ -1248,6 +1308,12 @@ struct VulkanSwapchain
     VkSemaphore acquireSemaphore_[LVK_MAX_SWAPCHAIN_IMAGES] = {};
     uint64_t timelineWaitValues_[LVK_MAX_SWAPCHAIN_IMAGES] = {};
 };
+
+void vulkan_swapchain_get_current_texture(VulkanSwapchain *swapchain)
+{
+    // fucking complicated! i thought it was easier than that!
+    // return swapchain->swapchainTextures_[swapchain->currentImageIndex];
+}
 
 
 struct CommandBuffer
@@ -3241,6 +3307,19 @@ vulkan_create_context(Arena *transient, HWND handle, VulkanContext* context)
 
     // TODO: see what does it do
     volkLoadInstance(context->instance);
+    // debug messenger
+    if (has_debug_utils) {
+        const VkDebugUtilsMessengerCreateInfoEXT ci = {
+            .sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT,
+            .messageSeverity = VK_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_SEVERITY_INFO_BIT_EXT |
+                            VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT,
+            .messageType = VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT |
+                        VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT,
+            .pfnUserCallback = &vulkanDebugCallback,
+            .pUserData = (void*)context,
+        };
+        VK_ASSERT(vkCreateDebugUtilsMessengerEXT(context->instance, &ci, nullptr, &context->vkDebugUtilsMessenger_));
+    }
 
     printf("\nVulkan instance extensions:\n");
 
@@ -4139,7 +4218,6 @@ auto addOptionalExtensions = [&allDeviceExtensions, &deviceExtensionNames, &crea
         Format_Invalid,
         "Sampler: default");
 
-        // CONTINUE HERE
     growDescriptorPool(context, context->currentMaxTextures_, context->currentMaxSamplers_, context->currentMaxAccelStructs_);
 
     querySurfaceCapabilities(context);
@@ -4392,7 +4470,7 @@ void vulkan_init_swapchain(Arena *arena, Arena *transient, VulkanContext *contex
 }
 
 // OBS: probably just a handle. Store a HANDLE custom type inside the custom type window that can link to the actual OS window?
-internal void
+internal VulkanContext *
 vulkan_create_context_with_swapchain(Arena *arena, Arena *transient, OS_Window window, u32 width, u32 height)
 {
 
@@ -4409,24 +4487,7 @@ vulkan_create_context_with_swapchain(Arena *arena, Arena *transient, OS_Window w
     
     vulkan_init_context(arena, transient, context, &queried_devices.out_devices[0]);
     vulkan_init_swapchain(arena, transient, context, width, height);
-
-}
-
-int main() 
-{
-    u32 window_width = 1280;
-    u32 window_height = 720;
-    global_w32_window = os_win32_open_window("Vulkan example", window_width, window_height, win32_main_callback, WindowOpenFlags_Centered);
-    Arena arena {};
-    arena_init(&arena, mb(1));
-    Arena transient_arena {};
-    arena_init(&transient_arena, mb(10));
-    vulkan_create_context_with_swapchain(&arena, &transient_arena, global_w32_window, window_width, window_height);
-
-    while(global_w32_window.is_running)
-    {
-         Win32ProcessPendingMessages();       
-    }
+    return context;
 }
 
 internal CommandBuffer *
@@ -4444,4 +4505,21 @@ vulkan_context_acquire_cmd_buffer(VulkanContext *ctx)
     ctx->currentCommandBuffer_ = {.ctx_ = ctx, .wrapper_ = vulkan_immediate_commands_acquire(ctx->immediate_)};
 
     return &ctx->currentCommandBuffer_;
+}
+
+int main() 
+{
+    u32 window_width = 1280;
+    u32 window_height = 720;
+    global_w32_window = os_win32_open_window("Vulkan example", window_width, window_height, win32_main_callback, WindowOpenFlags_Centered);
+    Arena arena {};
+    arena_init(&arena, mb(1));
+    Arena transient_arena {};
+    arena_init(&transient_arena, mb(10));
+    VulkanContext *ctx = vulkan_create_context_with_swapchain(&arena, &transient_arena, global_w32_window, window_width, window_height);
+    while(global_w32_window.is_running)
+    {
+        Win32ProcessPendingMessages();
+        CommandBuffer * buf = vulkan_context_acquire_cmd_buffer(ctx);
+    }
 }

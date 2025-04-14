@@ -86,45 +86,6 @@ enum TextureUsageBits : uint8_t {
   TextureUsageBits_Attachment = 1 << 2,
 };
 
-enum Format : uint8_t {
-  Format_Invalid = 0,
-
-  Format_R_UN8,
-  Format_R_UI16,
-  Format_R_UI32,
-  Format_R_UN16,
-  Format_R_F16,
-  Format_R_F32,
-
-  Format_RG_UN8,
-  Format_RG_UI16,
-  Format_RG_UI32,
-  Format_RG_UN16,
-  Format_RG_F16,
-  Format_RG_F32,
-
-  Format_RGBA_UN8,
-  Format_RGBA_UI32,
-  Format_RGBA_F16,
-  Format_RGBA_F32,
-  Format_RGBA_SRGB8,
-
-  Format_BGRA_UN8,
-  Format_BGRA_SRGB8,
-
-  Format_ETC2_RGB8,
-  Format_ETC2_SRGB8,
-  Format_BC7_RGBA,
-
-  Format_Z_UN16,
-  Format_Z_UN24,
-  Format_Z_F32,
-  Format_Z_UN24_S_UI8,
-  Format_Z_F32_S_UI8,
-
-  Format_YUV_NV12,
-  Format_YUV_420p,
-};
 
 
 struct TextureFormatProperties {
@@ -1114,6 +1075,7 @@ vulkan_immediate_commands_purge(VulkanImmediateCommands *immediate)
     }
 }
 
+
 internal CommandBufferWrapper *
 vulkan_immediate_commands_acquire(VulkanImmediateCommands *immediate)
 {
@@ -1162,6 +1124,7 @@ vulkan_immediate_commands_acquire(VulkanImmediateCommands *immediate)
 
     return current;
 }
+
 
 internal SubmitHandle
 vulkan_immediate_commands_submit(VulkanImmediateCommands *immediate, CommandBufferWrapper *wrapper)
@@ -1233,7 +1196,6 @@ struct MemoryRegionDesc
     SubmitHandle handle_ = {};
 };
 
-struct VulkanContext;
 struct VulkanStagingDevice
 {
 
@@ -1266,6 +1228,7 @@ struct DeferredTask
 // pimpl
 
 
+
 struct VulkanSwapchain
 {
     enum { LVK_MAX_SWAPCHAIN_IMAGES = 16 };
@@ -1287,6 +1250,21 @@ struct VulkanSwapchain
 };
 
 
+struct CommandBuffer
+{
+    VulkanContext* ctx_ = nullptr;
+    const CommandBufferWrapper* wrapper_ = nullptr;
+
+    Framebuffer framebuffer_ = {};
+    SubmitHandle lastSubmitHandle_ = {};
+
+    VkPipeline lastPipelineBound_ = VK_NULL_HANDLE;
+
+    bool isRendering_ = false;
+
+    RenderPipelineHandle currentPipelineGraphics_ = {};
+};
+
 struct VulkanContext
 {
     VkInstance instance;
@@ -1307,6 +1285,7 @@ struct VulkanContext
     YcbcrConversionData ycbcrConversionData_[256]; // indexed by lvk::Format
     u32 numYcbcrSamplers_ = 0;
     mutable std::deque<DeferredTask> deferredTasks_;
+    CommandBuffer currentCommandBuffer_;
     // pimpl
 
 
@@ -1376,7 +1355,6 @@ struct VulkanContext
     
 };
 
-
 internal VkPhysicalDeviceProperties
 vulkan_get_physical_device_props(VulkanContext *context)
 {
@@ -1386,10 +1364,10 @@ vulkan_get_physical_device_props(VulkanContext *context)
 
 internal VkImageView
 vulkan_image_view_create(VulkanImage *image,
-                        VkDevice device,
-                        VkImageViewType type,
-                        VkFormat format,
-                        VkImageAspectFlags aspectMask,
+    VkDevice device,
+    VkImageViewType type,
+    VkFormat format,
+    VkImageAspectFlags aspectMask,
                         u32 baseLevel,
                         u32 numLevels,
                         u32 baseLayer,
@@ -1529,16 +1507,6 @@ VkSamplerAddressMode samplerWrapModeToVkSamplerAddressMode(SamplerWrap mode) {
     return VK_SAMPLER_ADDRESS_MODE_REPEAT;
 }
 
-enum CompareOp : uint8_t {
-  CompareOp_Never = 0,
-  CompareOp_Less,
-  CompareOp_Equal,
-  CompareOp_LessEqual,
-  CompareOp_Greater,
-  CompareOp_NotEqual,
-  CompareOp_GreaterEqual,
-  CompareOp_AlwaysPass
-};
 
 struct SamplerStateDesc {
   SamplerFilter minFilter = SamplerFilter_Linear;
@@ -4459,4 +4427,21 @@ int main()
     {
          Win32ProcessPendingMessages();       
     }
+}
+
+internal CommandBuffer *
+vulkan_context_acquire_cmd_buffer(VulkanContext *ctx)
+{
+    //LVK_PROFILER_FUNCTION();
+
+    gui_assert(!ctx->currentCommandBuffer_.ctx_, "Cannot acquire more than 1 command buffer simultaneously");
+
+    #if defined(_M_ARM64)
+    vkDeviceWaitIdle(vkDevice_); // a temporary workaround for Windows on Snapdragon
+    #endif
+
+    //ctx->currentCommandBuffer_ = CommandBuffer(this);
+    ctx->currentCommandBuffer_ = {.ctx_ = ctx, .wrapper_ = vulkan_immediate_commands_acquire(ctx->immediate_)};
+
+    return &ctx->currentCommandBuffer_;
 }

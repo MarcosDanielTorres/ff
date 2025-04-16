@@ -84,7 +84,7 @@ There is no call to destroy() inside Handle (the only function related destructi
 */
 
 
-enum TextureUsageBits : uint8_t {
+enum TextureUsageBits : u8 {
   TextureUsageBits_Sampled = 1 << 0,
   TextureUsageBits_Storage = 1 << 1,
   TextureUsageBits_Attachment = 1 << 2,
@@ -93,16 +93,16 @@ enum TextureUsageBits : uint8_t {
 
 
 struct TextureFormatProperties {
-  const Format format = Format_Invalid;
-  const uint8_t bytesPerBlock : 5 = 1;
-  const uint8_t blockWidth : 3 = 1;
-  const uint8_t blockHeight : 3 = 1;
-  const uint8_t minBlocksX : 2 = 1;
-  const uint8_t minBlocksY : 2 = 1;
-  const bool depth : 1 = false;
-  const bool stencil : 1 = false;
-  const bool compressed : 1 = false;
-  const uint8_t numPlanes : 2 = 1;
+  Format format = Format_Invalid;
+  u8 bytesPerBlock : 5 = 1;
+  u8 blockWidth : 3 = 1;
+  u8 blockHeight : 3 = 1;
+  u8 minBlocksX : 2 = 1;
+  u8 minBlocksY : 2 = 1;
+  bool depth : 1 = false;
+  bool stencil : 1 = false;
+  bool compressed : 1 = false;
+  u8 numPlanes : 2 = 1;
 };
 
 
@@ -148,7 +148,7 @@ VkResult setDebugObjectName(VkDevice device, VkObjectType type, uint64_t handle,
   if (!name || !*name || !vkSetDebugUtilsObjectNameEXT) {
     return VK_SUCCESS;
   }
-  const VkDebugUtilsObjectNameInfoEXT ni = {
+  VkDebugUtilsObjectNameInfoEXT ni = {
       .sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_OBJECT_NAME_INFO_EXT,
       .objectType = type,
       .objectHandle = handle,
@@ -312,20 +312,22 @@ void Win32ProcessPendingMessages() {
 
 
 
-bool hasExtension(const char* ext, const std::vector<VkExtensionProperties>& props) {
-  for (const VkExtensionProperties& p : props) {
-    if (strcmp(ext, p.extensionName) == 0)
-      return true;
-  }
-  return false;
+bool hasExtension(const char* ext, std::vector<VkExtensionProperties>& props) 
+{
+    for (VkExtensionProperties& p : props) {
+        if (strcmp(ext, p.extensionName) == 0)
+        return true;
+    }
+    return false;
 }
 
-void getDeviceExtensionProps(VkPhysicalDevice dev, std::vector<VkExtensionProperties>& props, const char* validationLayer = nullptr) {
-  uint32_t numExtensions = 0;
-  vkEnumerateDeviceExtensionProperties(dev, validationLayer, &numExtensions, nullptr);
-  std::vector<VkExtensionProperties> p(numExtensions);
-  vkEnumerateDeviceExtensionProperties(dev, validationLayer, &numExtensions, p.data());
-  props.insert(props.end(), p.begin(), p.end());
+void getDeviceExtensionProps(VkPhysicalDevice dev, std::vector<VkExtensionProperties>& props, const char* validationLayer = nullptr) 
+{
+    u32 numExtensions = 0;
+    vkEnumerateDeviceExtensionProperties(dev, validationLayer, &numExtensions, nullptr);
+    std::vector<VkExtensionProperties> p(numExtensions);
+    vkEnumerateDeviceExtensionProperties(dev, validationLayer, &numExtensions, p.data());
+    props.insert(props.end(), p.begin(), p.end());
 }
 
 
@@ -575,9 +577,9 @@ vulkan_image_get_image_aspect_flags(VulkanImage *image)
 
 }
 
-internal VkDescriptorSetLayoutBinding getDSLBinding(uint32_t binding,
+internal VkDescriptorSetLayoutBinding getDSLBinding(u32 binding,
                                                 VkDescriptorType descriptorType,
-                                                uint32_t descriptorCount,
+                                                u32 descriptorCount,
                                                 VkShaderStageFlags stageFlags,
                                                 const VkSampler* immutableSamplers = nullptr) {
   return VkDescriptorSetLayoutBinding{
@@ -629,9 +631,9 @@ vulkan_image_generate_mipmap(VulkanImage *image, VkCommandBuffer commandBuffer)
 
     // Check if device supports downscaling for color or depth/stencil buffer based on image format
     {
-        const uint32_t formatFeatureMask = (VK_FORMAT_FEATURE_BLIT_SRC_BIT | VK_FORMAT_FEATURE_BLIT_DST_BIT);
+        u32 formatFeatureMask = (VK_FORMAT_FEATURE_BLIT_SRC_BIT | VK_FORMAT_FEATURE_BLIT_DST_BIT);
 
-        const bool hardwareDownscalingSupported = (image->vkFormatProperties_.optimalTilingFeatures & formatFeatureMask) == formatFeatureMask;
+        bool hardwareDownscalingSupported = (image->vkFormatProperties_.optimalTilingFeatures & formatFeatureMask) == formatFeatureMask;
 
         if (!hardwareDownscalingSupported) 
         {
@@ -642,7 +644,7 @@ vulkan_image_generate_mipmap(VulkanImage *image, VkCommandBuffer commandBuffer)
 
     // Choose linear filter for color formats if supported by the device, else use nearest filter
     // Choose nearest filter by default for depth/stencil formats
-    const VkFilter blitFilter = [](bool isDepthOrStencilFormat, bool imageFilterLinear) {
+     VkFilter blitFilter = [](bool isDepthOrStencilFormat, bool imageFilterLinear) {
         if (isDepthOrStencilFormat) {
         return VK_FILTER_NEAREST;
         }
@@ -701,7 +703,7 @@ vulkan_image_generate_mipmap(VulkanImage *image, VkCommandBuffer commandBuffer)
     #if LVK_VULKAN_PRINT_COMMANDS
         LLOGL("%p vkCmdBlitImage()\n", commandBuffer);
     #endif // LVK_VULKAN_PRINT_COMMANDS
-        const VkImageBlit blit = {
+         VkImageBlit blit = {
             .srcSubresource = VkImageSubresourceLayers{imageAspectFlags, i - 1, layer, 1},
             .srcOffsets = {srcOffsets[0], srcOffsets[1]},
             .dstSubresource = VkImageSubresourceLayers{imageAspectFlags, i, layer, 1},
@@ -901,12 +903,12 @@ pool_get(Pool *pool, Handle handle)
 
 
 VkSemaphore createSemaphoreTimeline(VkDevice device, uint64_t initialValue, const char* debugName) {
-  const VkSemaphoreTypeCreateInfo semaphoreTypeCreateInfo = {
+   VkSemaphoreTypeCreateInfo semaphoreTypeCreateInfo = {
       .sType = VK_STRUCTURE_TYPE_SEMAPHORE_TYPE_CREATE_INFO,
       .semaphoreType = VK_SEMAPHORE_TYPE_TIMELINE,
       .initialValue = initialValue,
   };
-  const VkSemaphoreCreateInfo ci = {
+   VkSemaphoreCreateInfo ci = {
       .sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO,
       .pNext = &semaphoreTypeCreateInfo,
       .flags = 0,
@@ -922,7 +924,7 @@ internal VkSemaphore
 vulkan_create_semaphore(VkDevice device, const char *debug_name)
 {
     VkSemaphore semaphore = VK_NULL_HANDLE;
-    const VkSemaphoreCreateInfo ci = {
+    VkSemaphoreCreateInfo ci = {
         .sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO,
         .flags = 0,
     };
@@ -935,7 +937,7 @@ internal VkFence
 vulkan_create_fence(VkDevice device, const char *debug_name)
 {
     VkFence fence = VK_NULL_HANDLE;
-    const VkFenceCreateInfo ci = {
+    VkFenceCreateInfo ci = {
         .sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO,
         .flags = 0,
     };
@@ -989,7 +991,7 @@ vulkan_immediate_commands_create(VulkanImmediateCommands *immediate, VkDevice de
 
     vkGetDeviceQueue(device, queue_family_index, 0, &immediate->queue);
 
-    const VkCommandPoolCreateInfo ci = {
+    VkCommandPoolCreateInfo ci = {
         .sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO,
         .flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT | VK_COMMAND_POOL_CREATE_TRANSIENT_BIT,
         .queueFamilyIndex = queue_family_index,
@@ -997,7 +999,7 @@ vulkan_immediate_commands_create(VulkanImmediateCommands *immediate, VkDevice de
     VK_ASSERT(vkCreateCommandPool(device, &ci, nullptr, &immediate->commandPool));
     setDebugObjectName(device, VK_OBJECT_TYPE_COMMAND_POOL, (uint64_t)immediate->commandPool, immediate->debug_name);
 
-    const VkCommandBufferAllocateInfo ai = {
+    VkCommandBufferAllocateInfo ai = {
         .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
         .commandPool = immediate->commandPool,
         .level = VK_COMMAND_BUFFER_LEVEL_PRIMARY,
@@ -1035,7 +1037,7 @@ vulkan_immediate_commands_purge(VulkanImmediateCommands *immediate)
             continue;
         }
 
-        const VkResult result = vkWaitForFences(immediate->device, 1, &buf.fence_, VK_TRUE, 0);
+        VkResult result = vkWaitForFences(immediate->device, 1, &buf.fence_, VK_TRUE, 0);
 
         if (result == VK_SUCCESS) 
         {
@@ -1107,7 +1109,7 @@ vulkan_immediate_commands_acquire(VulkanImmediateCommands *immediate)
 
     current->cmdBuf_ = current->cmdBufAllocated_;
     current->isEncoding_ = true;
-    const VkCommandBufferBeginInfo bi = {
+    VkCommandBufferBeginInfo bi = {
         .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
         .flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT,
     };
@@ -1135,7 +1137,7 @@ vulkan_immediate_commands_submit(VulkanImmediateCommands *immediate, CommandBuff
     VK_ASSERT(vkEndCommandBuffer(wrapper->cmdBuf_));
 
     VkSemaphoreSubmitInfo waitSemaphores[] = {{}, {}};
-    uint32_t numWaitSemaphores = 0;
+    u32 numWaitSemaphores = 0;
     if (immediate->waitSemaphore_.semaphore) {
         waitSemaphores[numWaitSemaphores++] = immediate->waitSemaphore_;
     }
@@ -1148,7 +1150,7 @@ vulkan_immediate_commands_submit(VulkanImmediateCommands *immediate, CommandBuff
                                 .stageMask = VK_PIPELINE_STAGE_ALL_COMMANDS_BIT},
         {},
     };
-    uint32_t numSignalSemaphores = 1;
+    u32 numSignalSemaphores = 1;
     if (immediate->signalSemaphore_.semaphore) {
         signalSemaphores[numSignalSemaphores++] = immediate->signalSemaphore_;
     }
@@ -1157,11 +1159,11 @@ vulkan_immediate_commands_submit(VulkanImmediateCommands *immediate, CommandBuff
     #if LVK_VULKAN_PRINT_COMMANDS
     //LLOGL("%p vkQueueSubmit2()\n\n", wrapper.cmdBuf_);
     #endif // LVK_VULKAN_PRINT_COMMANDS
-    const VkCommandBufferSubmitInfo bufferSI = {
+    VkCommandBufferSubmitInfo bufferSI = {
         .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_SUBMIT_INFO,
         .commandBuffer = wrapper->cmdBuf_,
     };
-    const VkSubmitInfo2 si = {
+    VkSubmitInfo2 si = {
         .sType = VK_STRUCTURE_TYPE_SUBMIT_INFO_2,
         .waitSemaphoreInfoCount = numWaitSemaphores,
         .pWaitSemaphoreInfos = waitSemaphores,
@@ -1184,7 +1186,7 @@ vulkan_immediate_commands_submit(VulkanImmediateCommands *immediate, CommandBuff
     immediate->submitCounter_++;
 
     if (!immediate->submitCounter_) {
-        // skip the 0 value - when uint32_t wraps around (null SubmitHandle)
+        // skip the 0 value - when u32 wraps around (null SubmitHandle)
         immediate->submitCounter_++;
     }
 
@@ -1234,7 +1236,7 @@ TextureHandle vulkan_swapchain_get_current_texture(VulkanSwapchain *swapchain)
     //LVK_PROFILER_FUNCTION();
 
     if (swapchain->getNextImage_) {
-        const VkSemaphoreWaitInfo waitInfo = {
+        VkSemaphoreWaitInfo waitInfo = {
             .sType = VK_STRUCTURE_TYPE_SEMAPHORE_WAIT_INFO,
             .semaphoreCount = 1,
             .pSemaphores = &swapchain->ctx_->timelineSemaphore_,
@@ -1304,12 +1306,12 @@ vulkan_image_view_create(VulkanImage *image,
                         u32 numLevels,
                         u32 baseLayer,
                         u32 numLayers,
-                        const VkComponentMapping mapping,
-                        const VkSamplerYcbcrConversionInfo* ycbcr,
+                        VkComponentMapping mapping,
+                        VkSamplerYcbcrConversionInfo* ycbcr,
                         const char* debugName
                     )
 {
-    const VkImageViewCreateInfo ci = {
+    VkImageViewCreateInfo ci = {
         .sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
         .pNext = ycbcr,
         .image = image->vkImage_,
@@ -1396,9 +1398,9 @@ formatToVkFormat(Format format)
 
 }
 
-enum SamplerFilter : uint8_t { SamplerFilter_Nearest = 0, SamplerFilter_Linear };
-enum SamplerMip : uint8_t { SamplerMip_Disabled = 0, SamplerMip_Nearest, SamplerMip_Linear };
-enum SamplerWrap : uint8_t { SamplerWrap_Repeat = 0, SamplerWrap_Clamp, SamplerWrap_MirrorRepeat };
+enum SamplerFilter : u8 { SamplerFilter_Nearest = 0, SamplerFilter_Linear };
+enum SamplerMip : u8 { SamplerMip_Disabled = 0, SamplerMip_Nearest, SamplerMip_Linear };
+enum SamplerWrap : u8 { SamplerWrap_Repeat = 0, SamplerWrap_Clamp, SamplerWrap_MirrorRepeat };
 
 
 VkFilter samplerFilterToVkFilter(SamplerFilter filter) {
@@ -1771,7 +1773,7 @@ const VkSampler* immutableSamplersData = nullptr;
           kBinding_YUVImages, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, immutableSamplers.size(), stageFlags, immutableSamplersData),
       getDSLBinding(kBinding_AccelerationStructures, VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR, maxAccelStructs, stageFlags),
   };
-  const uint32_t flags = VK_DESCRIPTOR_BINDING_UPDATE_AFTER_BIND_BIT | VK_DESCRIPTOR_BINDING_UPDATE_UNUSED_WHILE_PENDING_BIT |
+  const u32 flags = VK_DESCRIPTOR_BINDING_UPDATE_AFTER_BIND_BIT | VK_DESCRIPTOR_BINDING_UPDATE_UNUSED_WHILE_PENDING_BIT |
                          VK_DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT;
   VkDescriptorBindingFlags bindingFlags[kBinding_NumBindings];
   for (int i = 0; i < kBinding_NumBindings; ++i) {
@@ -1779,14 +1781,14 @@ const VkSampler* immutableSamplersData = nullptr;
   }
   const VkDescriptorSetLayoutBindingFlagsCreateInfo setLayoutBindingFlagsCI = {
       .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_BINDING_FLAGS_CREATE_INFO_EXT,
-      .bindingCount = uint32_t(hasAccelerationStructure_ ? kBinding_NumBindings : kBinding_NumBindings - 1),
+      .bindingCount = u32(hasAccelerationStructure_ ? kBinding_NumBindings : kBinding_NumBindings - 1),
       .pBindingFlags = bindingFlags,
   };
   const VkDescriptorSetLayoutCreateInfo dslci = {
       .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
       .pNext = &setLayoutBindingFlagsCI,
       .flags = VK_DESCRIPTOR_SET_LAYOUT_CREATE_UPDATE_AFTER_BIND_POOL_BIT_EXT,
-      .bindingCount = uint32_t(hasAccelerationStructure_ ? kBinding_NumBindings : kBinding_NumBindings - 1),
+      .bindingCount = u32(hasAccelerationStructure_ ? kBinding_NumBindings : kBinding_NumBindings - 1),
       .pBindings = bindings,
   };
   VK_ASSERT(vkCreateDescriptorSetLayout(context->device, &dslci, nullptr, &context->vkDSL_));
@@ -1806,7 +1808,7 @@ const VkSampler* immutableSamplersData = nullptr;
         .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
         .flags = VK_DESCRIPTOR_POOL_CREATE_UPDATE_AFTER_BIND_BIT,
         .maxSets = 1,
-        .poolSizeCount = uint32_t(hasAccelerationStructure_ ? kBinding_NumBindings : kBinding_NumBindings - 1),
+        .poolSizeCount = u32(hasAccelerationStructure_ ? kBinding_NumBindings : kBinding_NumBindings - 1),
         .pPoolSizes = poolSizes,
     };
     VK_ASSERT_RETURN(vkCreateDescriptorPool(context->device, &ci, nullptr, &context->vkDPool_));
@@ -1822,19 +1824,19 @@ const VkSampler* immutableSamplersData = nullptr;
   context->awaitingNewImmutableSamplers_ = false;
 }
 
-enum ColorSpace : uint8_t {
+enum ColorSpace : u8 {
   ColorSpace_SRGB_LINEAR,
   ColorSpace_SRGB_NONLINEAR,
 };
 
 
-enum TextureType : uint8_t {
+enum TextureType : u8 {
   TextureType_2D,
   TextureType_3D,
   TextureType_Cube,
 };
 
-enum Swizzle : uint8_t {
+enum Swizzle : u8 {
   Swizzle_Default = 0,
   Swizzle_0,
   Swizzle_1,
@@ -1887,20 +1889,20 @@ struct TextureDesc
   Format format = Format_Invalid;
 
   Dimensions dimensions = {1, 1, 1};
-  uint32_t numLayers = 1;
-  uint32_t numSamples = 1;
-  uint8_t usage = TextureUsageBits_Sampled;
-  uint32_t numMipLevels = 1;
+  u32 numLayers = 1;
+  u32 numSamples = 1;
+  u8 usage = TextureUsageBits_Sampled;
+  u32 numMipLevels = 1;
   StorageType storage = StorageType_Device;
   ComponentMapping swizzle = {};
   const void* data = nullptr;
-  uint32_t dataNumMipLevels = 1; // how many mip-levels we want to upload
+  u32 dataNumMipLevels = 1; // how many mip-levels we want to upload
   bool generateMipmaps = false; // generate mip-levels immediately, valid only with non-null data
   const char* debugName = "";
 };
 
 
-uint32_t getNumImagePlanes(Format format) {
+u32 getNumImagePlanes(Format format) {
     switch (format) {
   case VK_FORMAT_UNDEFINED:
     return 0;
@@ -2020,7 +2022,7 @@ findMemoryType(VkPhysicalDevice physDev, u32 memoryTypeBits, VkMemoryPropertyFla
     VkPhysicalDeviceMemoryProperties memProperties;
     vkGetPhysicalDeviceMemoryProperties(physDev, &memProperties);
 
-    for (uint32_t i = 0; i < memProperties.memoryTypeCount; i++) {
+    for (u32 i = 0; i < memProperties.memoryTypeCount; i++) {
         const bool hasProperties = (memProperties.memoryTypes[i].propertyFlags & flags) == flags;
         if ((memoryTypeBits & (1 << i)) && hasProperties) {
         return i;
@@ -2267,7 +2269,7 @@ vulkan_create_texture(VulkanContext *context, const TextureDesc& requestedDesc, 
     VkImageViewType vkImageViewType;
     VkImageType vkImageType;
     VkSampleCountFlagBits vkSamples = VK_SAMPLE_COUNT_1_BIT;
-    uint32_t numLayers = desc.numLayers;
+    u32 numLayers = desc.numLayers;
     switch (desc.type) {
     case TextureType_2D:
         vkImageViewType = numLayers > 1 ? VK_IMAGE_VIEW_TYPE_2D_ARRAY : VK_IMAGE_VIEW_TYPE_2D;
@@ -2322,7 +2324,7 @@ vulkan_create_texture(VulkanContext *context, const TextureDesc& requestedDesc, 
         snprintf(image.debugName_, sizeof(image.debugName_) - 1, "%s", desc.debugName);
     }
 
-    const uint32_t numPlanes = getNumImagePlanes(desc.format);
+    const u32 numPlanes = getNumImagePlanes(desc.format);
     const bool isDisjoint = numPlanes > 1;
 
 
@@ -2376,7 +2378,7 @@ vulkan_create_texture(VulkanContext *context, const TextureDesc& requestedDesc, 
         VK_ASSERT(vkCreateImage(context->device, &ci, nullptr, &image.vkImage_));
 
         // back the image with some memory
-        constexpr uint32_t kNumMaxImagePlanes = array_count(image.vkMemory_);
+        constexpr u32 kNumMaxImagePlanes = array_count(image.vkMemory_);
 
         VkMemoryRequirements2 memRequirements[kNumMaxImagePlanes] = {
             {.sType = VK_STRUCTURE_TYPE_MEMORY_REQUIREMENTS_2},
@@ -2398,7 +2400,7 @@ vulkan_create_texture(VulkanContext *context, const TextureDesc& requestedDesc, 
             {.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_REQUIREMENTS_INFO_2, .pNext = numPlanes > 2 ? &planes[2] : nullptr, .image = img},
         };
 
-        for (uint32_t p = 0; p != numPlanes; p++) {
+        for (u32 p = 0; p != numPlanes; p++) {
         vkGetImageMemoryRequirements2(context->device, &imgRequirements[p], &memRequirements[p]);
         VK_ASSERT(allocateMemory2(context->physical_device, context->device, &memRequirements[p], memFlags, &image.vkMemory_[p]));
         }
@@ -2438,14 +2440,14 @@ vulkan_create_texture(VulkanContext *context, const TextureDesc& requestedDesc, 
         aspect = VK_IMAGE_ASPECT_COLOR_BIT;
     }
 
-    const VkComponentMapping mapping = {
+    VkComponentMapping mapping = {
         .r = VkComponentSwizzle(desc.swizzle.r),
         .g = VkComponentSwizzle(desc.swizzle.g),
         .b = VkComponentSwizzle(desc.swizzle.b),
         .a = VkComponentSwizzle(desc.swizzle.a),
     };
 
-    const VkSamplerYcbcrConversionInfo* ycbcrInfo = isDisjoint ? getOrCreateYcbcrConversionInfo(context, desc.format) : nullptr;
+    VkSamplerYcbcrConversionInfo* ycbcrInfo = isDisjoint ? getOrCreateYcbcrConversionInfo(context, desc.format) : nullptr;
 
     image.imageView_ = vulkan_image_view_create(&image,
         context->device, vkImageViewType, vkFormat, aspect, 0, VK_REMAINING_MIP_LEVELS, 0, numLayers, mapping, ycbcrInfo, debugNameImageView);
@@ -2472,7 +2474,7 @@ vulkan_create_texture(VulkanContext *context, const TextureDesc& requestedDesc, 
     if (desc.data) {
         assert(desc.type == TextureType_2D || desc.type == TextureType_Cube);
         assert(desc.dataNumMipLevels <= desc.numMipLevels);
-        const uint32_t numLayers = desc.type == TextureType_Cube ? 6 : 1;
+        u32 numLayers = desc.type == TextureType_Cube ? 6 : 1;
         //b32 res = upload(handle, {.dimensions = desc.dimensions, .numLayers = numLayers, .numMipLevels = desc.dataNumMipLevels}, desc.data);
         b32 res = true;
         if (!res) {
@@ -2486,43 +2488,11 @@ vulkan_create_texture(VulkanContext *context, const TextureDesc& requestedDesc, 
     return handle;
 }
 
-
-
-#if 0
-Holder<SamplerHandle> VulkanContext::createSampler(const SamplerStateDesc& desc, Result* outResult) {
-  LVK_PROFILER_FUNCTION();
-
-  Result result;
-
-  const VkSamplerCreateInfo info = samplerStateDescToVkSamplerCreateInfo(desc, vulkan_get_physical_device_props().limits);
-
-  SamplerHandle handle = createSampler(info, &result, Format_Invalid, desc.debugName);
-
-  if (!LVK_VERIFY(result.isOk())) {
-    Result::setResult(outResult, Result(Result::Code::RuntimeError, "Cannot create Sampler"));
-    return {};
-  }
-
-  Result::setResult(outResult, result);
-
-  return {this, handle};
-}
-
-
-
-
-
-
-#endif
-
-
-
-
 void querySurfaceCapabilities(VulkanContext *context) {
   // enumerate only the formats we are using
   const VkFormat depthFormats[] = {
       VK_FORMAT_D32_SFLOAT_S8_UINT, VK_FORMAT_D24_UNORM_S8_UINT, VK_FORMAT_D16_UNORM_S8_UINT, VK_FORMAT_D32_SFLOAT, VK_FORMAT_D16_UNORM};
-  for (const VkFormat& depthFormat : depthFormats) {
+  for (VkFormat depthFormat : depthFormats) {
     VkFormatProperties formatProps;
     vkGetPhysicalDeviceFormatProperties(context->physical_device, depthFormat, &formatProps);
 
@@ -2537,7 +2507,7 @@ void querySurfaceCapabilities(VulkanContext *context) {
 
   vkGetPhysicalDeviceSurfaceCapabilitiesKHR(context->physical_device, context->vkSurface_, &context->deviceSurfaceCaps_);
 
-  uint32_t formatCount;
+  u32 formatCount;
   vkGetPhysicalDeviceSurfaceFormatsKHR(context->physical_device, context->vkSurface_, &formatCount, nullptr);
 
   if (formatCount) {
@@ -2545,7 +2515,7 @@ void querySurfaceCapabilities(VulkanContext *context) {
     vkGetPhysicalDeviceSurfaceFormatsKHR(context->physical_device, context->vkSurface_, &formatCount, context->deviceSurfaceFormats_.data());
   }
 
-  uint32_t presentModeCount;
+  u32 presentModeCount;
   vkGetPhysicalDeviceSurfacePresentModesKHR(context->physical_device, context->vkSurface_, &presentModeCount, nullptr);
 
   if (presentModeCount) {
@@ -2815,24 +2785,24 @@ vulkan_create_context_inside(Arena *transient, HWND handle)
 
     #if defined(VK_EXT_layer_settings) && VK_EXT_layer_settings
         // https://github.com/KhronosGroup/MoltenVK/blob/main/Docs/MoltenVK_Configuration_Parameters.md
-        const int useMetalArgumentBuffers = 1;
-        const VkBool32 gpuav_descriptor_checks = VK_FALSE; // https://github.com/KhronosGroup/Vulkan-ValidationLayers/issues/8688
-        const VkBool32 gpuav_indirect_draws_buffers = VK_FALSE; // https://github.com/KhronosGroup/Vulkan-ValidationLayers/issues/8579
-        const VkBool32 gpuav_post_process_descriptor_indexing = VK_FALSE; // https://github.com/KhronosGroup/Vulkan-ValidationLayers/issues/9222
+        int useMetalArgumentBuffers = 1;
+        VkBool32 gpuav_descriptor_checks = VK_FALSE; // https://github.com/KhronosGroup/Vulkan-ValidationLayers/issues/8688
+        VkBool32 gpuav_indirect_draws_buffers = VK_FALSE; // https://github.com/KhronosGroup/Vulkan-ValidationLayers/issues/8579
+        VkBool32 gpuav_post_process_descriptor_indexing = VK_FALSE; // https://github.com/KhronosGroup/Vulkan-ValidationLayers/issues/9222
         #define LAYER_SETTINGS_BOOL32(name, var)                                                                                        \
             VkLayerSettingEXT {                                                                                                           \
                 .pLayerName = k_def_validation_layer[0], .pSettingName = name, .type = VK_LAYER_SETTING_TYPE_BOOL32_EXT, .valueCount = 1, \
                 .pValues = var,                                                                                                             \
             }
 
-        const VkLayerSettingEXT settings[] = {
+        VkLayerSettingEXT settings[] = {
             LAYER_SETTINGS_BOOL32("gpuav_descriptor_checks", &gpuav_descriptor_checks),
             LAYER_SETTINGS_BOOL32("gpuav_indirect_draws_buffers", &gpuav_indirect_draws_buffers),
             LAYER_SETTINGS_BOOL32("gpuav_post_process_descriptor_indexing", &gpuav_post_process_descriptor_indexing),
             {"MoltenVK", "MVK_CONFIG_USE_METAL_ARGUMENT_BUFFERS", VK_LAYER_SETTING_TYPE_INT32_EXT, 1, &useMetalArgumentBuffers},
         };
         #undef LAYER_SETTINGS_BOOL32
-        const VkLayerSettingsCreateInfoEXT layerSettingsCreateInfo = {
+        VkLayerSettingsCreateInfoEXT layerSettingsCreateInfo = {
             .sType = VK_STRUCTURE_TYPE_LAYER_SETTINGS_CREATE_INFO_EXT,
             .pNext = enabled_validation_layers ? &features : nullptr,
             .settingCount = array_count(settings),
@@ -2904,18 +2874,18 @@ vulkan_create_context_inside(Arena *transient, HWND handle)
     {
         // surface creation
         #if defined(VK_USE_PLATFORM_WIN32_KHR)
-        const VkWin32SurfaceCreateInfoKHR ci = {
+        VkWin32SurfaceCreateInfoKHR ci = {
             .sType = VK_STRUCTURE_TYPE_WIN32_SURFACE_CREATE_INFO_KHR,
             .hinstance = GetModuleHandle(nullptr),
             .hwnd = (HWND)handle,
         };
         VK_ASSERT(vkCreateWin32SurfaceKHR(context.instance, &ci, nullptr, &context.vkSurface_));
         #elif defined(VK_USE_PLATFORM_ANDROID_KHR)
-        const VkAndroidSurfaceCreateInfoKHR ci = {
+        VkAndroidSurfaceCreateInfoKHR ci = {
             .sType = VK_STRUCTURE_TYPE_ANDROID_SURFACE_CREATE_INFO_KHR, .pNext = nullptr, .flags = 0, .window = (ANativeWindow*)window};
         VK_ASSERT(vkCreateAndroidSurfaceKHR(vkInstance_, &ci, nullptr, &context.vkSurface_));
         #elif defined(VK_USE_PLATFORM_XLIB_KHR)
-        const VkXlibSurfaceCreateInfoKHR ci = {
+        VkXlibSurfaceCreateInfoKHR ci = {
             .sType = VK_STRUCTURE_TYPE_XLIB_SURFACE_CREATE_INFO_KHR,
             .flags = 0,
             .dpy = (Display*)display,
@@ -2923,7 +2893,7 @@ vulkan_create_context_inside(Arena *transient, HWND handle)
         };
         VK_ASSERT(vkCreateXlibSurfaceKHR(vkInstance_, &ci, nullptr, &context.vkSurface_));
         #elif defined(VK_USE_PLATFORM_WAYLAND_KHR)
-        const VkWaylandSurfaceCreateInfoKHR ci = {
+        VkWaylandSurfaceCreateInfoKHR ci = {
             .sType = VK_STRUCTURE_TYPE_WAYLAND_SURFACE_CREATE_INFO_KHR,
             .flags = 0,
             .display = (wl_display*)display,
@@ -2931,7 +2901,7 @@ vulkan_create_context_inside(Arena *transient, HWND handle)
         };
         VK_ASSERT(vkCreateWaylandSurfaceKHR(vkInstance_, &ci, nullptr, &context.vkSurface_));
         #elif defined(VK_USE_PLATFORM_MACOS_MVK)
-        const VkMacOSSurfaceCreateInfoMVK ci = {
+        VkMacOSSurfaceCreateInfoMVK ci = {
             .sType = VK_STRUCTURE_TYPE_MACOS_SURFACE_CREATE_INFO_MVK,
             .flags = 0,
             .pView = window,
@@ -3035,7 +3005,7 @@ vulkan_create_context(Arena *transient, HWND handle, VulkanContext* context)
         if (count > 0) 
         {
             printf("Count is %d\n", count);
-            const size_t sz = all_instance_extensions_count;
+            size_t sz = all_instance_extensions_count;
             VK_ASSERT(vkEnumerateInstanceExtensionProperties(k_def_validation_layer[0], &count, all_instance_extensions + sz));
             all_instance_extensions_count += count;
         }
@@ -3119,24 +3089,24 @@ vulkan_create_context(Arena *transient, HWND handle, VulkanContext* context)
 
     #if defined(VK_EXT_layer_settings) && VK_EXT_layer_settings
         // https://github.com/KhronosGroup/MoltenVK/blob/main/Docs/MoltenVK_Configuration_Parameters.md
-        const int useMetalArgumentBuffers = 1;
-        const VkBool32 gpuav_descriptor_checks = VK_FALSE; // https://github.com/KhronosGroup/Vulkan-ValidationLayers/issues/8688
-        const VkBool32 gpuav_indirect_draws_buffers = VK_FALSE; // https://github.com/KhronosGroup/Vulkan-ValidationLayers/issues/8579
-        const VkBool32 gpuav_post_process_descriptor_indexing = VK_FALSE; // https://github.com/KhronosGroup/Vulkan-ValidationLayers/issues/9222
+        int useMetalArgumentBuffers = 1;
+        VkBool32 gpuav_descriptor_checks = VK_FALSE; // https://github.com/KhronosGroup/Vulkan-ValidationLayers/issues/8688
+        VkBool32 gpuav_indirect_draws_buffers = VK_FALSE; // https://github.com/KhronosGroup/Vulkan-ValidationLayers/issues/8579
+        VkBool32 gpuav_post_process_descriptor_indexing = VK_FALSE; // https://github.com/KhronosGroup/Vulkan-ValidationLayers/issues/9222
         #define LAYER_SETTINGS_BOOL32(name, var)                                                                                        \
             VkLayerSettingEXT {                                                                                                           \
                 .pLayerName = k_def_validation_layer[0], .pSettingName = name, .type = VK_LAYER_SETTING_TYPE_BOOL32_EXT, .valueCount = 1, \
                 .pValues = var,                                                                                                             \
             }
 
-        const VkLayerSettingEXT settings[] = {
+        VkLayerSettingEXT settings[] = {
             LAYER_SETTINGS_BOOL32("gpuav_descriptor_checks", &gpuav_descriptor_checks),
             LAYER_SETTINGS_BOOL32("gpuav_indirect_draws_buffers", &gpuav_indirect_draws_buffers),
             LAYER_SETTINGS_BOOL32("gpuav_post_process_descriptor_indexing", &gpuav_post_process_descriptor_indexing),
             {"MoltenVK", "MVK_CONFIG_USE_METAL_ARGUMENT_BUFFERS", VK_LAYER_SETTING_TYPE_INT32_EXT, 1, &useMetalArgumentBuffers},
         };
         #undef LAYER_SETTINGS_BOOL32
-        const VkLayerSettingsCreateInfoEXT layerSettingsCreateInfo = {
+        VkLayerSettingsCreateInfoEXT layerSettingsCreateInfo = {
             .sType = VK_STRUCTURE_TYPE_LAYER_SETTINGS_CREATE_INFO_EXT,
             .pNext = enabled_validation_layers ? &features : nullptr,
             .settingCount = array_count(settings),
@@ -3206,18 +3176,18 @@ vulkan_create_context(Arena *transient, HWND handle, VulkanContext* context)
     {
         // surface creation
         #if defined(VK_USE_PLATFORM_WIN32_KHR)
-        const VkWin32SurfaceCreateInfoKHR ci = {
+        VkWin32SurfaceCreateInfoKHR ci = {
             .sType = VK_STRUCTURE_TYPE_WIN32_SURFACE_CREATE_INFO_KHR,
             .hinstance = GetModuleHandle(nullptr),
             .hwnd = (HWND)handle,
         };
         VK_ASSERT(vkCreateWin32SurfaceKHR(context->instance, &ci, nullptr, &context->vkSurface_));
         #elif defined(VK_USE_PLATFORM_ANDROID_KHR)
-        const VkAndroidSurfaceCreateInfoKHR ci = {
+        VkAndroidSurfaceCreateInfoKHR ci = {
             .sType = VK_STRUCTURE_TYPE_ANDROID_SURFACE_CREATE_INFO_KHR, .pNext = nullptr, .flags = 0, .window = (ANativeWindow*)window};
         VK_ASSERT(vkCreateAndroidSurfaceKHR(vkInstance_, &ci, nullptr, &context->vkSurface_));
         #elif defined(VK_USE_PLATFORM_XLIB_KHR)
-        const VkXlibSurfaceCreateInfoKHR ci = {
+        VkXlibSurfaceCreateInfoKHR ci = {
             .sType = VK_STRUCTURE_TYPE_XLIB_SURFACE_CREATE_INFO_KHR,
             .flags = 0,
             .dpy = (Display*)display,
@@ -3225,7 +3195,7 @@ vulkan_create_context(Arena *transient, HWND handle, VulkanContext* context)
         };
         VK_ASSERT(vkCreateXlibSurfaceKHR(vkInstance_, &ci, nullptr, &context->vkSurface_));
         #elif defined(VK_USE_PLATFORM_WAYLAND_KHR)
-        const VkWaylandSurfaceCreateInfoKHR ci = {
+        VkWaylandSurfaceCreateInfoKHR ci = {
             .sType = VK_STRUCTURE_TYPE_WAYLAND_SURFACE_CREATE_INFO_KHR,
             .flags = 0,
             .display = (wl_display*)display,
@@ -3233,7 +3203,7 @@ vulkan_create_context(Arena *transient, HWND handle, VulkanContext* context)
         };
         VK_ASSERT(vkCreateWaylandSurfaceKHR(vkInstance_, &ci, nullptr, &context->vkSurface_));
         #elif defined(VK_USE_PLATFORM_MACOS_MVK)
-        const VkMacOSSurfaceCreateInfoMVK ci = {
+        VkMacOSSurfaceCreateInfoMVK ci = {
             .sType = VK_STRUCTURE_TYPE_MACOS_SURFACE_CREATE_INFO_MVK,
             .flags = 0,
             .pView = window,
@@ -3390,19 +3360,19 @@ vulkan_add_next_physical_device_properties(VulkanContext *context, void* propert
     #endif
 }
 
-uint32_t findQueueFamilyIndex(VkPhysicalDevice physDev, VkQueueFlags flags) {
+u32 findQueueFamilyIndex(VkPhysicalDevice physDev, VkQueueFlags flags) {
 
-  uint32_t queueFamilyCount = 0;
+  u32 queueFamilyCount = 0;
   vkGetPhysicalDeviceQueueFamilyProperties(physDev, &queueFamilyCount, nullptr);
 
   std::vector<VkQueueFamilyProperties> props(queueFamilyCount);
   vkGetPhysicalDeviceQueueFamilyProperties(physDev, &queueFamilyCount, props.data());
 
   auto findDedicatedQueueFamilyIndex = [&props](VkQueueFlags require,
-                                                VkQueueFlags avoid) -> uint32_t {
-    for (uint32_t i = 0; i != props.size(); i++) {
-      const bool isSuitable = (props[i].queueFlags & require) == require;
-      const bool isDedicated = (props[i].queueFlags & avoid) == 0;
+                                                VkQueueFlags avoid) -> u32 {
+    for (u32 i = 0; i != props.size(); i++) {
+      bool isSuitable = (props[i].queueFlags & require) == require;
+      bool isDedicated = (props[i].queueFlags & avoid) == 0;
       if (props[i].queueCount && isSuitable && isDedicated)
         return i;
     }
@@ -3411,14 +3381,14 @@ uint32_t findQueueFamilyIndex(VkPhysicalDevice physDev, VkQueueFlags flags) {
 
   // dedicated queue for compute
   if (flags & VK_QUEUE_COMPUTE_BIT) {
-    const uint32_t q = findDedicatedQueueFamilyIndex(flags, VK_QUEUE_GRAPHICS_BIT);
+    u32 q = findDedicatedQueueFamilyIndex(flags, VK_QUEUE_GRAPHICS_BIT);
     if (q != DeviceQueues::INVALID)
       return q;
   }
 
   // dedicated queue for transfer
   if (flags & VK_QUEUE_TRANSFER_BIT) {
-    const uint32_t q = findDedicatedQueueFamilyIndex(flags, VK_QUEUE_GRAPHICS_BIT);
+    u32 q = findDedicatedQueueFamilyIndex(flags, VK_QUEUE_GRAPHICS_BIT);
     if (q != DeviceQueues::INVALID)
       return q;
   }
@@ -3969,7 +3939,7 @@ auto addOptionalExtensions = [&allDeviceExtensions, &deviceExtensionNames, &crea
         .pNext = createInfoNext,
         .queueCreateInfoCount = num_queues,
         .pQueueCreateInfos = ciQueue,
-        .enabledExtensionCount = (uint32_t)deviceExtensionNames.size(),
+        .enabledExtensionCount = (u32)deviceExtensionNames.size(),
         .ppEnabledExtensionNames = deviceExtensionNames.data(),
         .pEnabledFeatures = &deviceFeatures10,
     };
@@ -4001,7 +3971,7 @@ auto addOptionalExtensions = [&allDeviceExtensions, &deviceExtensionNames, &crea
     //}();
 
     {
-        const VkResolveModeFlags modes = context->vkPhysicalDeviceDepthStencilResolveProperties.supportedDepthResolveModes;
+        VkResolveModeFlags modes = context->vkPhysicalDeviceDepthStencilResolveProperties.supportedDepthResolveModes;
         if (modes & VK_RESOLVE_MODE_AVERAGE_BIT)
         {
             context->depthResolveMode_ = VK_RESOLVE_MODE_AVERAGE_BIT;
@@ -4020,7 +3990,7 @@ auto addOptionalExtensions = [&allDeviceExtensions, &deviceExtensionNames, &crea
 
     // create Vulkan pipeline cache
     {
-        const VkPipelineCacheCreateInfo ci = {
+        VkPipelineCacheCreateInfo ci = {
             VK_STRUCTURE_TYPE_PIPELINE_CACHE_CREATE_INFO,
             nullptr,
             VkPipelineCacheCreateFlags(0),
@@ -4041,7 +4011,7 @@ auto addOptionalExtensions = [&allDeviceExtensions, &deviceExtensionNames, &crea
 
     // default texture
     {
-        const u32 pixel = 0xFF000000;
+        u32 pixel = 0xFF000000;
         context->dummyTexture_ = vulkan_create_texture(context, 
                                 {
                                     .format = Format_RGBA_UN8,
@@ -4099,13 +4069,13 @@ auto addOptionalExtensions = [&allDeviceExtensions, &deviceExtensionNames, &crea
     std::vector<VkTimeDomainEXT> timeDomains;
 
     if (hasCalibratedTimestamps_) {
-        uint32_t numTimeDomains = 0;
+        u32 numTimeDomains = 0;
         VK_ASSERT(vkGetPhysicalDeviceCalibrateableTimeDomainsEXT(context->physical_device, &numTimeDomains, nullptr));
         timeDomains.resize(numTimeDomains);
         VK_ASSERT(vkGetPhysicalDeviceCalibrateableTimeDomainsEXT(context->physical_device, &numTimeDomains, timeDomains.data()));
     }
 
-    const bool hasHostQuery = vkFeatures12_.hostQueryReset && [&timeDomains]() -> bool {
+    bool hasHostQuery = vkFeatures12_.hostQueryReset && [&timeDomains]() -> bool {
         for (VkTimeDomainEXT domain : timeDomains)
         if (domain == VK_TIME_DOMAIN_CLOCK_MONOTONIC_RAW_EXT || domain == VK_TIME_DOMAIN_QUERY_PERFORMANCE_COUNTER_EXT)
             return true;
@@ -4116,7 +4086,7 @@ auto addOptionalExtensions = [&allDeviceExtensions, &deviceExtensionNames, &crea
         pimpl_->tracyVkCtx_ = TracyVkContextHostCalibrated(
             context->physical_device, context->device, vkResetQueryPool, vkGetPhysicalDeviceCalibrateableTimeDomainsEXT, vkGetCalibratedTimestampsEXT);
     } else {
-        const VkCommandPoolCreateInfo ciCommandPool = {
+        VkCommandPoolCreateInfo ciCommandPool = {
             .sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO,
             .flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT | VK_COMMAND_POOL_CREATE_TRANSIENT_BIT,
             .queueFamilyIndex = queues.graphicsQueueFamilyIndex,
@@ -4124,7 +4094,7 @@ auto addOptionalExtensions = [&allDeviceExtensions, &deviceExtensionNames, &crea
         VK_ASSERT(vkCreateCommandPool(context->device, &ciCommandPool, nullptr, &pimpl_->tracyCommandPool_));
         setDebugObjectName(
             context->device, VK_OBJECT_TYPE_COMMAND_POOL, (uint64_t)pimpl_->tracyCommandPool_, "Command Pool: VulkanContextImpl::tracyCommandPool_");
-        const VkCommandBufferAllocateInfo aiCommandBuffer = {
+         VkCommandBufferAllocateInfo aiCommandBuffer = {
             .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
             .commandPool = pimpl_->tracyCommandPool_,
             .level = VK_COMMAND_BUFFER_LEVEL_PRIMARY,
@@ -4149,11 +4119,11 @@ auto addOptionalExtensions = [&allDeviceExtensions, &deviceExtensionNames, &crea
     temp_end(temp_arena);
 }
 
-VkSurfaceFormatKHR chooseSwapSurfaceFormat(const std::vector<VkSurfaceFormatKHR>& formats, ColorSpace colorSpace) {
+VkSurfaceFormatKHR chooseSwapSurfaceFormat(std::vector<VkSurfaceFormatKHR>& formats, ColorSpace colorSpace) {
     assert(!formats.empty());
 
-    auto isNativeSwapChainBGR = [](const std::vector<VkSurfaceFormatKHR>& formats) -> bool {
-        for (const VkSurfaceFormatKHR& fmt : formats) {
+    auto isNativeSwapChainBGR = [](std::vector<VkSurfaceFormatKHR>& formats) -> bool {
+        for (VkSurfaceFormatKHR& fmt : formats) {
         // The preferred format should be the one which is closer to the beginning of the formats
         // container. If BGR is encountered earlier, it should be picked as the format of choice. If RGB
         // happens to be earlier, take it.
@@ -4182,16 +4152,16 @@ VkSurfaceFormatKHR chooseSwapSurfaceFormat(const std::vector<VkSurfaceFormatKHR>
         }
     };
 
-    const VkSurfaceFormatKHR preferred = colorSpaceToVkSurfaceFormat(colorSpace, isNativeSwapChainBGR(formats));
+    VkSurfaceFormatKHR preferred = colorSpaceToVkSurfaceFormat(colorSpace, isNativeSwapChainBGR(formats));
 
-    for (const VkSurfaceFormatKHR& fmt : formats) {
+    for (VkSurfaceFormatKHR& fmt : formats) {
         if (fmt.format == preferred.format && fmt.colorSpace == preferred.colorSpace) {
         return fmt;
         }
     }
 
     // if we can't find a matching format and color space, fallback on matching only format
-    for (const VkSurfaceFormatKHR& fmt : formats) {
+    for (VkSurfaceFormatKHR& fmt : formats) {
         if (fmt.format == preferred.format) {
         return fmt;
         }
@@ -4226,13 +4196,13 @@ void vulkan_init_swapchain(Arena *arena, Arena *transient, VulkanContext *contex
     gui_assert(queueFamilySupportsPresentation == VK_TRUE, "The queue family used with the swapchain does not support presentation");
 
     VulkanContext *ctx = context;
-    auto chooseSwapImageCount = [](const VkSurfaceCapabilitiesKHR& caps) -> uint32_t {
-        const uint32_t desired = caps.minImageCount + 1;
-        const bool exceeded = caps.maxImageCount > 0 && desired > caps.maxImageCount;
+    auto chooseSwapImageCount = [](VkSurfaceCapabilitiesKHR& caps) -> u32 {
+        u32 desired = caps.minImageCount + 1;
+        bool exceeded = caps.maxImageCount > 0 && desired > caps.maxImageCount;
         return exceeded ? caps.maxImageCount : desired;
     };
 
-    auto chooseSwapPresentMode = [](const std::vector<VkPresentModeKHR>& modes) -> VkPresentModeKHR {
+    auto chooseSwapPresentMode = [](std::vector<VkPresentModeKHR>& modes) -> VkPresentModeKHR {
     #if defined(__linux__) || defined(_M_ARM64)
         if (std::find(modes.cbegin(), modes.cend(), VK_PRESENT_MODE_IMMEDIATE_KHR) != modes.cend()) {
         return VK_PRESENT_MODE_IMMEDIATE_KHR;
@@ -4253,8 +4223,8 @@ void vulkan_init_swapchain(Arena *arena, Arena *transient, VulkanContext *contex
         VkFormatProperties props = {};
         vkGetPhysicalDeviceFormatProperties(pd, format, &props);
 
-        const bool isStorageSupported = (caps.supportedUsageFlags & VK_IMAGE_USAGE_STORAGE_BIT) > 0;
-        const bool isTilingOptimalSupported = (props.optimalTilingFeatures & VK_IMAGE_USAGE_STORAGE_BIT) > 0;
+        bool isStorageSupported = (caps.supportedUsageFlags & VK_IMAGE_USAGE_STORAGE_BIT) > 0;
+        bool isTilingOptimalSupported = (props.optimalTilingFeatures & VK_IMAGE_USAGE_STORAGE_BIT) > 0;
 
         if (isStorageSupported && isTilingOptimalSupported) {
         usageFlags |= VK_IMAGE_USAGE_STORAGE_BIT;
@@ -4263,9 +4233,9 @@ void vulkan_init_swapchain(Arena *arena, Arena *transient, VulkanContext *contex
         return usageFlags;
     };
 
-    const VkImageUsageFlags usageFlags = chooseUsageFlags(ctx->physical_device, ctx->vkSurface_, context->swapchain_->surfaceFormat_.format);
-    const bool isCompositeAlphaOpaqueSupported = (ctx->deviceSurfaceCaps_.supportedCompositeAlpha & VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR) != 0;
-    const VkSwapchainCreateInfoKHR ci = {
+    VkImageUsageFlags usageFlags = chooseUsageFlags(ctx->physical_device, ctx->vkSurface_, context->swapchain_->surfaceFormat_.format);
+    bool isCompositeAlphaOpaqueSupported = (ctx->deviceSurfaceCaps_.supportedCompositeAlpha & VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR) != 0;
+    VkSwapchainCreateInfoKHR ci = {
         .sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR,
         .surface = context->vkSurface_,
         .minImageCount = chooseSwapImageCount(ctx->deviceSurfaceCaps_),
@@ -4303,7 +4273,7 @@ void vulkan_init_swapchain(Arena *arena, Arena *transient, VulkanContext *contex
     char debugNameImageView[256] = {0};
 
     // create images, image views and framebuffers
-    for (uint32_t i = 0; i < context->swapchain_->numSwapchainImages_; i++) {
+    for (u32 i = 0; i < context->swapchain_->numSwapchainImages_; i++) {
         context->swapchain_->acquireSemaphore_[i] = vulkan_create_semaphore(context->device, "Semaphore: swapchain-acquire");
 
         snprintf(debugNameImage, sizeof(debugNameImage) - 1, "Image: swapchain %u", i);
@@ -4427,12 +4397,12 @@ vulkan_context_cmd_buffer_submit(VulkanContext *ctx, CommandBuffer *vkCmdBuffer,
     }
 
     //const bool shouldPresent = hasSwapchain() && present;
-    const bool shouldPresent = ctx->swapchain_ && present;
+    bool shouldPresent = ctx->swapchain_ && present;
 
     if (shouldPresent) {
         // if we a presenting a swapchain image, signal our timeline semaphore
         //const uint64_t signalValue = ctx->swapchain_->currentFrameIndex_ + ctx->swapchain_->getNumSwapchainImages();
-        const uint64_t signalValue = ctx->swapchain_->currentFrameIndex_ + ctx->swapchain_->numSwapchainImages_;
+        uint64_t signalValue = ctx->swapchain_->currentFrameIndex_ + ctx->swapchain_->numSwapchainImages_;
         // we wait for this value next time we want to acquire this swapchain image
         ctx->swapchain_->timelineWaitValues_[ctx->swapchain_->currentImageIndex_] = signalValue;
         //ctx->immediate_->signalSemaphore(timelineSemaphore_, signalValue);

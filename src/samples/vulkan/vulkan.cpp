@@ -1000,6 +1000,32 @@ struct VulkanImmediateCommands
 
 };
 
+internal b32
+vulkan_immediate_commands_is_ready(VulkanImmediateCommands *immediate, SubmitHandle handle, b32 fast_check_no_vulkan)
+{
+    assert(handle.bufferIndex_ < immediate->kMaxCommandBuffers);
+    if(handle.empty())
+    {
+        return true;
+    }
+    CommandBufferWrapper *buf = &immediate->buffers[handle.bufferIndex_];
+
+    if(buf->cmdBuf_ == VK_NULL_HANDLE)
+    {
+        return true;
+    }
+
+    if(buf->handle_.submitId_ != handle.submitId_)
+    {
+        return true;
+    }
+
+    if(fast_check_no_vulkan)
+    {
+        return false;
+    }
+    return vkWaitForFences(immediate->device, 1, &buf->fence_, VK_TRUE, 0) == VK_SUCCESS;
+}
 
 internal void
 vulkan_immediate_commands_create(VulkanImmediateCommands *immediate, VkDevice device, u32 queue_family_index, const char *debug_name)
@@ -1084,11 +1110,25 @@ vulkan_immediate_commands_purge(VulkanImmediateCommands *immediate)
     }
 }
 
+internal VkSemaphore
+vulkan_immediate_commands_acquire_last_submit_semaphore(VulkanImmediateCommands *immediate)
+{
+    VkSemaphore result = immediate->lastSubmitSemaphore_.semaphore;
+    immediate->lastSubmitSemaphore_.semaphore = VK_NULL_HANDLE;
+    return result;
+}
+internal void
+vulkan_immediate_commands_signal_semaphore(VulkanImmediateCommands *immediate, VkSemaphore semaphore, u64 signal_value)
+{
+    assert(immediate->signalSemaphore_.semaphore == VK_NULL_HANDLE);
+    immediate->signalSemaphore_.semaphore = semaphore;
+    immediate->signalSemaphore_.value = signal_value;
+}
 
 internal CommandBufferWrapper *
 vulkan_immediate_commands_acquire(VulkanImmediateCommands *immediate)
 {
-    if(immediate->numAvailableCommandBuffers_)
+    if(!immediate->numAvailableCommandBuffers_)
     {
         vulkan_immediate_commands_purge(immediate);
     }
@@ -1134,6 +1174,14 @@ vulkan_immediate_commands_acquire(VulkanImmediateCommands *immediate)
     return current;
 }
 
+
+
+internal void
+vulkan_immediate_commands_wait_semaphore(VulkanImmediateCommands *immediate, VkSemaphore semaphore)
+{
+    assert(immediate->waitSemaphore_.semaphore == VK_NULL_HANDLE);
+    immediate->waitSemaphore_.semaphore = semaphore;
+}
 
 internal SubmitHandle
 vulkan_immediate_commands_submit(VulkanImmediateCommands *immediate, CommandBufferWrapper *wrapper)
@@ -1188,6 +1236,7 @@ vulkan_immediate_commands_submit(VulkanImmediateCommands *immediate, CommandBuff
 
     // reset
     //const_cast<CommandBufferWrapper&>(wrapper).isEncoding_ = false;
+    wrapper->isEncoding_ = false;
     immediate->submitCounter_++;
 
     if (!immediate->submitCounter_) {
@@ -1196,56 +1245,6 @@ vulkan_immediate_commands_submit(VulkanImmediateCommands *immediate, CommandBuff
     }
 
     return immediate->lastSubmitHandle_;
-}
-
-// CONTINUE HERE
-lvk::SubmitHandle lvk::VulkanContext::submit(lvk::ICommandBuffer& commandBuffer, TextureHandle present) {
-  LVK_PROFILER_FUNCTION();
-
-  CommandBuffer* vkCmdBuffer = static_cast<CommandBuffer*>(&commandBuffer);
-
-  LVK_ASSERT(vkCmdBuffer);
-  LVK_ASSERT(vkCmdBuffer->ctx_);
-  LVK_ASSERT(vkCmdBuffer->wrapper_);
-
-#if defined(LVK_WITH_TRACY_GPU)
-  TracyVkCollect(pimpl_->tracyVkCtx_, vkCmdBuffer->wrapper_->cmdBuf_);
-#endif // LVK_WITH_TRACY_GPU
-
-  if (present) {
-    const lvk::VulkanImage& tex = *texturesPool_.get(present);
-
-    LVK_ASSERT(tex.isSwapchainImage_);
-
-    tex.transitionLayout(vkCmdBuffer->wrapper_->cmdBuf_,
-                         VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
-                         VkImageSubresourceRange{VK_IMAGE_ASPECT_COLOR_BIT, 0, VK_REMAINING_MIP_LEVELS, 0, VK_REMAINING_ARRAY_LAYERS});
-  }
-
-  const bool shouldPresent = hasSwapchain() && present;
-
-  if (shouldPresent) {
-    // if we a presenting a swapchain image, signal our timeline semaphore
-    const uint64_t signalValue = swapchain_->currentFrameIndex_ + swapchain_->getNumSwapchainImages();
-    // we wait for this value next time we want to acquire this swapchain image
-    swapchain_->timelineWaitValues_[swapchain_->currentImageIndex_] = signalValue;
-    immediate_->signalSemaphore(timelineSemaphore_, signalValue);
-  }
-
-  vkCmdBuffer->lastSubmitHandle_ = immediate_->submit(*vkCmdBuffer->wrapper_);
-
-  if (shouldPresent) {
-    swapchain_->present(immediate_->acquireLastSubmitSemaphore());
-  }
-
-  processDeferredTasks();
-
-  SubmitHandle handle = vkCmdBuffer->lastSubmitHandle_;
-
-  // reset
-  pimpl_->currentCommandBuffer_ = {};
-
-  return handle;
 }
 
 
@@ -1309,17 +1308,38 @@ struct VulkanSwapchain
     uint64_t timelineWaitValues_[LVK_MAX_SWAPCHAIN_IMAGES] = {};
 };
 
-void vulkan_swapchain_get_current_texture(VulkanSwapchain *swapchain)
+void vulkan_swapchain_present(VulkanSwapchain *swapchain, VkSemaphore wait_semaphore)
 {
-    // fucking complicated! i thought it was easier than that!
-    // return swapchain->swapchainTextures_[swapchain->currentImageIndex];
+    //LVK_PROFILER_FUNCTION();
+
+    //LVK_PROFILER_ZONE("vkQueuePresent()", LVK_PROFILER_COLOR_PRESENT);
+    VkPresentInfoKHR pi = {
+        .sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR,
+        .waitSemaphoreCount = 1,
+        .pWaitSemaphores = &wait_semaphore,
+        .swapchainCount = 1u,
+        .pSwapchains = &swapchain->swapchain_,
+        .pImageIndices = &swapchain->currentImageIndex_,
+    };
+    VkResult r = vkQueuePresentKHR(swapchain->graphicsQueue_, &pi);
+    if (r != VK_SUCCESS && r != VK_SUBOPTIMAL_KHR && r != VK_ERROR_OUT_OF_DATE_KHR) 
+    {
+        VK_ASSERT(r);
+    }
+    //LVK_PROFILER_ZONE_END();
+
+    // Ready to call acquireNextImage() on the next getCurrentVulkanTexture();
+    swapchain->getNextImage_ = true;
+    swapchain->currentFrameIndex_++;
+
+    //LVK_PROFILER_FRAME(nullptr);
 }
 
 
 struct CommandBuffer
 {
     VulkanContext* ctx_ = nullptr;
-    const CommandBufferWrapper* wrapper_ = nullptr;
+    CommandBufferWrapper* wrapper_ = nullptr;
 
     Framebuffer framebuffer_ = {};
     SubmitHandle lastSubmitHandle_ = {};
@@ -1420,6 +1440,64 @@ struct VulkanContext
     #endif
     
 };
+
+TextureHandle vulkan_swapchain_get_current_texture(VulkanSwapchain *swapchain)
+{
+    //LVK_PROFILER_FUNCTION();
+
+    if (swapchain->getNextImage_) {
+        const VkSemaphoreWaitInfo waitInfo = {
+            .sType = VK_STRUCTURE_TYPE_SEMAPHORE_WAIT_INFO,
+            .semaphoreCount = 1,
+            .pSemaphores = &swapchain->ctx_->timelineSemaphore_,
+            .pValues = &swapchain->timelineWaitValues_[swapchain->currentImageIndex_],
+        };
+        VK_ASSERT(vkWaitSemaphores(swapchain->device_, &waitInfo, UINT64_MAX));
+        // when timeout is set to UINT64_MAX, we wait until the next image has been acquired
+        VkSemaphore acquireSemaphore = swapchain->acquireSemaphore_[swapchain->currentImageIndex_];
+        VkResult r = vkAcquireNextImageKHR(swapchain->device_, swapchain->swapchain_, UINT64_MAX, acquireSemaphore, VK_NULL_HANDLE, &swapchain->currentImageIndex_);
+        if (r != VK_SUCCESS && r != VK_SUBOPTIMAL_KHR && r != VK_ERROR_OUT_OF_DATE_KHR) 
+        {
+            VK_ASSERT(r);
+        }
+        swapchain->getNextImage_ = false;
+        //swapchain->ctx_->immediate_->waitSemaphore(acquireSemaphore);
+        vulkan_immediate_commands_wait_semaphore(swapchain->ctx_->immediate_, acquireSemaphore);
+    }
+
+    //if (LVK_VERIFY(swapchain->currentImageIndex_ < swapchain->numSwapchainImages_)) {
+    if (swapchain->currentImageIndex_ < swapchain->numSwapchainImages_) {
+        return swapchain->swapchainTextures_[swapchain->currentImageIndex_];
+    }
+
+    return {};
+}
+
+// weird names between these two: `vulkan_swapchain_get_current_texture` and `vulkan_context_get_current_swapchain_texture`
+TextureHandle vulkan_context_get_current_swapchain_texture(VulkanContext *ctx)
+{
+    // fucking complicated! i thought it was easier than that!
+    // return swapchain->swapchainTextures_[swapchain->currentImageIndex];
+    //LVK_PROFILER_FUNCTION();
+
+    //if (!hasSwapchain()) {
+    if (!ctx->swapchain_) {
+        return {};
+    }
+
+    //TextureHandle tex = ctx->swapchain_->getCurrentTexture();
+    TextureHandle tex = vulkan_swapchain_get_current_texture(ctx->swapchain_);
+    //if (!LVK_VERIFY(tex.valid())) {
+    if (!handle_is_valid(tex)) {
+        gui_assert(false, "Swapchain has no valid texture");
+        return {};
+    }
+
+    //LVK_ASSERT_MSG(texturesPool_.get(tex)->vkImageFormat_ != VK_FORMAT_UNDEFINED, "Invalid image format");
+    gui_assert(pool_get(&ctx->texturesPool_, tex)->vkImageFormat_ != VK_FORMAT_UNDEFINED, "Invalid image format");
+
+    return tex;
+}
 
 internal VkPhysicalDeviceProperties
 vulkan_get_physical_device_props(VulkanContext *context)
@@ -1845,6 +1923,8 @@ void growDescriptorPool(VulkanContext *context, u32 maxTextures, u32 maxSamplers
   }
 #endif
 
+
+  // IMPORTANT these two uses of the function defferedTask is not used at least not even in the HelloTriangle!
   if (context->vkDSL_ != VK_NULL_HANDLE) {
     //deferredTask(std::packaged_task<void()>([device = context->device, dsl = context->vkDSL_]() { vkDestroyDescriptorSetLayout(device, dsl, nullptr); }));
   }
@@ -1854,7 +1934,14 @@ void growDescriptorPool(VulkanContext *context, u32 maxTextures, u32 maxSamplers
 
   bool hasYUVImages = false;
 
-// TODO No en el ejemplo de swapchain!
+/* IMPORTANT Is not in:
+  - Swapchain
+  - HelloTriangle
+
+  Also I did some modifications in the code to be able to enclose all in and #if 0 block. Be careful!
+*/
+std::vector<VkSampler> immutableSamplers;
+const VkSampler* immutableSamplersData = nullptr;
 #if 0
   // check if we have any YUV images
   for (const auto& obj : texturesPool_.objects_) {
@@ -1866,12 +1953,8 @@ void growDescriptorPool(VulkanContext *context, u32 maxTextures, u32 maxSamplers
       break;
     }
   }
-#endif
 
-  std::vector<VkSampler> immutableSamplers;
-  const VkSampler* immutableSamplersData = nullptr;
 
-  #if 0
   if (hasYUVImages) {
     VkSampler dummySampler = samplersPool_.objects_[0].obj_;
     immutableSamplers.reserve(texturesPool_.objects_.size());
@@ -4346,6 +4429,7 @@ void vulkan_init_swapchain(Arena *arena, Arena *transient, VulkanContext *contex
     swap->surfaceFormat_ = {.format = VK_FORMAT_UNDEFINED};
 
     swap->surfaceFormat_ = chooseSwapSurfaceFormat(context->deviceSurfaceFormats_, ColorSpace_SRGB_LINEAR);
+    swap->getNextImage_ = true;
 
     gui_assert(context->vkSurface_ != VK_NULL_HANDLE, "VulkanContext::Surface is empty!");
     VkBool32 queueFamilySupportsPresentation = VK_FALSE;
@@ -4465,8 +4549,13 @@ void vulkan_init_swapchain(Arena *arena, Arena *transient, VulkanContext *contex
         context->swapchain_->swapchainTextures_[i] = pool_create(&context->texturesPool_, image);
     }
 
-    //
-    context->timelineSemaphore_ = createSemaphoreTimeline(context->device, context->swapchain_->numSwapchainImages_, "Semaphore: VulkanContext::timelineSemaphore_");
+    // TODO see this in detail!!
+    /*
+    
+     vkQueueSubmit2(): pSubmits[0].pSignalSemaphoreInfos[1].semaphore signal value (0x3) in VkQueue 0x1327c25cc110[] must be greater than current timeline semaphore VkSemaphore 0xf9a524000000009e[Semaphore: VulkanContext::timelineSemaphore_] value (0x3). The Vulkan spec states: If the semaphore member of any element of pSignalSemaphoreInfos is a timeline semaphore, the value member of that element must have a value greater than the current value of the semaphore when the semaphore signal operation is executed (https://vulkan.lunarg.com/doc/view/1.3.268.0/windows/1.3-extensions/vkspec.html#VUID-VkSubmitInfo2-semaphore-03882)
+    
+    */
+    context->timelineSemaphore_ = createSemaphoreTimeline(context->device, context->swapchain_->numSwapchainImages_ - 1, "Semaphore: VulkanContext::timelineSemaphore_");
 }
 
 // OBS: probably just a handle. Store a HANDLE custom type inside the custom type window that can link to the actual OS window?
@@ -4491,7 +4580,7 @@ vulkan_create_context_with_swapchain(Arena *arena, Arena *transient, OS_Window w
 }
 
 internal CommandBuffer *
-vulkan_context_acquire_cmd_buffer(VulkanContext *ctx)
+vulkan_context_cmd_buffer_acquire(VulkanContext *ctx)
 {
     //LVK_PROFILER_FUNCTION();
 
@@ -4507,6 +4596,80 @@ vulkan_context_acquire_cmd_buffer(VulkanContext *ctx)
     return &ctx->currentCommandBuffer_;
 }
 
+internal void
+processDeferredTasks(VulkanContext *ctx)
+{
+    while(!ctx->deferredTasks_.empty() && vulkan_immediate_commands_is_ready(ctx->immediate_, ctx->deferredTasks_.front().handle_, true))
+    {
+        ctx->deferredTasks_.front().task_();
+        ctx->deferredTasks_.pop_front();
+    }
+}
+
+// CONTINUE HERE
+internal SubmitHandle
+vulkan_context_cmd_buffer_submit(VulkanContext *ctx, CommandBuffer *vkCmdBuffer, TextureHandle present)
+{
+    //LVK_PROFILER_FUNCTION();
+    // This is not needed, explicit in the function arg
+    //CommandBuffer* vkCmdBuffer = static_cast<CommandBuffer*>(&commandBuffer);
+
+    assert(vkCmdBuffer);
+    assert(vkCmdBuffer->ctx_);
+    assert(vkCmdBuffer->wrapper_);
+
+    #if defined(LVK_WITH_TRACY_GPU)
+        TracyVkCollect(pimpl_->tracyVkCtx_, vkCmdBuffer->wrapper_->cmdBuf_);
+    #endif // LVK_WITH_TRACY_GPU
+
+    if (present) {
+        //const VulkanImage& tex = *texturesPool_.get(present);
+        VulkanImage* tex = pool_get(&ctx->texturesPool_, present);
+
+        assert(tex->isSwapchainImage_);
+
+        /*
+        tex.transitionLayout(vkCmdBuffer->wrapper_->cmdBuf_,
+                            VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
+                            VkImageSubresourceRange{VK_IMAGE_ASPECT_COLOR_BIT, 0, VK_REMAINING_MIP_LEVELS, 0, VK_REMAINING_ARRAY_LAYERS});
+        */
+        vulkan_image_transition_layout(tex, vkCmdBuffer->wrapper_->cmdBuf_,
+                         VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
+                         VkImageSubresourceRange{VK_IMAGE_ASPECT_COLOR_BIT, 0, VK_REMAINING_MIP_LEVELS, 0, VK_REMAINING_ARRAY_LAYERS});
+    }
+
+    //const bool shouldPresent = hasSwapchain() && present;
+    const bool shouldPresent = ctx->swapchain_ && present;
+
+    if (shouldPresent) {
+        // if we a presenting a swapchain image, signal our timeline semaphore
+        //const uint64_t signalValue = ctx->swapchain_->currentFrameIndex_ + ctx->swapchain_->getNumSwapchainImages();
+        const uint64_t signalValue = ctx->swapchain_->currentFrameIndex_ + ctx->swapchain_->numSwapchainImages_;
+        // we wait for this value next time we want to acquire this swapchain image
+        ctx->swapchain_->timelineWaitValues_[ctx->swapchain_->currentImageIndex_] = signalValue;
+        //ctx->immediate_->signalSemaphore(timelineSemaphore_, signalValue);
+        vulkan_immediate_commands_signal_semaphore(ctx->immediate_, ctx->timelineSemaphore_, signalValue);
+    }
+
+    //vkCmdBuffer->lastSubmitHandle_ = immediate_->submit(*vkCmdBuffer->wrapper_);
+    vkCmdBuffer->lastSubmitHandle_ = vulkan_immediate_commands_submit(ctx->immediate_, vkCmdBuffer->wrapper_);
+
+    if (shouldPresent) {
+        //ctx->swapchain_->present(ctx->immediate_->acquireLastSubmitSemaphore());
+        VkSemaphore sem = vulkan_immediate_commands_acquire_last_submit_semaphore(ctx->immediate_);
+        vulkan_swapchain_present(ctx->swapchain_, sem);
+    }
+
+    processDeferredTasks(ctx);
+
+    SubmitHandle handle = vkCmdBuffer->lastSubmitHandle_;
+
+    // reset
+    ctx->currentCommandBuffer_ = {};
+
+    return handle;
+}
+
 int main() 
 {
     u32 window_width = 1280;
@@ -4520,6 +4683,9 @@ int main()
     while(global_w32_window.is_running)
     {
         Win32ProcessPendingMessages();
-        CommandBuffer * buf = vulkan_context_acquire_cmd_buffer(ctx);
+        CommandBuffer * buf = vulkan_context_cmd_buffer_acquire(ctx);
+        TextureHandle curr_swapchain_tex = vulkan_context_get_current_swapchain_texture(ctx);
+        vulkan_context_cmd_buffer_submit(ctx, buf, curr_swapchain_tex);    
     }
+    vkDestroyInstance(ctx->instance, nullptr);
 }

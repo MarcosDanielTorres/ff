@@ -51,10 +51,6 @@ enum Bindings {
   kBinding_AccelerationStructures = 4,
   kBinding_NumBindings = 5,
 };
-
-
-
-
 /*
 
 texturespool
@@ -83,28 +79,26 @@ There is no call to destroy() inside Handle (the only function related destructi
 
 */
 
-
-enum TextureUsageBits : u8 {
-  TextureUsageBits_Sampled = 1 << 0,
-  TextureUsageBits_Storage = 1 << 1,
-  TextureUsageBits_Attachment = 1 << 2,
+enum TextureUsageBits : u8 
+{
+    TextureUsageBits_Sampled = 1 << 0,
+    TextureUsageBits_Storage = 1 << 1,
+    TextureUsageBits_Attachment = 1 << 2,
 };
 
-
-
-struct TextureFormatProperties {
-  Format format = Format_Invalid;
-  u8 bytesPerBlock : 5 = 1;
-  u8 blockWidth : 3 = 1;
-  u8 blockHeight : 3 = 1;
-  u8 minBlocksX : 2 = 1;
-  u8 minBlocksY : 2 = 1;
-  bool depth : 1 = false;
-  bool stencil : 1 = false;
-  bool compressed : 1 = false;
-  u8 numPlanes : 2 = 1;
+struct TextureFormatProperties 
+{
+    Format format = Format_Invalid;
+    u8 bytesPerBlock : 5 = 1;
+    u8 blockWidth : 3 = 1;
+    u8 blockHeight : 3 = 1;
+    u8 minBlocksX : 2 = 1;
+    u8 minBlocksY : 2 = 1;
+    bool depth : 1 = false;
+    bool stencil : 1 = false;
+    bool compressed : 1 = false;
+    u8 numPlanes : 2 = 1;
 };
-
 
 #define PROPS(fmt, bpb, ...) \
   TextureFormatProperties { .format = Format_##fmt, .bytesPerBlock = bpb, ##__VA_ARGS__ }
@@ -142,9 +136,9 @@ static constexpr TextureFormatProperties properties[] = {
     PROPS(YUV_420p, 24, .blockWidth = 4, .blockHeight = 4, .compressed = true, .numPlanes = 3), // Subsampled 420
 };
 
-
-
-VkResult setDebugObjectName(VkDevice device, VkObjectType type, uint64_t handle, const char* name) {
+internal VkResult
+setDebugObjectName(VkDevice device, VkObjectType type, uint64_t handle, const char* name)
+{
   if (!name || !*name || !vkSetDebugUtilsObjectNameEXT) {
     return VK_SUCCESS;
   }
@@ -157,8 +151,9 @@ VkResult setDebugObjectName(VkDevice device, VkObjectType type, uint64_t handle,
   return vkSetDebugUtilsObjectNameEXT(device, &ni);
 }
 
-
-const char* getVulkanResultString(VkResult result) {
+internal const char *
+getVulkanResultString(VkResult result)
+{
 #define RESULT_CASE(res) \
   case res:              \
     return #res
@@ -291,7 +286,8 @@ LRESULT CALLBACK win32_main_callback(HWND Window, UINT Message, WPARAM wParam, L
     return result;
 }
 
-void Win32ProcessPendingMessages() {
+internal void
+Win32ProcessPendingMessages() {
     MSG Message;
     while(PeekMessage(&Message, 0, 0, 0, PM_REMOVE))
     {
@@ -312,7 +308,8 @@ void Win32ProcessPendingMessages() {
 
 
 
-bool hasExtension(const char* ext, std::vector<VkExtensionProperties>& props) 
+internal bool
+hasExtension(const char* ext, std::vector<VkExtensionProperties>& props) 
 {
     for (VkExtensionProperties& p : props) {
         if (strcmp(ext, p.extensionName) == 0)
@@ -321,7 +318,8 @@ bool hasExtension(const char* ext, std::vector<VkExtensionProperties>& props)
     return false;
 }
 
-void getDeviceExtensionProps(VkPhysicalDevice dev, std::vector<VkExtensionProperties>& props, const char* validationLayer = nullptr) 
+internal void
+getDeviceExtensionProps(VkPhysicalDevice dev, std::vector<VkExtensionProperties>& props, const char* validationLayer = nullptr) 
 {
     u32 numExtensions = 0;
     vkEnumerateDeviceExtensionProperties(dev, validationLayer, &numExtensions, nullptr);
@@ -902,7 +900,8 @@ pool_get(Pool *pool, Handle handle)
 
 
 
-VkSemaphore createSemaphoreTimeline(VkDevice device, uint64_t initialValue, const char* debugName) {
+internal VkSemaphore
+createSemaphoreTimeline(VkDevice device, uint64_t initialValue, const char* debugName) {
    VkSemaphoreTypeCreateInfo semaphoreTypeCreateInfo = {
       .sType = VK_STRUCTURE_TYPE_SEMAPHORE_TYPE_CREATE_INFO,
       .semaphoreType = VK_SEMAPHORE_TYPE_TIMELINE,
@@ -1193,15 +1192,8 @@ vulkan_immediate_commands_submit(VulkanImmediateCommands *immediate, CommandBuff
     return immediate->lastSubmitHandle_;
 }
 
-
-
-
-
-
-
-
-
-void vulkan_swapchain_present(VulkanSwapchain *swapchain, VkSemaphore wait_semaphore)
+internal void
+vulkan_swapchain_present(VulkanSwapchain *swapchain, VkSemaphore wait_semaphore)
 {
     //LVK_PROFILER_FUNCTION();
 
@@ -1228,10 +1220,8 @@ void vulkan_swapchain_present(VulkanSwapchain *swapchain, VkSemaphore wait_semap
     //LVK_PROFILER_FRAME(nullptr);
 }
 
-
-
-
-TextureHandle vulkan_swapchain_get_current_texture(VulkanSwapchain *swapchain)
+internal TextureHandle
+vulkan_swapchain_get_current_texture(VulkanSwapchain *swapchain)
 {
     //LVK_PROFILER_FUNCTION();
 
@@ -1264,7 +1254,8 @@ TextureHandle vulkan_swapchain_get_current_texture(VulkanSwapchain *swapchain)
 }
 
 // weird names between these two: `vulkan_swapchain_get_current_texture` and `vulkan_context_get_current_swapchain_texture`
-TextureHandle vulkan_context_get_current_swapchain_texture(VulkanContext *ctx)
+internal TextureHandle
+vulkan_swapchain_get_current_texture(VulkanContext *ctx)
 {
     // fucking complicated! i thought it was easier than that!
     // return swapchain->swapchainTextures_[swapchain->currentImageIndex];
@@ -1298,18 +1289,17 @@ vulkan_get_physical_device_props(VulkanContext *context)
 
 internal VkImageView
 vulkan_image_view_create(VulkanImage *image,
-    VkDevice device,
-    VkImageViewType type,
-    VkFormat format,
-    VkImageAspectFlags aspectMask,
+                        VkDevice device,
+                        VkImageViewType type,
+                        VkFormat format,
+                        VkImageAspectFlags aspectMask,
                         u32 baseLevel,
                         u32 numLevels,
                         u32 baseLayer,
                         u32 numLayers,
                         VkComponentMapping mapping,
                         VkSamplerYcbcrConversionInfo* ycbcr,
-                        const char* debugName
-                    )
+                        const char* debugName)
 {
     VkImageViewCreateInfo ci = {
         .sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
@@ -1330,72 +1320,71 @@ vulkan_image_view_create(VulkanImage *image,
 internal VkFormat
 formatToVkFormat(Format format)
 {
-  using TextureFormat = Format;
-  switch (format) {
-  case Format_Invalid:
-    return VK_FORMAT_UNDEFINED;
-  case Format_R_UN8:
-    return VK_FORMAT_R8_UNORM;
-  case Format_R_UN16:
-    return VK_FORMAT_R16_UNORM;
-  case Format_R_F16:
-    return VK_FORMAT_R16_SFLOAT;
-  case Format_R_UI16:
-    return VK_FORMAT_R16_UINT;
-  case Format_R_UI32:
-    return VK_FORMAT_R32_UINT;
-  case Format_RG_UN8:
-    return VK_FORMAT_R8G8_UNORM;
-  case Format_RG_UI16:
-    return VK_FORMAT_R16G16_UINT;
-  case Format_RG_UI32:
-    return VK_FORMAT_R32G32_UINT;
-  case Format_RG_UN16:
-    return VK_FORMAT_R16G16_UNORM;
-  case Format_BGRA_UN8:
-    return VK_FORMAT_B8G8R8A8_UNORM;
-  case Format_RGBA_UN8:
-    return VK_FORMAT_R8G8B8A8_UNORM;
-  case Format_RGBA_SRGB8:
-    return VK_FORMAT_R8G8B8A8_SRGB;
-  case Format_BGRA_SRGB8:
-    return VK_FORMAT_B8G8R8A8_SRGB;
-  case Format_RG_F16:
-    return VK_FORMAT_R16G16_SFLOAT;
-  case Format_RG_F32:
-    return VK_FORMAT_R32G32_SFLOAT;
-  case Format_R_F32:
-    return VK_FORMAT_R32_SFLOAT;
-  case Format_RGBA_F16:
-    return VK_FORMAT_R16G16B16A16_SFLOAT;
-  case Format_RGBA_UI32:
-    return VK_FORMAT_R32G32B32A32_UINT;
-  case Format_RGBA_F32:
-    return VK_FORMAT_R32G32B32A32_SFLOAT;
-  case Format_ETC2_RGB8:
-    return VK_FORMAT_ETC2_R8G8B8_UNORM_BLOCK;
-  case Format_ETC2_SRGB8:
-    return VK_FORMAT_ETC2_R8G8B8_SRGB_BLOCK;
-  case Format_BC7_RGBA:
-    return VK_FORMAT_BC7_UNORM_BLOCK;
-  case Format_Z_UN16:
-    return VK_FORMAT_D16_UNORM;
-  case Format_Z_UN24:
-    return VK_FORMAT_D24_UNORM_S8_UINT;
-  case Format_Z_F32:
-    return VK_FORMAT_D32_SFLOAT;
-  case Format_Z_UN24_S_UI8:
-    return VK_FORMAT_D24_UNORM_S8_UINT;
-  case Format_Z_F32_S_UI8:
-    return VK_FORMAT_D32_SFLOAT_S8_UINT;
-  case Format_YUV_NV12:
-    return VK_FORMAT_G8_B8R8_2PLANE_420_UNORM;
-  case Format_YUV_420p:
-    return VK_FORMAT_G8_B8_R8_3PLANE_420_UNORM;
-    default: 
-    return VK_FORMAT_UNDEFINED;
-  }
-
+    using TextureFormat = Format;
+    switch (format) {
+    case Format_Invalid:
+        return VK_FORMAT_UNDEFINED;
+    case Format_R_UN8:
+        return VK_FORMAT_R8_UNORM;
+    case Format_R_UN16:
+        return VK_FORMAT_R16_UNORM;
+    case Format_R_F16:
+        return VK_FORMAT_R16_SFLOAT;
+    case Format_R_UI16:
+        return VK_FORMAT_R16_UINT;
+    case Format_R_UI32:
+        return VK_FORMAT_R32_UINT;
+    case Format_RG_UN8:
+        return VK_FORMAT_R8G8_UNORM;
+    case Format_RG_UI16:
+        return VK_FORMAT_R16G16_UINT;
+    case Format_RG_UI32:
+        return VK_FORMAT_R32G32_UINT;
+    case Format_RG_UN16:
+        return VK_FORMAT_R16G16_UNORM;
+    case Format_BGRA_UN8:
+        return VK_FORMAT_B8G8R8A8_UNORM;
+    case Format_RGBA_UN8:
+        return VK_FORMAT_R8G8B8A8_UNORM;
+    case Format_RGBA_SRGB8:
+        return VK_FORMAT_R8G8B8A8_SRGB;
+    case Format_BGRA_SRGB8:
+        return VK_FORMAT_B8G8R8A8_SRGB;
+    case Format_RG_F16:
+        return VK_FORMAT_R16G16_SFLOAT;
+    case Format_RG_F32:
+        return VK_FORMAT_R32G32_SFLOAT;
+    case Format_R_F32:
+        return VK_FORMAT_R32_SFLOAT;
+    case Format_RGBA_F16:
+        return VK_FORMAT_R16G16B16A16_SFLOAT;
+    case Format_RGBA_UI32:
+        return VK_FORMAT_R32G32B32A32_UINT;
+    case Format_RGBA_F32:
+        return VK_FORMAT_R32G32B32A32_SFLOAT;
+    case Format_ETC2_RGB8:
+        return VK_FORMAT_ETC2_R8G8B8_UNORM_BLOCK;
+    case Format_ETC2_SRGB8:
+        return VK_FORMAT_ETC2_R8G8B8_SRGB_BLOCK;
+    case Format_BC7_RGBA:
+        return VK_FORMAT_BC7_UNORM_BLOCK;
+    case Format_Z_UN16:
+        return VK_FORMAT_D16_UNORM;
+    case Format_Z_UN24:
+        return VK_FORMAT_D24_UNORM_S8_UINT;
+    case Format_Z_F32:
+        return VK_FORMAT_D32_SFLOAT;
+    case Format_Z_UN24_S_UI8:
+        return VK_FORMAT_D24_UNORM_S8_UINT;
+    case Format_Z_F32_S_UI8:
+        return VK_FORMAT_D32_SFLOAT_S8_UINT;
+    case Format_YUV_NV12:
+        return VK_FORMAT_G8_B8R8_2PLANE_420_UNORM;
+    case Format_YUV_420p:
+        return VK_FORMAT_G8_B8_R8_3PLANE_420_UNORM;
+        default: 
+        return VK_FORMAT_UNDEFINED;
+    }
 }
 
 enum SamplerFilter : u8 { SamplerFilter_Nearest = 0, SamplerFilter_Linear };
@@ -1403,7 +1392,9 @@ enum SamplerMip : u8 { SamplerMip_Disabled = 0, SamplerMip_Nearest, SamplerMip_L
 enum SamplerWrap : u8 { SamplerWrap_Repeat = 0, SamplerWrap_Clamp, SamplerWrap_MirrorRepeat };
 
 
-VkFilter samplerFilterToVkFilter(SamplerFilter filter) {
+internal VkFilter
+samplerFilterToVkFilter(SamplerFilter filter) 
+{
     switch (filter) 
     {
         case SamplerFilter_Nearest:
@@ -1415,7 +1406,9 @@ VkFilter samplerFilterToVkFilter(SamplerFilter filter) {
     return VK_FILTER_LINEAR;
 }
 
-VkSamplerMipmapMode samplerMipMapToVkSamplerMipmapMode(SamplerMip filter) {
+internal VkSamplerMipmapMode
+samplerMipMapToVkSamplerMipmapMode(SamplerMip filter) 
+{
     switch (filter) {
         case SamplerMip_Disabled:
         case SamplerMip_Nearest:
@@ -1427,7 +1420,9 @@ VkSamplerMipmapMode samplerMipMapToVkSamplerMipmapMode(SamplerMip filter) {
     return VK_SAMPLER_MIPMAP_MODE_NEAREST;
 }
 
-VkSamplerAddressMode samplerWrapModeToVkSamplerAddressMode(SamplerWrap mode) {
+internal VkSamplerAddressMode
+samplerWrapModeToVkSamplerAddressMode(SamplerWrap mode) 
+{
     switch (mode) 
     {
         case SamplerWrap_Repeat:
@@ -1441,8 +1436,8 @@ VkSamplerAddressMode samplerWrapModeToVkSamplerAddressMode(SamplerWrap mode) {
     return VK_SAMPLER_ADDRESS_MODE_REPEAT;
 }
 
-
-struct SamplerStateDesc {
+struct SamplerStateDesc 
+{
   SamplerFilter minFilter = SamplerFilter_Linear;
   SamplerFilter magFilter = SamplerFilter_Linear;
   SamplerMip mipMap = SamplerMip_Disabled;
@@ -1695,7 +1690,9 @@ vulkan_staging_device_create(VulkanStagingDevice *staging_device, VulkanContext 
 //    context->deferredTasks_.emplace_back(std::move(task), handle);
 //}
 
-void growDescriptorPool(VulkanContext *context, u32 maxTextures, u32 maxSamplers, u32 maxAccelStructs) {
+internal void
+growDescriptorPool(VulkanContext *context, u32 maxTextures, u32 maxSamplers, u32 maxAccelStructs)
+{
   context->currentMaxTextures_ = maxTextures;
   context->currentMaxSamplers_ = maxSamplers;
   context->currentMaxAccelStructs_ = maxAccelStructs;
@@ -1824,19 +1821,22 @@ const VkSampler* immutableSamplersData = nullptr;
   context->awaitingNewImmutableSamplers_ = false;
 }
 
-enum ColorSpace : u8 {
+enum ColorSpace : u8 
+{
   ColorSpace_SRGB_LINEAR,
   ColorSpace_SRGB_NONLINEAR,
 };
 
 
-enum TextureType : u8 {
+enum TextureType : u8 
+{
   TextureType_2D,
   TextureType_3D,
   TextureType_Cube,
 };
 
-enum Swizzle : u8 {
+enum Swizzle : u8 
+{
   Swizzle_Default = 0,
   Swizzle_0,
   Swizzle_1,
@@ -1847,20 +1847,23 @@ enum Swizzle : u8 {
 };
 
 
-struct ComponentMapping {
-  Swizzle r = Swizzle_Default;
-  Swizzle g = Swizzle_Default;
-  Swizzle b = Swizzle_Default;
-  Swizzle a = Swizzle_Default;
-  bool identity() const {
-    return r == Swizzle_Default && g == Swizzle_Default && b == Swizzle_Default && a == Swizzle_Default;
-  }
+struct ComponentMapping 
+{
+    Swizzle r = Swizzle_Default;
+    Swizzle g = Swizzle_Default;
+    Swizzle b = Swizzle_Default;
+    Swizzle a = Swizzle_Default;
+    bool identity() const 
+    {
+        return r == Swizzle_Default && g == Swizzle_Default && b == Swizzle_Default && a == Swizzle_Default;
+    }
 };
 
-enum StorageType {
-  StorageType_Device,
-  StorageType_HostVisible,
-  StorageType_Memoryless
+enum StorageType 
+{
+    StorageType_Device,
+    StorageType_HostVisible,
+    StorageType_Memoryless
 };
 
 struct Dimensions
@@ -1885,51 +1888,53 @@ struct Dimensions
 
 struct TextureDesc
 {
-  TextureType type = TextureType_2D;
-  Format format = Format_Invalid;
+    TextureType type = TextureType_2D;
+    Format format = Format_Invalid;
 
-  Dimensions dimensions = {1, 1, 1};
-  u32 numLayers = 1;
-  u32 numSamples = 1;
-  u8 usage = TextureUsageBits_Sampled;
-  u32 numMipLevels = 1;
-  StorageType storage = StorageType_Device;
-  ComponentMapping swizzle = {};
-  const void* data = nullptr;
-  u32 dataNumMipLevels = 1; // how many mip-levels we want to upload
-  bool generateMipmaps = false; // generate mip-levels immediately, valid only with non-null data
-  const char* debugName = "";
+    Dimensions dimensions = {1, 1, 1};
+    u32 numLayers = 1;
+    u32 numSamples = 1;
+    u8 usage = TextureUsageBits_Sampled;
+    u32 numMipLevels = 1;
+    StorageType storage = StorageType_Device;
+    ComponentMapping swizzle = {};
+    const void* data = nullptr;
+    u32 dataNumMipLevels = 1; // how many mip-levels we want to upload
+    bool generateMipmaps = false; // generate mip-levels immediately, valid only with non-null data
+    const char* debugName = "";
 };
 
 
-u32 getNumImagePlanes(Format format) {
+internal u32
+getNumImagePlanes(Format format)
+{
     switch (format) {
-  case VK_FORMAT_UNDEFINED:
-    return 0;
-  case VK_FORMAT_G8_B8_R8_3PLANE_420_UNORM:
-  case VK_FORMAT_G8_B8_R8_3PLANE_422_UNORM:
-  case VK_FORMAT_G8_B8_R8_3PLANE_444_UNORM:
-  case VK_FORMAT_G12X4_B12X4_R12X4_3PLANE_420_UNORM_3PACK16:
-  case VK_FORMAT_G12X4_B12X4_R12X4_3PLANE_422_UNORM_3PACK16:
-  case VK_FORMAT_G12X4_B12X4_R12X4_3PLANE_444_UNORM_3PACK16:
-  case VK_FORMAT_G16_B16_R16_3PLANE_420_UNORM:
-  case VK_FORMAT_G16_B16_R16_3PLANE_422_UNORM:
-  case VK_FORMAT_G16_B16_R16_3PLANE_444_UNORM:
-    return 3;
-  case VK_FORMAT_G8_B8R8_2PLANE_420_UNORM:
-  case VK_FORMAT_G8_B8R8_2PLANE_422_UNORM:
-  case VK_FORMAT_G12X4_B12X4R12X4_2PLANE_420_UNORM_3PACK16:
-  case VK_FORMAT_G12X4_B12X4R12X4_2PLANE_422_UNORM_3PACK16:
-  case VK_FORMAT_G16_B16R16_2PLANE_420_UNORM:
-  case VK_FORMAT_G16_B16R16_2PLANE_422_UNORM:
-  case VK_FORMAT_G8_B8R8_2PLANE_444_UNORM:
-  case VK_FORMAT_G10X6_B10X6R10X6_2PLANE_444_UNORM_3PACK16:
-  case VK_FORMAT_G12X4_B12X4R12X4_2PLANE_444_UNORM_3PACK16:
-  case VK_FORMAT_G16_B16R16_2PLANE_444_UNORM:
-    return 2;
-  default:
-    return 1;
-  }
+        case VK_FORMAT_UNDEFINED:
+            return 0;
+        case VK_FORMAT_G8_B8_R8_3PLANE_420_UNORM:
+        case VK_FORMAT_G8_B8_R8_3PLANE_422_UNORM:
+        case VK_FORMAT_G8_B8_R8_3PLANE_444_UNORM:
+        case VK_FORMAT_G12X4_B12X4_R12X4_3PLANE_420_UNORM_3PACK16:
+        case VK_FORMAT_G12X4_B12X4_R12X4_3PLANE_422_UNORM_3PACK16:
+        case VK_FORMAT_G12X4_B12X4_R12X4_3PLANE_444_UNORM_3PACK16:
+        case VK_FORMAT_G16_B16_R16_3PLANE_420_UNORM:
+        case VK_FORMAT_G16_B16_R16_3PLANE_422_UNORM:
+        case VK_FORMAT_G16_B16_R16_3PLANE_444_UNORM:
+            return 3;
+        case VK_FORMAT_G8_B8R8_2PLANE_420_UNORM:
+        case VK_FORMAT_G8_B8R8_2PLANE_422_UNORM:
+        case VK_FORMAT_G12X4_B12X4R12X4_2PLANE_420_UNORM_3PACK16:
+        case VK_FORMAT_G12X4_B12X4R12X4_2PLANE_422_UNORM_3PACK16:
+        case VK_FORMAT_G16_B16R16_2PLANE_420_UNORM:
+        case VK_FORMAT_G16_B16R16_2PLANE_422_UNORM:
+        case VK_FORMAT_G8_B8R8_2PLANE_444_UNORM:
+        case VK_FORMAT_G10X6_B10X6R10X6_2PLANE_444_UNORM_3PACK16:
+        case VK_FORMAT_G12X4_B12X4R12X4_2PLANE_444_UNORM_3PACK16:
+        case VK_FORMAT_G16_B16R16_2PLANE_444_UNORM:
+            return 2;
+        default:
+            return 1;
+        }
 }
 
 internal VkMemoryPropertyFlags
@@ -1953,7 +1958,8 @@ storageTypeToVkMemoryPropertyFlags(StorageType storage)
 
 
 internal VkSampleCountFlagBits
-getVulkanSampleCountFlags(u32 numSamples, VkSampleCountFlags maxSamplesMask) {
+getVulkanSampleCountFlags(u32 numSamples, VkSampleCountFlags maxSamplesMask)
+{
   if (numSamples <= 1 || VK_SAMPLE_COUNT_2_BIT > maxSamplesMask) {
     return VK_SAMPLE_COUNT_1_BIT;
   }
@@ -4338,7 +4344,7 @@ vulkan_create_context_with_swapchain(Arena *arena, Arena *transient, OS_Window w
 }
 
 internal CommandBuffer *
-vulkan_context_cmd_buffer_acquire(VulkanContext *ctx)
+vulkan_cmd_buffer_acquire(VulkanContext *ctx)
 {
     //LVK_PROFILER_FUNCTION();
 
@@ -4366,7 +4372,7 @@ processDeferredTasks(VulkanContext *ctx)
 
 // CONTINUE HERE
 internal SubmitHandle
-vulkan_context_cmd_buffer_submit(VulkanContext *ctx, CommandBuffer *vkCmdBuffer, TextureHandle present)
+vulkan_cmd_buffer_submit(VulkanContext *ctx, CommandBuffer *vkCmdBuffer, TextureHandle present)
 {
     //LVK_PROFILER_FUNCTION();
     // This is not needed, explicit in the function arg
@@ -4428,6 +4434,55 @@ vulkan_context_cmd_buffer_submit(VulkanContext *ctx, CommandBuffer *vkCmdBuffer,
     return handle;
 }
 
+
+internal ShaderModuleHandle
+vulkan_load_shader_module(VulkanContext *ctx, const char* filename)
+{
+
+}
+
+internal RenderPipelineHandle
+vulkan_create_render_pipeline(VulkanContext *ctx, RenderPipelineDesc desc)
+{
+
+}
+
+internal void
+vulkan_cmd_begin_rendering(CommandBuffer *buf, RenderPass *render_pass, Framebuffer *fb, Dependencies *deps = {})
+{
+
+}
+
+internal void
+vulkan_cmd_bind_render_pipeline(CommandBuffer *buf, RenderPipelineHandle rp_triangle)
+{
+
+}
+
+internal void
+vulkan_cmd_push_debug_group_label(CommandBuffer *buf, const char *label, u32 colorRGBA)
+{
+
+}
+
+internal void
+vulkan_cmd_draw(CommandBuffer *buf, u32 vertex_count, u32 instance_count = 1, u32 first_vertex = 0, u32 base_instance = 0)
+{
+
+}
+
+internal void
+vulkan_cmd_pop_debug_group_label(CommandBuffer *buf)
+{
+
+}
+
+internal void
+vulkan_cmd_end_rendering(CommandBuffer *buf)
+{
+
+}
+
 int main() 
 {
     u32 window_width = 1280;
@@ -4437,13 +4492,35 @@ int main()
     arena_init(&arena, mb(1));
     Arena transient_arena {};
     arena_init(&transient_arena, mb(10));
+
     VulkanContext *ctx = vulkan_create_context_with_swapchain(&arena, &transient_arena, global_w32_window, window_width, window_height);
+
+    //ShaderModuleHandle vert = vulkan_load_shader_module(ctx, "assets/Triangle/main.vert");
+    //ShaderModuleHandle frag = vulkan_load_shader_module(ctx, "assets/Triangle/main.frag");
+
+    //RenderPipelineHandle rp_triangle = vulkan_create_render_pipeline(ctx, {
+    //    .smVert = vert,
+    //    .smFrag = frag,
+    //    .color = {{.format = vulkan_swapchain_get_current_texture(ctx)}}
+    //});
+
     while(global_w32_window.is_running)
     {
         Win32ProcessPendingMessages();
-        CommandBuffer * buf = vulkan_context_cmd_buffer_acquire(ctx);
-        TextureHandle curr_swapchain_tex = vulkan_context_get_current_swapchain_texture(ctx);
-        vulkan_context_cmd_buffer_submit(ctx, buf, curr_swapchain_tex);    
+        CommandBuffer *buf = vulkan_cmd_buffer_acquire(ctx);
+        
+        //vulkan_cmd_begin_rendering( buf, 
+        //    { .color = { { .loadOp = LoadOp_Clear, .clearColor = { 1.0f, 1.0f, 1.0f, 1.0f } } } },
+        //    { .color = { { .texture =  vulkan_swapchain_get_current_texture(ctx) } } });
+        //{
+        //    vulkan_cmd_bind_render_pipeline(buf, rp_triangle);
+        //    vulkan_cmd_push_debug_group_label("Render Triangle", 0xFF0000FF);
+        //    vulkan_cmd_draw(buf, 3);
+        //    vulkan_cmd_pop_debug_group_label(buf);
+        //}
+        //vulkan_cmd_end_rendering(buf);
+
+        vulkan_cmd_buffer_submit(ctx, buf, vulkan_swapchain_get_current_texture(ctx));    
     }
     vkDestroyInstance(ctx->instance, nullptr);
 }

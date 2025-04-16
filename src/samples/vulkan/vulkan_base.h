@@ -142,6 +142,42 @@ enum Format : u8
     Format_YUV_420p,
 };
 
+enum LoadOp : u8 {
+    LoadOp_Invalid = 0,
+    LoadOp_DontCare,
+    LoadOp_Load,
+    LoadOp_Clear,
+    LoadOp_None,
+};
+
+enum StoreOp : u8 
+{
+    StoreOp_DontCare = 0,
+    StoreOp_Store,
+    StoreOp_MsaaResolve,
+    StoreOp_None,
+};
+
+enum ShaderStage : u8 
+{
+    Stage_Vert,
+    Stage_Tesc,
+    Stage_Tese,
+    Stage_Geom,
+    Stage_Frag,
+    Stage_Comp,
+    Stage_Task,
+    Stage_Mesh,
+    // ray tracing
+    Stage_RayGen,
+    Stage_AnyHit,
+    Stage_ClosestHit,
+    Stage_Miss,
+    Stage_Intersection,
+    Stage_Callable,
+};
+
+
 enum BlendOp : u8 
 {
     BlendOp_Add = 0,
@@ -197,6 +233,13 @@ enum StencilOp : u8
     StencilOp_IncrementWrap,
     StencilOp_DecrementWrap
 };
+
+struct Dependencies {
+    enum { LVK_MAX_SUBMIT_DEPENDENCIES = 4 };
+    TextureHandle textures[LVK_MAX_SUBMIT_DEPENDENCIES] = {};
+    BufferHandle buffers[LVK_MAX_SUBMIT_DEPENDENCIES] = {};
+};
+
 
 struct StencilState 
 {
@@ -345,6 +388,31 @@ struct RenderPipelineDesc
         return n;
     }
 };
+
+struct RenderPass final {
+  struct AttachmentDesc final {
+    LoadOp loadOp = LoadOp_Invalid;
+    StoreOp storeOp = StoreOp_Store;
+    uint8_t layer = 0;
+    uint8_t level = 0;
+    float clearColor[4] = {0.0f, 0.0f, 0.0f, 0.0f};
+    float clearDepth = 1.0f;
+    uint32_t clearStencil = 0;
+  };
+
+  AttachmentDesc color[LVK_MAX_COLOR_ATTACHMENTS] = {};
+  AttachmentDesc depth = {.loadOp = LoadOp_DontCare, .storeOp = StoreOp_DontCare};
+  AttachmentDesc stencil = {.loadOp = LoadOp_Invalid, .storeOp = StoreOp_DontCare};
+
+  uint32_t getNumColorAttachments() const {
+    uint32_t n = 0;
+    while (n < LVK_MAX_COLOR_ATTACHMENTS && color[n].loadOp != LoadOp_Invalid) {
+      n++;
+    }
+    return n;
+  }
+};
+
 
 struct RenderPipelineState  
 {

@@ -41,6 +41,11 @@ global_variable bool has8BitIndices_ = false;
 #include "generated/generated.h"
 #include "vulkan_types.h"
 
+
+#include <SPIRV-Reflect/spirv_reflect.h>
+#include <glslang/Include/glslang_c_interface.h>
+
+
 const char* k_def_validation_layer[] = {"VK_LAYER_KHRONOS_validation"};
 // These bindings should match GLSL declarations injected into shaders in VulkanContext::createShaderModule().
 enum Bindings {
@@ -1192,6 +1197,7 @@ vulkan_immediate_commands_submit(VulkanImmediateCommands *immediate, CommandBuff
     return immediate->lastSubmitHandle_;
 }
 
+
 internal void
 vulkan_swapchain_present(VulkanSwapchain *swapchain, VkSemaphore wait_semaphore)
 {
@@ -1385,6 +1391,176 @@ formatToVkFormat(Format format)
         default: 
         return VK_FORMAT_UNDEFINED;
     }
+}
+
+Format vkFormatToFormat(VkFormat format) {
+  switch (format) {
+  case VK_FORMAT_UNDEFINED:
+    return Format_Invalid;
+  case VK_FORMAT_R8_UNORM:
+    return Format_R_UN8;
+  case VK_FORMAT_R16_UNORM:
+    return Format_R_UN16;
+  case VK_FORMAT_R16_SFLOAT:
+    return Format_R_F16;
+  case VK_FORMAT_R16_UINT:
+    return Format_R_UI16;
+  case VK_FORMAT_R8G8_UNORM:
+    return Format_RG_UN8;
+  case VK_FORMAT_B8G8R8A8_UNORM:
+    return Format_BGRA_UN8;
+  case VK_FORMAT_R8G8B8A8_UNORM:
+    return Format_RGBA_UN8;
+  case VK_FORMAT_R8G8B8A8_SRGB:
+    return Format_RGBA_SRGB8;
+  case VK_FORMAT_B8G8R8A8_SRGB:
+    return Format_BGRA_SRGB8;
+  case VK_FORMAT_R16G16_UNORM:
+    return Format_RG_UN16;
+  case VK_FORMAT_R16G16_SFLOAT:
+    return Format_RG_F16;
+  case VK_FORMAT_R32G32_SFLOAT:
+    return Format_RG_F32;
+  case VK_FORMAT_R16G16_UINT:
+    return Format_RG_UI16;
+  case VK_FORMAT_R32_SFLOAT:
+    return Format_R_F32;
+  case VK_FORMAT_R16G16B16A16_SFLOAT:
+    return Format_RGBA_F16;
+  case VK_FORMAT_R32G32B32A32_UINT:
+    return Format_RGBA_UI32;
+  case VK_FORMAT_R32G32B32A32_SFLOAT:
+    return Format_RGBA_F32;
+  case VK_FORMAT_ETC2_R8G8B8_UNORM_BLOCK:
+    return Format_ETC2_RGB8;
+  case VK_FORMAT_ETC2_R8G8B8_SRGB_BLOCK:
+    return Format_ETC2_SRGB8;
+  case VK_FORMAT_D16_UNORM:
+    return Format_Z_UN16;
+  case VK_FORMAT_BC7_UNORM_BLOCK:
+    return Format_BC7_RGBA;
+  case VK_FORMAT_X8_D24_UNORM_PACK32:
+    return Format_Z_UN24;
+  case VK_FORMAT_D24_UNORM_S8_UINT:
+    return Format_Z_UN24_S_UI8;
+  case VK_FORMAT_D32_SFLOAT:
+    return Format_Z_F32;
+  case VK_FORMAT_D32_SFLOAT_S8_UINT:
+    return Format_Z_F32_S_UI8;
+  case VK_FORMAT_G8_B8R8_2PLANE_420_UNORM:
+     return Format_YUV_NV12;
+  case VK_FORMAT_G8_B8_R8_3PLANE_420_UNORM:
+    return Format_YUV_420p;
+  default:;
+  }
+  gui_assert(false, "VkFormat value not handled: %d", (int)format);
+  return Format_Invalid;
+}
+
+VkFormat vertexFormatToVkFormat(VertexFormat fmt) 
+{
+  switch (fmt) {
+  case VertexFormat::Invalid:
+    assert(false);
+    return VK_FORMAT_UNDEFINED;
+  case VertexFormat::Float1:
+    return VK_FORMAT_R32_SFLOAT;
+  case VertexFormat::Float2:
+    return VK_FORMAT_R32G32_SFLOAT;
+  case VertexFormat::Float3:
+    return VK_FORMAT_R32G32B32_SFLOAT;
+  case VertexFormat::Float4:
+    return VK_FORMAT_R32G32B32A32_SFLOAT;
+  case VertexFormat::Byte1:
+    return VK_FORMAT_R8_SINT;
+  case VertexFormat::Byte2:
+    return VK_FORMAT_R8G8_SINT;
+  case VertexFormat::Byte3:
+    return VK_FORMAT_R8G8B8_SINT;
+  case VertexFormat::Byte4:
+    return VK_FORMAT_R8G8B8A8_SINT;
+  case VertexFormat::UByte1:
+    return VK_FORMAT_R8_UINT;
+  case VertexFormat::UByte2:
+    return VK_FORMAT_R8G8_UINT;
+  case VertexFormat::UByte3:
+    return VK_FORMAT_R8G8B8_UINT;
+  case VertexFormat::UByte4:
+    return VK_FORMAT_R8G8B8A8_UINT;
+  case VertexFormat::Short1:
+    return VK_FORMAT_R16_SINT;
+  case VertexFormat::Short2:
+    return VK_FORMAT_R16G16_SINT;
+  case VertexFormat::Short3:
+    return VK_FORMAT_R16G16B16_SINT;
+  case VertexFormat::Short4:
+    return VK_FORMAT_R16G16B16A16_SINT;
+  case VertexFormat::UShort1:
+    return VK_FORMAT_R16_UINT;
+  case VertexFormat::UShort2:
+    return VK_FORMAT_R16G16_UINT;
+  case VertexFormat::UShort3:
+    return VK_FORMAT_R16G16B16_UINT;
+  case VertexFormat::UShort4:
+    return VK_FORMAT_R16G16B16A16_UINT;
+    // Normalized variants
+  case VertexFormat::Byte2Norm:
+    return VK_FORMAT_R8G8_SNORM;
+  case VertexFormat::Byte4Norm:
+    return VK_FORMAT_R8G8B8A8_SNORM;
+  case VertexFormat::UByte2Norm:
+    return VK_FORMAT_R8G8_UNORM;
+  case VertexFormat::UByte4Norm:
+    return VK_FORMAT_R8G8B8A8_UNORM;
+  case VertexFormat::Short2Norm:
+    return VK_FORMAT_R16G16_SNORM;
+  case VertexFormat::Short4Norm:
+    return VK_FORMAT_R16G16B16A16_SNORM;
+  case VertexFormat::UShort2Norm:
+    return VK_FORMAT_R16G16_UNORM;
+  case VertexFormat::UShort4Norm:
+    return VK_FORMAT_R16G16B16A16_UNORM;
+  case VertexFormat::Int1:
+    return VK_FORMAT_R32_SINT;
+  case VertexFormat::Int2:
+    return VK_FORMAT_R32G32_SINT;
+  case VertexFormat::Int3:
+    return VK_FORMAT_R32G32B32_SINT;
+  case VertexFormat::Int4:
+    return VK_FORMAT_R32G32B32A32_SINT;
+  case VertexFormat::UInt1:
+    return VK_FORMAT_R32_UINT;
+  case VertexFormat::UInt2:
+    return VK_FORMAT_R32G32_UINT;
+  case VertexFormat::UInt3:
+    return VK_FORMAT_R32G32B32_UINT;
+  case VertexFormat::UInt4:
+    return VK_FORMAT_R32G32B32A32_UINT;
+  case VertexFormat::HalfFloat1:
+    return VK_FORMAT_R16_SFLOAT;
+  case VertexFormat::HalfFloat2:
+    return VK_FORMAT_R16G16_SFLOAT;
+  case VertexFormat::HalfFloat3:
+    return VK_FORMAT_R16G16B16_SFLOAT;
+  case VertexFormat::HalfFloat4:
+    return VK_FORMAT_R16G16B16A16_SFLOAT;
+  case VertexFormat::Int_2_10_10_10_REV:
+    return VK_FORMAT_A2B10G10R10_SNORM_PACK32;
+  }
+  assert(false);
+  return VK_FORMAT_UNDEFINED;
+}
+
+
+internal Format
+vulkan_swapchain_format(VulkanContext *ctx)
+{
+    Format res = Format_Invalid;
+    if (ctx->swapchain_) {
+        res = vkFormatToFormat(ctx->swapchain_->surfaceFormat_.format);
+    }
+
+    return res;
 }
 
 enum SamplerFilter : u8 { SamplerFilter_Nearest = 0, SamplerFilter_Linear };
@@ -4435,16 +4611,657 @@ vulkan_cmd_buffer_submit(VulkanContext *ctx, CommandBuffer *vkCmdBuffer, Texture
 }
 
 
-internal ShaderModuleHandle
-vulkan_load_shader_module(VulkanContext *ctx, const char* filename)
+
+
+
+
+
+
+std::unordered_map<u32, std::string> debugGLSLSourceCode;
+
+bool endsWith(const char* s, const char* part)
 {
+  const size_t sLength    = strlen(s);
+  const size_t partLength = strlen(part);
+  return sLength < partLength ? false : strcmp(s + sLength - partLength, part) == 0;
+}
+
+std::string readShaderFile(const char* fileName)
+{
+  FILE* file = fopen(fileName, "r");
+
+  if (!file) {
+    printf("Cannot open shader file %s\n", fileName);
+    return std::string();
+  }
+
+  fseek(file, 0L, SEEK_END);
+  const size_t bytesinfile = ftell(file);
+  fseek(file, 0L, SEEK_SET);
+
+  char* buffer           = (char*)alloca(bytesinfile + 1);
+  const size_t bytesread = fread(buffer, 1, bytesinfile, file);
+  fclose(file);
+
+  buffer[bytesread] = 0;
+
+  static constexpr unsigned char BOM[] = { 0xEF, 0xBB, 0xBF };
+
+  if (bytesread > 3) {
+    if (!memcmp(buffer, BOM, 3))
+      memset(buffer, ' ', 3);
+  }
+
+  std::string code(buffer);
+
+  while (code.find("#include ") != code.npos) {
+    const auto pos = code.find("#include ");
+    const auto p1  = code.find('<', pos);
+    const auto p2  = code.find('>', pos);
+    if (p1 == code.npos || p2 == code.npos || p2 <= p1) {
+      printf("Error while loading shader program: %s\n", code.c_str());
+      return std::string();
+    }
+    const std::string name    = code.substr(p1 + 1, p2 - p1 - 1);
+    const std::string include = readShaderFile(name.c_str());
+    code.replace(pos, p2 - pos + 1, include.c_str());
+  }
+
+  return code;
+}
+
+VkShaderStageFlagBits shaderStageToVkShaderStage(ShaderStage stage) {
+  switch (stage) {
+  case Stage_Vert:
+    return VK_SHADER_STAGE_VERTEX_BIT;
+  case Stage_Tesc:
+    return VK_SHADER_STAGE_TESSELLATION_CONTROL_BIT;
+  case Stage_Tese:
+    return VK_SHADER_STAGE_TESSELLATION_EVALUATION_BIT;
+  case Stage_Geom:
+    return VK_SHADER_STAGE_GEOMETRY_BIT;
+  case Stage_Frag:
+    return VK_SHADER_STAGE_FRAGMENT_BIT;
+  case Stage_Comp:
+    return VK_SHADER_STAGE_COMPUTE_BIT;
+  case Stage_Task:
+    return VK_SHADER_STAGE_TASK_BIT_EXT;
+  case Stage_Mesh:
+    return VK_SHADER_STAGE_MESH_BIT_EXT;
+  case Stage_RayGen:
+    return VK_SHADER_STAGE_RAYGEN_BIT_KHR;
+  case Stage_AnyHit:
+    return VK_SHADER_STAGE_ANY_HIT_BIT_KHR;
+  case Stage_ClosestHit:
+    return VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR;
+  case Stage_Miss:
+    return VK_SHADER_STAGE_MISS_BIT_KHR;
+  case Stage_Intersection:
+    return VK_SHADER_STAGE_INTERSECTION_BIT_KHR;
+  case Stage_Callable:
+    return VK_SHADER_STAGE_CALLABLE_BIT_KHR;
+  };
+  assert(false);
+  return VK_SHADER_STAGE_FLAG_BITS_MAX_ENUM;
+}
+
+VkShaderStageFlagBits vkShaderStageFromFileName(const char* fileName)
+{
+  if (endsWith(fileName, ".vert"))
+    return VK_SHADER_STAGE_VERTEX_BIT;
+
+  if (endsWith(fileName, ".frag"))
+    return VK_SHADER_STAGE_FRAGMENT_BIT;
+
+  if (endsWith(fileName, ".geom"))
+    return VK_SHADER_STAGE_GEOMETRY_BIT;
+
+  if (endsWith(fileName, ".comp"))
+    return VK_SHADER_STAGE_COMPUTE_BIT;
+
+  if (endsWith(fileName, ".tesc"))
+    return VK_SHADER_STAGE_TESSELLATION_CONTROL_BIT;
+
+  if (endsWith(fileName, ".tese"))
+    return VK_SHADER_STAGE_TESSELLATION_EVALUATION_BIT;
+
+  return VK_SHADER_STAGE_VERTEX_BIT;
+}
+
+ShaderStage lvkShaderStageFromFileName(const char* fileName)
+{
+  if (endsWith(fileName, ".vert"))
+    return Stage_Vert;
+
+  if (endsWith(fileName, ".frag"))
+    return Stage_Frag;
+
+  if (endsWith(fileName, ".geom"))
+    return Stage_Geom;
+
+  if (endsWith(fileName, ".comp"))
+    return Stage_Comp;
+
+  if (endsWith(fileName, ".tesc"))
+    return Stage_Tesc;
+
+  if (endsWith(fileName, ".tese"))
+    return Stage_Tese;
+
+  return Stage_Vert;
+}
+
+internal ShaderModuleState
+createShaderModuleFromSPIRV(VkDevice device, const void *spirv, size_t numBytes, const char* debugName)
+{
+    ShaderModuleState res = {.sm = VK_NULL_HANDLE};
+    VkShaderModule vkShaderModule = VK_NULL_HANDLE;
+
+    const VkShaderModuleCreateInfo ci = {
+        .sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
+        .codeSize = numBytes,
+        .pCode = (const uint32_t*)spirv,
+    };
+
+    const VkResult result = vkCreateShaderModule(device, &ci, nullptr, &vkShaderModule);
+    //lvk::setResultFrom(outResult, result);
+    if (result == VK_SUCCESS) 
+    {
+        VK_ASSERT(setDebugObjectName(device, VK_OBJECT_TYPE_SHADER_MODULE, (u64)vkShaderModule, debugName));
+
+        assert(vkShaderModule != VK_NULL_HANDLE);
+
+        SpvReflectShaderModule mdl;
+        SpvReflectResult result = spvReflectCreateShaderModule(numBytes, spirv, &mdl);
+        assert(result == SPV_REFLECT_RESULT_SUCCESS);
+        //SCOPE_EXIT {
+        //    spvReflectDestroyShaderModule(&mdl);
+        //};
+
+        u32 pushConstantsSize = 0;
+
+        for (u32 i = 0; i < mdl.push_constant_block_count; ++i) {
+            const SpvReflectBlockVariable& block = mdl.push_constant_blocks[i];
+            pushConstantsSize = max(pushConstantsSize, block.offset + block.size);
+        }
+
+        spvReflectDestroyShaderModule(&mdl);
+        res = {
+            .sm = vkShaderModule,
+            .pushConstantsSize = pushConstantsSize,
+        };
+    }
+    return res;
+}
+glslang_resource_t getGlslangResource(const VkPhysicalDeviceLimits& limits) {
+  const glslang_resource_t resource = {
+      .max_lights = 32,
+      .max_clip_planes = 6,
+      .max_texture_units = 32,
+      .max_texture_coords = 32,
+      .max_vertex_attribs = (int)limits.maxVertexInputAttributes,
+      .max_vertex_uniform_components = 4096,
+      .max_varying_floats = 64,
+      .max_vertex_texture_image_units = 32,
+      .max_combined_texture_image_units = 80,
+      .max_texture_image_units = 32,
+      .max_fragment_uniform_components = 4096,
+      .max_draw_buffers = 32,
+      .max_vertex_uniform_vectors = 128,
+      .max_varying_vectors = 8,
+      .max_fragment_uniform_vectors = 16,
+      .max_vertex_output_vectors = 16,
+      .max_fragment_input_vectors = 15,
+      .min_program_texel_offset = -8,
+      .max_program_texel_offset = 7,
+      .max_clip_distances = (int)limits.maxClipDistances,
+      .max_compute_work_group_count_x = (int)limits.maxComputeWorkGroupCount[0],
+      .max_compute_work_group_count_y = (int)limits.maxComputeWorkGroupCount[1],
+      .max_compute_work_group_count_z = (int)limits.maxComputeWorkGroupCount[2],
+      .max_compute_work_group_size_x = (int)limits.maxComputeWorkGroupSize[0],
+      .max_compute_work_group_size_y = (int)limits.maxComputeWorkGroupSize[1],
+      .max_compute_work_group_size_z = (int)limits.maxComputeWorkGroupSize[2],
+      .max_compute_uniform_components = 1024,
+      .max_compute_texture_image_units = 16,
+      .max_compute_image_uniforms = 8,
+      .max_compute_atomic_counters = 8,
+      .max_compute_atomic_counter_buffers = 1,
+      .max_varying_components = 60,
+      .max_vertex_output_components = (int)limits.maxVertexOutputComponents,
+      .max_geometry_input_components = (int)limits.maxGeometryInputComponents,
+      .max_geometry_output_components = (int)limits.maxGeometryOutputComponents,
+      .max_fragment_input_components = (int)limits.maxFragmentInputComponents,
+      .max_image_units = 8,
+      .max_combined_image_units_and_fragment_outputs = 8,
+      .max_combined_shader_output_resources = 8,
+      .max_image_samples = 0,
+      .max_vertex_image_uniforms = 0,
+      .max_tess_control_image_uniforms = 0,
+      .max_tess_evaluation_image_uniforms = 0,
+      .max_geometry_image_uniforms = 0,
+      .max_fragment_image_uniforms = 8,
+      .max_combined_image_uniforms = 8,
+      .max_geometry_texture_image_units = 16,
+      .max_geometry_output_vertices = (int)limits.maxGeometryOutputVertices,
+      .max_geometry_total_output_components = (int)limits.maxGeometryTotalOutputComponents,
+      .max_geometry_uniform_components = 1024,
+      .max_geometry_varying_components = 64,
+      .max_tess_control_input_components = (int)limits.maxTessellationControlPerVertexInputComponents,
+      .max_tess_control_output_components = (int)limits.maxTessellationControlPerVertexOutputComponents,
+      .max_tess_control_texture_image_units = 16,
+      .max_tess_control_uniform_components = 1024,
+      .max_tess_control_total_output_components = 4096,
+      .max_tess_evaluation_input_components = (int)limits.maxTessellationEvaluationInputComponents,
+      .max_tess_evaluation_output_components = (int)limits.maxTessellationEvaluationOutputComponents,
+      .max_tess_evaluation_texture_image_units = 16,
+      .max_tess_evaluation_uniform_components = 1024,
+      .max_tess_patch_components = 120,
+      .max_patch_vertices = 32,
+      .max_tess_gen_level = 64,
+      .max_viewports = (int)limits.maxViewports,
+      .max_vertex_atomic_counters = 0,
+      .max_tess_control_atomic_counters = 0,
+      .max_tess_evaluation_atomic_counters = 0,
+      .max_geometry_atomic_counters = 0,
+      .max_fragment_atomic_counters = 8,
+      .max_combined_atomic_counters = 8,
+      .max_atomic_counter_bindings = 1,
+      .max_vertex_atomic_counter_buffers = 0,
+      .max_tess_control_atomic_counter_buffers = 0,
+      .max_tess_evaluation_atomic_counter_buffers = 0,
+      .max_geometry_atomic_counter_buffers = 0,
+      .max_fragment_atomic_counter_buffers = 1,
+      .max_combined_atomic_counter_buffers = 1,
+      .max_atomic_counter_buffer_size = 16384,
+      .max_transform_feedback_buffers = 4,
+      .max_transform_feedback_interleaved_components = 64,
+      .max_cull_distances = (int)limits.maxCullDistances,
+      .max_combined_clip_and_cull_distances = (int)limits.maxCombinedClipAndCullDistances,
+      .max_samples = 4,
+      .max_mesh_output_vertices_nv = 256,
+      .max_mesh_output_primitives_nv = 512,
+      .max_mesh_work_group_size_x_nv = 32,
+      .max_mesh_work_group_size_y_nv = 1,
+      .max_mesh_work_group_size_z_nv = 1,
+      .max_task_work_group_size_x_nv = 32,
+      .max_task_work_group_size_y_nv = 1,
+      .max_task_work_group_size_z_nv = 1,
+      .max_mesh_view_count_nv = 4,
+      .max_mesh_output_vertices_ext = 256,
+      .max_mesh_output_primitives_ext = 512,
+      .max_mesh_work_group_size_x_ext = 32,
+      .max_mesh_work_group_size_y_ext = 1,
+      .max_mesh_work_group_size_z_ext = 1,
+      .max_task_work_group_size_x_ext = 32,
+      .max_task_work_group_size_y_ext = 1,
+      .max_task_work_group_size_z_ext = 1,
+      .max_mesh_view_count_ext = 4,
+      .maxDualSourceDrawBuffersEXT = 1,
+      .limits =
+          {
+              .non_inductive_for_loops = true,
+              .while_loops = true,
+              .do_while_loops = true,
+              .general_uniform_indexing = true,
+              .general_attribute_matrix_vector_indexing = true,
+              .general_varying_indexing = true,
+              .general_sampler_indexing = true,
+              .general_variable_indexing = true,
+              .general_constant_matrix_vector_indexing = true,
+          },
+  };
+
+  return resource;
+}
+
+static glslang_stage_t getGLSLangShaderStage(VkShaderStageFlagBits stage) {
+  switch (stage) {
+  case VK_SHADER_STAGE_VERTEX_BIT:
+    return GLSLANG_STAGE_VERTEX;
+  case VK_SHADER_STAGE_TESSELLATION_CONTROL_BIT:
+    return GLSLANG_STAGE_TESSCONTROL;
+  case VK_SHADER_STAGE_TESSELLATION_EVALUATION_BIT:
+    return GLSLANG_STAGE_TESSEVALUATION;
+  case VK_SHADER_STAGE_GEOMETRY_BIT:
+    return GLSLANG_STAGE_GEOMETRY;
+  case VK_SHADER_STAGE_FRAGMENT_BIT:
+    return GLSLANG_STAGE_FRAGMENT;
+  case VK_SHADER_STAGE_COMPUTE_BIT:
+    return GLSLANG_STAGE_COMPUTE;
+  case VK_SHADER_STAGE_TASK_BIT_EXT:
+    return GLSLANG_STAGE_TASK;
+  case VK_SHADER_STAGE_MESH_BIT_EXT:
+    return GLSLANG_STAGE_MESH;
+
+  // ray tracing
+  case VK_SHADER_STAGE_RAYGEN_BIT_KHR:
+    return GLSLANG_STAGE_RAYGEN;
+  case VK_SHADER_STAGE_ANY_HIT_BIT_KHR:
+    return GLSLANG_STAGE_ANYHIT;
+  case VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR:
+    return GLSLANG_STAGE_CLOSESTHIT;
+  case VK_SHADER_STAGE_MISS_BIT_KHR:
+    return GLSLANG_STAGE_MISS;
+  case VK_SHADER_STAGE_INTERSECTION_BIT_KHR:
+    return GLSLANG_STAGE_INTERSECT;
+  case VK_SHADER_STAGE_CALLABLE_BIT_KHR:
+    return GLSLANG_STAGE_CALLABLE;
+  default:
+    assert(false);
+  };
+  assert(false);
+  return GLSLANG_STAGE_COUNT;
+}
+
+
+
+internal void
+compileShader(VkShaderStageFlagBits stage, const char* code, std::vector<uint8_t>* outSPIRV,
+     const glslang_resource_t* glslLangResource) 
+{
+  //LVK_PROFILER_FUNCTION();
+
+    gui_assert(outSPIRV, "outSPIRV is null");
+  //if (!outSPIRV) {
+    //return Result(Result::Code::ArgumentOutOfRange, "outSPIRV is NULL");
+  //}
+
+    const glslang_input_t input = {
+        .language = GLSLANG_SOURCE_GLSL,
+        .stage = getGLSLangShaderStage(stage),
+        .client = GLSLANG_CLIENT_VULKAN,
+        .client_version = GLSLANG_TARGET_VULKAN_1_3,
+        .target_language = GLSLANG_TARGET_SPV,
+        .target_language_version = GLSLANG_TARGET_SPV_1_6,
+        .code = code,
+        .default_version = 100,
+        .default_profile = GLSLANG_NO_PROFILE,
+        .force_default_version_and_profile = false,
+        .forward_compatible = false,
+        .messages = GLSLANG_MSG_DEFAULT_BIT,
+        .resource = glslLangResource,
+    };
+
+    glslang_shader_t* shader = glslang_shader_create(&input);
+  //SCOPE_EXIT {
+  //  glslang_shader_delete(shader);
+  //};
+
+    if (!glslang_shader_preprocess(shader, &input)) 
+    {
+        printf("Shader preprocessing failed:\n");
+        printf("  %s\n", glslang_shader_get_info_log(shader));
+        printf("  %s\n", glslang_shader_get_info_debug_log(shader));
+        //lvk::logShaderSource(code);
+        assert(false);
+        //return Result(Result::Code::RuntimeError, "glslang_shader_preprocess() failed");
+    }
+
+    if (!glslang_shader_parse(shader, &input)) 
+    {
+        printf("Shader parsing failed:\n");
+        printf("  %s\n", glslang_shader_get_info_log(shader));
+        printf("  %s\n", glslang_shader_get_info_debug_log(shader));
+        //lvk::logShaderSource(glslang_shader_get_preprocessed_code(shader));
+        assert(false);
+        //return Result(Result::Code::RuntimeError, "glslang_shader_parse() failed");
+    }
+
+    glslang_program_t* program = glslang_program_create();
+    glslang_program_add_shader(program, shader);
+
+  //SCOPE_EXIT {
+  //  glslang_program_delete(program);
+  //};
+
+    if (!glslang_program_link(program, GLSLANG_MSG_SPV_RULES_BIT | GLSLANG_MSG_VULKAN_RULES_BIT)) {
+        printf("Shader linking failed:\n");
+        printf("  %s\n", glslang_program_get_info_log(program));
+        printf("  %s\n", glslang_program_get_info_debug_log(program));
+        assert(false);
+        //return Result(Result::Code::RuntimeError, "glslang_program_link() failed");
+    }
+
+    glslang_spv_options_t options = {
+        .generate_debug_info = true,
+        .strip_debug_info = false,
+        .disable_optimizer = false,
+        .optimize_size = true,
+        .disassemble = false,
+        .validate = true,
+        .emit_nonsemantic_shader_debug_info = false,
+        .emit_nonsemantic_shader_debug_source = false,
+    };
+
+    glslang_program_SPIRV_generate_with_options(program, input.stage, &options);
+
+    if (glslang_program_SPIRV_get_messages(program)) 
+    {
+        printf("%s\n", glslang_program_SPIRV_get_messages(program));
+    }
+
+    const uint8_t* spirv = reinterpret_cast<const uint8_t*>(glslang_program_SPIRV_get_ptr(program));
+    const size_t numBytes = glslang_program_SPIRV_get_size(program) * sizeof(uint32_t);
+
+    *outSPIRV = std::vector(spirv, spirv + numBytes);
+    glslang_shader_delete(shader);
+    glslang_program_delete(program);
+}
+
+
+
+internal ShaderModuleState
+createShaderModuleFromGLSL(VulkanContext *ctx, ShaderStage stage, const char *source, const char *debugName)
+{
+    const VkShaderStageFlagBits vkStage = shaderStageToVkShaderStage(stage);
+    assert(vkStage != VK_SHADER_STAGE_FLAG_BITS_MAX_ENUM);
+    assert(source);
+
+    std::string sourcePatched;
+
+    if (!source || !*source) {
+        return {};
+    }
+
+    if (strstr(source, "#version ") == nullptr) {
+        if (vkStage == VK_SHADER_STAGE_TASK_BIT_EXT || vkStage == VK_SHADER_STAGE_MESH_BIT_EXT) {
+        sourcePatched += R"(
+        #version 460
+        #extension GL_EXT_buffer_reference : require
+        #extension GL_EXT_buffer_reference_uvec2 : require
+        #extension GL_EXT_debug_printf : enable
+        #extension GL_EXT_nonuniform_qualifier : require
+        #extension GL_EXT_shader_explicit_arithmetic_types_float16 : require
+        #extension GL_EXT_mesh_shader : require
+        )";
+        }
+        if (vkStage == VK_SHADER_STAGE_VERTEX_BIT || vkStage == VK_SHADER_STAGE_COMPUTE_BIT ||
+            vkStage == VK_SHADER_STAGE_TESSELLATION_CONTROL_BIT || vkStage == VK_SHADER_STAGE_TESSELLATION_EVALUATION_BIT) {
+        sourcePatched += R"(
+        #version 460
+        #extension GL_EXT_buffer_reference : require
+        #extension GL_EXT_buffer_reference_uvec2 : require
+        #extension GL_EXT_debug_printf : enable
+        #extension GL_EXT_nonuniform_qualifier : require
+        #extension GL_EXT_samplerless_texture_functions : require
+        #extension GL_EXT_shader_explicit_arithmetic_types_float16 : require
+        )";
+        }
+        if (vkStage == VK_SHADER_STAGE_FRAGMENT_BIT) {
+        const bool bInjectTLAS = strstr(source, "kTLAS[") != nullptr;
+        // Note how nonuniformEXT() should be used:
+        // https://github.com/KhronosGroup/Vulkan-Samples/blob/main/shaders/descriptor_indexing/nonuniform-quads.frag#L33-L39
+        sourcePatched += R"(
+        #version 460
+        #extension GL_EXT_buffer_reference_uvec2 : require
+        #extension GL_EXT_debug_printf : enable
+        #extension GL_EXT_nonuniform_qualifier : require
+        #extension GL_EXT_samplerless_texture_functions : require
+        #extension GL_EXT_shader_explicit_arithmetic_types_float16 : require
+        )";
+        if (bInjectTLAS) {
+            sourcePatched += R"(
+        #extension GL_EXT_buffer_reference : require
+        #extension GL_EXT_ray_query : require
+
+        layout(set = 0, binding = 4) uniform accelerationStructureEXT kTLAS[];
+        )";
+        }
+        sourcePatched += R"(
+        layout (set = 0, binding = 0) uniform texture2D kTextures2D[];
+        layout (set = 1, binding = 0) uniform texture3D kTextures3D[];
+        layout (set = 2, binding = 0) uniform textureCube kTexturesCube[];
+        layout (set = 3, binding = 0) uniform texture2D kTextures2DShadow[];
+        layout (set = 0, binding = 1) uniform sampler kSamplers[];
+        layout (set = 3, binding = 1) uniform samplerShadow kSamplersShadow[];
+
+        layout (set = 0, binding = 3) uniform sampler2D kSamplerYUV[];
+
+        vec4 textureBindless2D(uint textureid, uint samplerid, vec2 uv) {
+            return texture(nonuniformEXT(sampler2D(kTextures2D[textureid], kSamplers[samplerid])), uv);
+        }
+        vec4 textureBindless2DLod(uint textureid, uint samplerid, vec2 uv, float lod) {
+            return textureLod(nonuniformEXT(sampler2D(kTextures2D[textureid], kSamplers[samplerid])), uv, lod);
+        }
+        float textureBindless2DShadow(uint textureid, uint samplerid, vec3 uvw) {
+            return texture(nonuniformEXT(sampler2DShadow(kTextures2DShadow[textureid], kSamplersShadow[samplerid])), uvw);
+        }
+        ivec2 textureBindlessSize2D(uint textureid) {
+            return textureSize(nonuniformEXT(kTextures2D[textureid]), 0);
+        }
+        vec4 textureBindlessCube(uint textureid, uint samplerid, vec3 uvw) {
+            return texture(nonuniformEXT(samplerCube(kTexturesCube[textureid], kSamplers[samplerid])), uvw);
+        }
+        vec4 textureBindlessCubeLod(uint textureid, uint samplerid, vec3 uvw, float lod) {
+            return textureLod(nonuniformEXT(samplerCube(kTexturesCube[textureid], kSamplers[samplerid])), uvw, lod);
+        }
+        int textureBindlessQueryLevels2D(uint textureid) {
+            return textureQueryLevels(nonuniformEXT(kTextures2D[textureid]));
+        }
+        int textureBindlessQueryLevelsCube(uint textureid) {
+            return textureQueryLevels(nonuniformEXT(kTexturesCube[textureid]));
+        }
+        )";
+        }
+        sourcePatched += source;
+        source = sourcePatched.c_str();
+    }
+
+    const glslang_resource_t glslangResource = getGlslangResource(vulkan_get_physical_device_props(ctx).limits);
+
+    std::vector<uint8_t> spirv;
+    compileShader(vkStage, source, &spirv, &glslangResource);
+
+    return createShaderModuleFromSPIRV(ctx->device, spirv.data(), spirv.size(), debugName);
+}
+
+//vulkan_shader_module_create
+internal ShaderModuleHandle
+vulkan_create_shader_module(VulkanContext *ctx, ShaderModuleDesc desc)
+{
+    ShaderModuleState sm = desc.dataSize ? createShaderModuleFromSPIRV(ctx->device, desc.data, desc.dataSize, desc.debugName) // binary
+                                            : createShaderModuleFromGLSL(ctx, desc.stage, desc.data, desc.debugName); // text
+
+    //return {this, shaderModulesPool_.create(std::move(sm))};
+    //return shaderModulesPool_.create(std::move(sm))};
+    return pool_create(&ctx->shaderModulesPool_, sm);
+}
+
+internal ShaderModuleHandle
+//vulkan_shader_module_load(VulkanContext *ctx, const char* fileName)
+vulkan_load_shader_module(VulkanContext *ctx, const char* fileName)
+{
+  const std::string code = readShaderFile(fileName);
+  const ShaderStage stage = lvkShaderStageFromFileName(fileName);
+
+  if (code.empty()) {
+    return {};
+  }
+
+  ShaderModuleHandle handle = vulkan_create_shader_module(ctx, { code.c_str(), stage, (std::string("Shader Module: ") + fileName).c_str() });
+
+  debugGLSLSourceCode[handle.idx] = code;
+
+  return handle;
 
 }
 
 internal RenderPipelineHandle
 vulkan_create_render_pipeline(VulkanContext *ctx, RenderPipelineDesc desc)
 {
+    const bool hasColorAttachments = desc.getNumColorAttachments() > 0;
+    const bool hasDepthAttachment = desc.depthFormat != Format_Invalid;
+    const bool hasAnyAttachments = hasColorAttachments || hasDepthAttachment;
+    if (!(hasAnyAttachments)) {
+        //Result::setResult(outResult, Result::Code::ArgumentOutOfRange, "Need at least one attachment");
+        return {};
+    }
 
+    if (handle_is_valid(desc.smMesh)) {
+        if (!(!desc.vertexInput.getNumAttributes() && !desc.vertexInput.getNumInputBindings())) {
+        //Result::setResult(outResult, Result::Code::ArgumentOutOfRange, "Cannot have vertexInput with mesh shaders");
+        return {};
+        }
+        if (!!handle_is_valid(desc.smVert)) {
+        //if (!(!desc.smVert.valid())) {
+        //Result::setResult(outResult, Result::Code::ArgumentOutOfRange, "Cannot have both vertex and mesh shaders");
+        return {};
+        }
+        if (!(!handle_is_valid(desc.smTesc) && !handle_is_valid(desc.smTese))) {
+        //if (!(!desc.smTesc.valid() && !desc.smTese.valid())) {
+        //Result::setResult(outResult, Result::Code::ArgumentOutOfRange, "Cannot have both tessellation and mesh shaders");
+        return {};
+        }
+        if (!(!handle_is_valid(desc.smGeom))) {
+        //if (!(!desc.smGeom.valid())) {
+        //Result::setResult(outResult, Result::Code::ArgumentOutOfRange, "Cannot have both geometry and mesh shaders");
+        return {};
+        }
+    } else {
+        if (!handle_is_valid(desc.smVert)) {
+        //if (!(desc.smVert.valid())) {
+        //Result::setResult(outResult, Result::Code::ArgumentOutOfRange, "Missing vertex shader");
+        return {};
+        }
+    }
+
+    if (!(handle_is_valid(desc.smFrag))) {
+    //if (!(desc.smFrag.valid())) {
+        //Result::setResult(outResult, Result::Code::ArgumentOutOfRange, "Missing fragment shader");
+        return {};
+    }
+
+    RenderPipelineState rps = {.desc_ = desc};
+
+    // Iterate and cache vertex input bindings and attributes
+    VertexInput& vstate = rps.desc_.vertexInput;
+
+    bool bufferAlreadyBound[VertexInput::LVK_VERTEX_BUFFER_MAX] = {};
+
+    rps.numAttributes_ = vstate.getNumAttributes();
+
+    for (uint32_t i = 0; i != rps.numAttributes_; i++) {
+        const VertexInput::VertexAttribute& attr = vstate.attributes[i];
+
+        rps.vkAttributes_[i] = {
+            .location = attr.location, .binding = attr.binding, .format = vertexFormatToVkFormat(attr.format), .offset = (uint32_t)attr.offset};
+
+        if (!bufferAlreadyBound[attr.binding]) {
+        bufferAlreadyBound[attr.binding] = true;
+        rps.vkBindings_[rps.numBindings_++] = {
+            .binding = attr.binding, .stride = vstate.inputBindings[attr.binding].stride, .inputRate = VK_VERTEX_INPUT_RATE_VERTEX};
+        }
+    }
+
+    if (desc.specInfo.data && desc.specInfo.dataSize) {
+        // copy into a local storage
+        rps.specConstantDataStorage_ = malloc(desc.specInfo.dataSize);
+        memcpy(rps.specConstantDataStorage_, desc.specInfo.data, desc.specInfo.dataSize);
+        rps.desc_.specInfo.data = rps.specConstantDataStorage_;
+    }
+
+    //return {this, renderPipelinesPool_.create(std::move(rps))};
+    return pool_create(&ctx->renderPipelinesPool_, rps);
 }
 
 internal void
@@ -4454,33 +5271,97 @@ vulkan_cmd_begin_rendering(CommandBuffer *buf, RenderPass *render_pass, Framebuf
 }
 
 internal void
-vulkan_cmd_bind_render_pipeline(CommandBuffer *buf, RenderPipelineHandle rp_triangle)
+vulkan_cmd_bind_render_pipeline(CommandBuffer *buf, RenderPipelineHandle handle)
 {
+    if (!(!handle_is_empty(handle))) {
+        return;
+    }
 
+    buf->currentPipelineGraphics_ = handle;
+    buf->currentPipelineCompute_ = {};
+    buf->currentPipelineRayTracing_ = {};
+
+    //RenderPipelineState* rps = ctx_->renderPipelinesPool_.get(handle);
+    RenderPipelineState* rps = pool_get(&buf->ctx_->renderPipelinesPool_, handle);
+
+    assert(rps);
+
+    bool hasDepthAttachmentPipeline = rps->desc_.depthFormat != Format_Invalid;
+    //bool hasDepthAttachmentPass = !framebuffer_.depthStencil.texture.empty();
+    bool hasDepthAttachmentPass = !handle_is_empty(buf->framebuffer_.depthStencil.texture);
+
+    if (hasDepthAttachmentPipeline != hasDepthAttachmentPass) 
+    {
+        assert(false);
+        printf("Make sure your render pass and render pipeline both have matching depth attachments\n");
+    }
+
+    // TODO
+    // Just implement these two methods!
+    //VkPipeline pipeline = buf->ctx_->getVkPipeline(handle);
+
+    assert(pipeline != VK_NULL_HANDLE);
+
+    if (buf->lastPipelineBound_ != pipeline) 
+    {
+        buf->lastPipelineBound_ = pipeline;
+        vkCmdBindPipeline(buf->wrapper_->cmdBuf_, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline);
+        // TODO
+        // Just implement these two methods!
+        //buf->ctx_->bindDefaultDescriptorSets(buf->wrapper_->cmdBuf_, VK_PIPELINE_BIND_POINT_GRAPHICS, rps->pipelineLayout_);
+    }
 }
 
 internal void
 vulkan_cmd_push_debug_group_label(CommandBuffer *buf, const char *label, u32 colorRGBA)
 {
+    assert(label);
 
+    if (!label || !vkCmdBeginDebugUtilsLabelEXT) {
+        return;
+    }
+    const VkDebugUtilsLabelEXT utilsLabel = {
+        .sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_LABEL_EXT,
+        .pNext = nullptr,
+        .pLabelName = label,
+        .color = {float((colorRGBA >> 0) & 0xff) / 255.0f,
+                    float((colorRGBA >> 8) & 0xff) / 255.0f,
+                    float((colorRGBA >> 16) & 0xff) / 255.0f,
+                    float((colorRGBA >> 24) & 0xff) / 255.0f},
+    };
+    vkCmdBeginDebugUtilsLabelEXT(buf->wrapper_->cmdBuf_, &utilsLabel);
 }
 
 internal void
 vulkan_cmd_draw(CommandBuffer *buf, u32 vertex_count, u32 instance_count = 1, u32 first_vertex = 0, u32 base_instance = 0)
 {
+    //LVK_PROFILER_FUNCTION();
+    //LVK_PROFILER_GPU_ZONE("cmdDraw()", buf->ctx_, buf->wrapper_->cmdBuf_, LVK_PROFILER_COLOR_CMD_DRAW);
 
+    if (vertex_count == 0) {
+        return;
+    }
+
+    vkCmdDraw(buf->wrapper_->cmdBuf_, vertex_count, instance_count, first_vertex, base_instance);
 }
 
 internal void
 vulkan_cmd_pop_debug_group_label(CommandBuffer *buf)
 {
+    if (!vkCmdEndDebugUtilsLabelEXT) {
+        return;
+    }
+    vkCmdEndDebugUtilsLabelEXT(buf->wrapper_->cmdBuf_);
 
 }
 
 internal void
 vulkan_cmd_end_rendering(CommandBuffer *buf)
 {
-
+    assert(buf->isRendering_);
+    buf->isRendering_ = false;
+    vkCmdEndRendering(buf->wrapper_->cmdBuf_);
+    buf->framebuffer_ = {};
 }
 
 int main() 
@@ -4495,30 +5376,30 @@ int main()
 
     VulkanContext *ctx = vulkan_create_context_with_swapchain(&arena, &transient_arena, global_w32_window, window_width, window_height);
 
-    //ShaderModuleHandle vert = vulkan_load_shader_module(ctx, "assets/Triangle/main.vert");
-    //ShaderModuleHandle frag = vulkan_load_shader_module(ctx, "assets/Triangle/main.frag");
+    ShaderModuleHandle vert = vulkan_load_shader_module(ctx, "build/assets/Triangle/main.vert");
+    ShaderModuleHandle frag = vulkan_load_shader_module(ctx, "build/assets/Triangle/main.frag");
 
-    //RenderPipelineHandle rp_triangle = vulkan_create_render_pipeline(ctx, {
-    //    .smVert = vert,
-    //    .smFrag = frag,
-    //    .color = {{.format = vulkan_swapchain_get_current_texture(ctx)}}
-    //});
+    RenderPipelineHandle rp_triangle = vulkan_create_render_pipeline(ctx, {
+        .smVert = vert,
+        .smFrag = frag,
+        .color = {{.format = vulkan_swapchain_format(ctx)}}
+    });
 
     while(global_w32_window.is_running)
     {
         Win32ProcessPendingMessages();
         CommandBuffer *buf = vulkan_cmd_buffer_acquire(ctx);
         
-        //vulkan_cmd_begin_rendering( buf, 
-        //    { .color = { { .loadOp = LoadOp_Clear, .clearColor = { 1.0f, 1.0f, 1.0f, 1.0f } } } },
-        //    { .color = { { .texture =  vulkan_swapchain_get_current_texture(ctx) } } });
-        //{
+        vulkan_cmd_begin_rendering( buf, 
+            { .color = { { .loadOp = LoadOp_Clear, .clearColor = { 1.0f, 1.0f, 1.0f, 1.0f } } } },
+            { .color = { { .texture =  vulkan_swapchain_get_current_texture(ctx) } } });
+        {
         //    vulkan_cmd_bind_render_pipeline(buf, rp_triangle);
         //    vulkan_cmd_push_debug_group_label("Render Triangle", 0xFF0000FF);
         //    vulkan_cmd_draw(buf, 3);
         //    vulkan_cmd_pop_debug_group_label(buf);
-        //}
-        //vulkan_cmd_end_rendering(buf);
+        }
+        vulkan_cmd_end_rendering(buf);
 
         vulkan_cmd_buffer_submit(ctx, buf, vulkan_swapchain_get_current_texture(ctx));    
     }

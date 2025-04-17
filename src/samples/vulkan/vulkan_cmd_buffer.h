@@ -39,4 +39,6 @@ struct CommandBuffer
     bool isRendering_ = false;
 
     RenderPipelineHandle currentPipelineGraphics_ = {};
+    RenderPipelineHandle currentPipelineCompute_ = {};
+    RenderPipelineHandle currentPipelineRayTracing_ = {};
 };

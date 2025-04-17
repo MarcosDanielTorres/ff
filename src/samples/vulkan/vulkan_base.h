@@ -178,6 +178,9 @@ enum ShaderStage : u8
 };
 
 
+
+
+
 enum BlendOp : u8 
 {
     BlendOp_Add = 0,
@@ -261,6 +264,20 @@ struct ColorAttachment
     BlendFactor srcAlphaBlendFactor = BlendFactor_One;
     BlendFactor dstRGBBlendFactor = BlendFactor_Zero;
     BlendFactor dstAlphaBlendFactor = BlendFactor_Zero;
+};
+
+struct ShaderModuleDesc 
+{
+    ShaderStage stage = Stage_Frag;
+    const char* data = nullptr;
+    size_t dataSize = 0; // if `dataSize` is non-zero, interpret `data` as binary shader data
+    const char* debugName = "";
+
+    ShaderModuleDesc(const char* source, ShaderStage stage, const char* debugName) : stage(stage), data(source), debugName(debugName) {}
+    ShaderModuleDesc(const void* data, size_t dataLength, ShaderStage stage, const char* debugName) :
+        stage(stage), data(static_cast<const char*>(data)), dataSize(dataLength), debugName(debugName) {
+        assert(dataSize);
+    }
 };
 
 struct Framebuffer  

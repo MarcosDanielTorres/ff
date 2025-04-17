@@ -163,6 +163,8 @@ struct VulkanContext
     Pool_Sampler samplersPool_;
     Pool_Texture texturesPool_;
     Pool_Buffer buffersPool_;
+    Pool_ShaderModule shaderModulesPool_;
+    Pool_RenderPipeline renderPipelinesPool_;
 
 
     VkPhysicalDeviceRayTracingPipelinePropertiesKHR rayTracingPipelineProperties;

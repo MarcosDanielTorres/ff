@@ -1,7 +1,18 @@
 #pragma once
 
+const char* k_def_validation_layer[] = {"VK_LAYER_KHRONOS_validation"};
 enum { LVK_MAX_COLOR_ATTACHMENTS = 8 };
 enum { LVK_MAX_MIP_LEVELS = 16 };
+
+// These bindings should match GLSL declarations injected into shaders in VulkanContext::createShaderModule().
+enum Bindings {
+  kBinding_Textures = 0,
+  kBinding_Samplers = 1,
+  kBinding_StorageImages = 2,
+  kBinding_YUVImages = 3,
+  kBinding_AccelerationStructures = 4,
+  kBinding_NumBindings = 5,
+};
 
 enum Topology : u8 {
     Topology_Point,
@@ -430,6 +441,20 @@ struct RenderPass final {
   }
 };
 
+internal VkResult
+setDebugObjectName(VkDevice device, VkObjectType type, uint64_t handle, const char* name)
+{
+  if (!name || !*name || !vkSetDebugUtilsObjectNameEXT) {
+    return VK_SUCCESS;
+  }
+  VkDebugUtilsObjectNameInfoEXT ni = {
+      .sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_OBJECT_NAME_INFO_EXT,
+      .objectType = type,
+      .objectHandle = handle,
+      .pObjectName = name,
+  };
+  return vkSetDebugUtilsObjectNameEXT(device, &ni);
+}
 
 struct RenderPipelineState  
 {

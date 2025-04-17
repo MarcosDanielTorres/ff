@@ -14,6 +14,9 @@ struct BufferHandle
 {
     u32 idx;
     u32 gen;
+    explicit operator bool() const {
+        return gen != 0;
+    }
 };
 struct SamplerHandle
 {

@@ -41,16 +41,6 @@ global_variable bool has8BitIndices_ = false;
 #include "generated/generated.h"
 #include "vulkan_types.h"
 
-const char* k_def_validation_layer[] = {"VK_LAYER_KHRONOS_validation"};
-// These bindings should match GLSL declarations injected into shaders in VulkanContext::createShaderModule().
-enum Bindings {
-  kBinding_Textures = 0,
-  kBinding_Samplers = 1,
-  kBinding_StorageImages = 2,
-  kBinding_YUVImages = 3,
-  kBinding_AccelerationStructures = 4,
-  kBinding_NumBindings = 5,
-};
 
 
 

@@ -40,22 +40,13 @@ global_variable bool has8BitIndices_ = false;
 #include "vulkan_cmd_buffer.h"
 #include "generated/generated.h"
 #include "vulkan_types.h"
+#include "vulkan_types.cpp"
 
 
 #include <SPIRV-Reflect/spirv_reflect.h>
 #include <glslang/Include/glslang_c_interface.h>
 
 
-const char* k_def_validation_layer[] = {"VK_LAYER_KHRONOS_validation"};
-// These bindings should match GLSL declarations injected into shaders in VulkanContext::createShaderModule().
-enum Bindings {
-  kBinding_Textures = 0,
-  kBinding_Samplers = 1,
-  kBinding_StorageImages = 2,
-  kBinding_YUVImages = 3,
-  kBinding_AccelerationStructures = 4,
-  kBinding_NumBindings = 5,
-};
 /*
 
 texturespool
@@ -141,20 +132,6 @@ static constexpr TextureFormatProperties properties[] = {
     PROPS(YUV_420p, 24, .blockWidth = 4, .blockHeight = 4, .compressed = true, .numPlanes = 3), // Subsampled 420
 };
 
-internal VkResult
-setDebugObjectName(VkDevice device, VkObjectType type, uint64_t handle, const char* name)
-{
-  if (!name || !*name || !vkSetDebugUtilsObjectNameEXT) {
-    return VK_SUCCESS;
-  }
-  VkDebugUtilsObjectNameInfoEXT ni = {
-      .sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_OBJECT_NAME_INFO_EXT,
-      .objectType = type,
-      .objectHandle = handle,
-      .pObjectName = name,
-  };
-  return vkSetDebugUtilsObjectNameEXT(device, &ni);
-}
 
 internal const char *
 getVulkanResultString(VkResult result)
@@ -1551,6 +1528,132 @@ VkFormat vertexFormatToVkFormat(VertexFormat fmt)
   return VK_FORMAT_UNDEFINED;
 }
 
+VkPolygonMode polygonModeToVkPolygonMode(PolygonMode mode) 
+{
+  switch (mode) {
+  case PolygonMode_Fill:
+    return VK_POLYGON_MODE_FILL;
+  case PolygonMode_Line:
+    return VK_POLYGON_MODE_LINE;
+  }
+  gui_assert(false, "Implement a missing polygon fill mode");
+  return VK_POLYGON_MODE_FILL;
+}
+
+VkBlendFactor blendFactorToVkBlendFactor(BlendFactor value) 
+{
+  switch (value) {
+  case BlendFactor_Zero:
+    return VK_BLEND_FACTOR_ZERO;
+  case BlendFactor_One:
+    return VK_BLEND_FACTOR_ONE;
+  case BlendFactor_SrcColor:
+    return VK_BLEND_FACTOR_SRC_COLOR;
+  case BlendFactor_OneMinusSrcColor:
+    return VK_BLEND_FACTOR_ONE_MINUS_SRC_COLOR;
+  case BlendFactor_DstColor:
+    return VK_BLEND_FACTOR_DST_COLOR;
+  case BlendFactor_OneMinusDstColor:
+    return VK_BLEND_FACTOR_ONE_MINUS_DST_COLOR;
+  case BlendFactor_SrcAlpha:
+    return VK_BLEND_FACTOR_SRC_ALPHA;
+  case BlendFactor_OneMinusSrcAlpha:
+    return VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
+  case BlendFactor_DstAlpha:
+    return VK_BLEND_FACTOR_DST_ALPHA;
+  case BlendFactor_OneMinusDstAlpha:
+    return VK_BLEND_FACTOR_ONE_MINUS_DST_ALPHA;
+  case BlendFactor_BlendColor:
+    return VK_BLEND_FACTOR_CONSTANT_COLOR;
+  case BlendFactor_OneMinusBlendColor:
+    return VK_BLEND_FACTOR_ONE_MINUS_CONSTANT_COLOR;
+  case BlendFactor_BlendAlpha:
+    return VK_BLEND_FACTOR_CONSTANT_ALPHA;
+  case BlendFactor_OneMinusBlendAlpha:
+    return VK_BLEND_FACTOR_ONE_MINUS_CONSTANT_ALPHA;
+  case BlendFactor_SrcAlphaSaturated:
+    return VK_BLEND_FACTOR_SRC_ALPHA_SATURATE;
+  case BlendFactor_Src1Color:
+    return VK_BLEND_FACTOR_SRC1_COLOR;
+  case BlendFactor_OneMinusSrc1Color:
+    return VK_BLEND_FACTOR_ONE_MINUS_SRC1_COLOR;
+  case BlendFactor_Src1Alpha:
+    return VK_BLEND_FACTOR_SRC1_ALPHA;
+  case BlendFactor_OneMinusSrc1Alpha:
+    return VK_BLEND_FACTOR_ONE_MINUS_SRC1_ALPHA;
+  default:
+    assert(false);
+    return VK_BLEND_FACTOR_ONE; // default for unsupported values
+  }
+}
+
+VkBlendOp blendOpToVkBlendOp(BlendOp value) 
+{
+  switch (value) {
+  case BlendOp_Add:
+    return VK_BLEND_OP_ADD;
+  case BlendOp_Subtract:
+    return VK_BLEND_OP_SUBTRACT;
+  case BlendOp_ReverseSubtract:
+    return VK_BLEND_OP_REVERSE_SUBTRACT;
+  case BlendOp_Min:
+    return VK_BLEND_OP_MIN;
+  case BlendOp_Max:
+    return VK_BLEND_OP_MAX;
+  }
+
+  assert(false);
+  return VK_BLEND_OP_ADD;
+}
+
+VkCullModeFlags cullModeToVkCullMode(CullMode mode) {
+  switch (mode) {
+  case CullMode_None:
+    return VK_CULL_MODE_NONE;
+  case CullMode_Front:
+    return VK_CULL_MODE_FRONT_BIT;
+  case CullMode_Back:
+    return VK_CULL_MODE_BACK_BIT;
+  }
+  gui_assert(false, "Implement a missing cull mode");
+  return VK_CULL_MODE_NONE;
+}
+
+VkFrontFace windingModeToVkFrontFace(WindingMode mode) {
+  switch (mode) {
+  case WindingMode_CCW:
+    return VK_FRONT_FACE_COUNTER_CLOCKWISE;
+  case WindingMode_CW:
+    return VK_FRONT_FACE_CLOCKWISE;
+  }
+  gui_assert(false, "Wrong winding order (cannot be more than 2)");
+  return VK_FRONT_FACE_CLOCKWISE;
+}
+
+VkStencilOp stencilOpToVkStencilOp(StencilOp op) {
+  switch (op) {
+  case StencilOp_Keep:
+    return VK_STENCIL_OP_KEEP;
+  case StencilOp_Zero:
+    return VK_STENCIL_OP_ZERO;
+  case StencilOp_Replace:
+    return VK_STENCIL_OP_REPLACE;
+  case StencilOp_IncrementClamp:
+    return VK_STENCIL_OP_INCREMENT_AND_CLAMP;
+  case StencilOp_DecrementClamp:
+    return VK_STENCIL_OP_DECREMENT_AND_CLAMP;
+  case StencilOp_Invert:
+    return VK_STENCIL_OP_INVERT;
+  case StencilOp_IncrementWrap:
+    return VK_STENCIL_OP_INCREMENT_AND_WRAP;
+  case StencilOp_DecrementWrap:
+    return VK_STENCIL_OP_DECREMENT_AND_WRAP;
+  }
+  assert(false);
+  return VK_STENCIL_OP_KEEP;
+}
+
+
 
 internal Format
 vulkan_swapchain_format(VulkanContext *ctx)
@@ -1859,12 +1962,12 @@ vulkan_staging_device_create(VulkanStagingDevice *staging_device, VulkanContext 
 }
 
 
-//void deferredTask(std::packaged_task<void()>&& task, SubmitHandle handle)  {
-//    if (handle.empty()) {
-//        handle = context->immediate_->nextSubmitHandle_;
-//    }
-//    context->deferredTasks_.emplace_back(std::move(task), handle);
-//}
+void deferredTask(VulkanContext *ctx, std::packaged_task<void()>&& task, SubmitHandle handle = SubmitHandle())  {
+    if (handle.empty()) {
+        handle = ctx->immediate_->nextSubmitHandle_;
+    }
+    ctx->deferredTasks_.emplace_back(std::move(task), handle);
+}
 
 internal void
 growDescriptorPool(VulkanContext *context, u32 maxTextures, u32 maxSamplers, u32 maxAccelStructs)
@@ -4546,7 +4649,6 @@ processDeferredTasks(VulkanContext *ctx)
     }
 }
 
-// CONTINUE HERE
 internal SubmitHandle
 vulkan_cmd_buffer_submit(VulkanContext *ctx, CommandBuffer *vkCmdBuffer, TextureHandle present)
 {
@@ -4669,6 +4771,29 @@ std::string readShaderFile(const char* fileName)
 
   return code;
 }
+
+
+internal VkPrimitiveTopology
+topologyToVkPrimitiveTopology(Topology t) 
+{
+  switch (t) {
+  case Topology_Point:
+    return VK_PRIMITIVE_TOPOLOGY_POINT_LIST;
+  case Topology_Line:
+    return VK_PRIMITIVE_TOPOLOGY_LINE_LIST;
+  case Topology_LineStrip:
+    return VK_PRIMITIVE_TOPOLOGY_LINE_STRIP;
+  case Topology_Triangle:
+    return VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
+  case Topology_TriangleStrip:
+    return VK_PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP;
+  case Topology_Patch:
+    return VK_PRIMITIVE_TOPOLOGY_PATCH_LIST;
+  }
+  gui_assert(false, "Implement Topology = %u", (u32)t);
+  return VK_PRIMITIVE_TOPOLOGY_MAX_ENUM;
+}
+
 
 VkShaderStageFlagBits shaderStageToVkShaderStage(ShaderStage stage) {
   switch (stage) {
@@ -5264,10 +5389,458 @@ vulkan_create_render_pipeline(VulkanContext *ctx, RenderPipelineDesc desc)
     return pool_create(&ctx->renderPipelinesPool_, rps);
 }
 
+// CONTINUE HERE
 internal void
-vulkan_cmd_begin_rendering(CommandBuffer *buf, RenderPass *render_pass, Framebuffer *fb, Dependencies *deps = {})
+vulkan_cmd_begin_rendering(CommandBuffer *cmd_buf, RenderPass *render_pass, Framebuffer *fb, Dependencies *deps = {})
 {
+    //LVK_PROFILER_FUNCTION();
 
+    assert(!cmd_buf->isRendering_);
+
+    cmd_buf->isRendering_ = true;
+
+    for (uint32_t i = 0; i != Dependencies::LVK_MAX_SUBMIT_DEPENDENCIES && deps->textures[i]; i++) {
+        transitionToShaderReadOnly(deps->textures[i]);
+    }
+    for (uint32_t i = 0; i != Dependencies::LVK_MAX_SUBMIT_DEPENDENCIES && deps->buffers[i]; i++) {
+        VkPipelineStageFlags2 dstStageFlags = VK_PIPELINE_STAGE_2_VERTEX_SHADER_BIT | VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT;
+        //const VulkanBuffer* buf = ctx_->buffersPool_.get(deps.buffers[i]);
+        VulkanBuffer* buf = pool_get(&cmd_buf->ctx_->buffersPool_, deps->buffers[i]);
+        assert(buf);
+        if ((buf->vkUsageFlags_ & VK_BUFFER_USAGE_INDEX_BUFFER_BIT) || (buf->vkUsageFlags_ & VK_BUFFER_USAGE_VERTEX_BUFFER_BIT)) {
+        dstStageFlags |= VK_PIPELINE_STAGE_2_VERTEX_INPUT_BIT;
+        }
+        if (buf->vkUsageFlags_ & VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT) {
+        dstStageFlags |= VK_PIPELINE_STAGE_2_DRAW_INDIRECT_BIT;
+        }
+        bufferBarrier(deps->buffers[i], VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT, dstStageFlags);
+    }
+
+    const uint32_t numFbColorAttachments = fb.getNumColorAttachments();
+    const uint32_t numPassColorAttachments = renderPass.getNumColorAttachments();
+
+    LVK_ASSERT(numPassColorAttachments == numFbColorAttachments);
+
+    framebuffer_ = fb;
+
+    // transition all the color attachments
+    for (uint32_t i = 0; i != numFbColorAttachments; i++) {
+        if (TextureHandle handle = fb.color[i].texture) {
+        //lvk::VulkanImage* colorTex = ctx_->texturesPool_.get(handle);
+        VulkanImage* colorTex = pool_get(&cmd_buf->ctx_->texturesPool_, handle);
+        transitionToColorAttachment(cmd_buf->wrapper_->cmdBuf_, colorTex);
+        }
+        // handle MSAA
+        if (TextureHandle handle = fb.color[i].resolveTexture) {
+        //lvk::VulkanImage* colorResolveTex = ctx_->texturesPool_.get(handle);
+        VulkanImage* colorResolveTex = pool_get(&cmd_buf->ctx_->texturesPool_, handle);
+        colorResolveTex->isResolveAttachment = true;
+        transitionToColorAttachment(cmd_buf->wrapper_->cmdBuf_, colorResolveTex);
+        }
+    }
+    // transition depth-stencil attachment
+    TextureHandle depthTex = fb.depthStencil.texture;
+    if (depthTex) {
+        //const lvk::VulkanImage& depthImg = *ctx_->texturesPool_.get(depthTex);
+        VulkanImage& depthImg = *pool_get(&cmd_buf->ctx_->texturesPool_, depthTex);
+        gui_assert(depthImg.vkImageFormat_ != VK_FORMAT_UNDEFINED, "Invalid depth attachment format");
+        gui_assert(depthImg.isDepthFormat_, "Invalid depth attachment format");
+        const VkImageAspectFlags flags = depthImg.getImageAspectFlags();
+        depthImg.transitionLayout(buf->wrapper_->cmdBuf_,
+                                VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
+                                VkImageSubresourceRange{flags, 0, VK_REMAINING_MIP_LEVELS, 0, VK_REMAINING_ARRAY_LAYERS});
+    }
+    // handle depth MSAA
+    if (TextureHandle handle = fb.depthStencil.resolveTexture) {
+        //lvk::VulkanImage& depthResolveImg = *ctx_->texturesPool_.get(handle);
+        VulkanImage& depthResolveImg = *pool_get(&buf->ctx_->texturesPool_, handle);
+        gui_assert(depthResolveImg.isDepthFormat_, "Invalid resolve depth attachment format");
+        depthResolveImg.isResolveAttachment = true;
+        const VkImageAspectFlags flags = depthResolveImg.getImageAspectFlags();
+        depthResolveImg.transitionLayout(buf->wrapper_->cmdBuf_,
+                                        VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
+                                        VkImageSubresourceRange{flags, 0, VK_REMAINING_MIP_LEVELS, 0, VK_REMAINING_ARRAY_LAYERS});
+    }
+
+    VkSampleCountFlagBits samples = VK_SAMPLE_COUNT_1_BIT;
+    uint32_t mipLevel = 0;
+    uint32_t fbWidth = 0;
+    uint32_t fbHeight = 0;
+
+    VkRenderingAttachmentInfo colorAttachments[LVK_MAX_COLOR_ATTACHMENTS];
+
+    for (uint32_t i = 0; i != numFbColorAttachments; i++) {
+        const Framebuffer::AttachmentDesc& attachment = fb.color[i];
+        LVK_ASSERT(!attachment.texture.empty());
+
+        //lvk::VulkanImage& colorTexture = *ctx_->texturesPool_.get(attachment.texture);
+        VulkanImage& colorTexture = *pool_get(&buf->ctx_->texturesPool_, attachment.texture);
+        RenderPass::AttachmentDesc& descColor = renderPass.color[i];
+        if (mipLevel && descColor.level) {
+        gui_assert(descColor.level == mipLevel, "All color attachments should have the same mip-level");
+        }
+        const VkExtent3D dim = colorTexture.vkExtent_;
+        if (fbWidth) {
+        gui_assert(dim.width == fbWidth, "All attachments should have the same width");
+        }
+        if (fbHeight) {
+        gui_assert(dim.height == fbHeight, "All attachments should have the same height");
+        }
+        mipLevel = descColor.level;
+        fbWidth = dim.width;
+        fbHeight = dim.height;
+        samples = colorTexture.vkSamples_;
+        colorAttachments[i] = {
+            .sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
+            .pNext = nullptr,
+            .imageView = colorTexture.getOrCreateVkImageViewForFramebuffer(*buf->ctx_, descColor.level, descColor.layer),
+            .imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+            .resolveMode = (samples > 1) ? VK_RESOLVE_MODE_AVERAGE_BIT : VK_RESOLVE_MODE_NONE,
+            .resolveImageView = VK_NULL_HANDLE,
+            .resolveImageLayout = VK_IMAGE_LAYOUT_UNDEFINED,
+            .loadOp = loadOpToVkAttachmentLoadOp(descColor.loadOp),
+            .storeOp = storeOpToVkAttachmentStoreOp(descColor.storeOp),
+            .clearValue =
+                {.color = {.float32 = {descColor.clearColor[0], descColor.clearColor[1], descColor.clearColor[2], descColor.clearColor[3]}}},
+        };
+        // handle MSAA
+        if (descColor.storeOp == StoreOp_MsaaResolve) {
+        assert(samples > 1);
+        gui_assert(!attachment.resolveTexture.empty(), "Framebuffer attachment should contain a resolve texture");
+        //lvk::VulkanImage& colorResolveTexture = *ctx_->texturesPool_.get(attachment.resolveTexture);
+        VulkanImage& colorResolveTexture = *pool_get(&ctx_->texturesPool_, attachment.resolveTexture);
+        colorAttachments[i].resolveImageView =
+            colorResolveTexture.getOrCreateVkImageViewForFramebuffer(*ctx_, descColor.level, descColor.layer);
+        colorAttachments[i].resolveImageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+        }
+    }
+
+    VkRenderingAttachmentInfo depthAttachment = {};
+
+    if (fb.depthStencil.texture) {
+        //lvk::VulkanImage& depthTexture = *ctx_->texturesPool_.get(fb.depthStencil.texture);
+        VulkanImage& depthTexture = *pool_get(&buf->ctx_->texturesPool_., fb.depthStencil.texture);
+        const RenderPass::AttachmentDesc& descDepth = renderPass.depth;
+        gui_assert(descDepth.level == mipLevel, "Depth attachment should have the same mip-level as color attachments");
+        depthAttachment = {
+            .sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
+            .pNext = nullptr,
+            .imageView = depthTexture.getOrCreateVkImageViewForFramebuffer(*buf->ctx_, descDepth.level, descDepth.layer),
+            .imageLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
+            .resolveMode = VK_RESOLVE_MODE_NONE,
+            .resolveImageView = VK_NULL_HANDLE,
+            .resolveImageLayout = VK_IMAGE_LAYOUT_UNDEFINED,
+            .loadOp = loadOpToVkAttachmentLoadOp(descDepth.loadOp),
+            .storeOp = storeOpToVkAttachmentStoreOp(descDepth.storeOp),
+            .clearValue = {.depthStencil = {.depth = descDepth.clearDepth, .stencil = descDepth.clearStencil}},
+        };
+        // handle depth MSAA
+        if (descDepth.storeOp == StoreOp_MsaaResolve) {
+        assert(depthTexture.vkSamples_ == samples);
+        const lvk::Framebuffer::AttachmentDesc& attachment = fb.depthStencil;
+        gui_assert(!attachment.resolveTexture.empty(), "Framebuffer depth attachment should contain a resolve texture");
+        //lvk::VulkanImage& depthResolveTexture = *ctx_->texturesPool_.get(attachment.resolveTexture);
+        VulkanImage& depthResolveTexture = *pool_get(&ctx_->texturesPool_, attachment.resolveTexture);
+        depthAttachment.resolveImageView = depthResolveTexture.getOrCreateVkImageViewForFramebuffer(*buf->ctx_, descDepth.level, descDepth.layer);
+        depthAttachment.resolveImageLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+        depthAttachment.resolveMode = buf->ctx_->depthResolveMode_;
+        }
+        const VkExtent3D dim = depthTexture.vkExtent_;
+        if (fbWidth) 
+        {
+            LVK_ASSERT_MSG(dim.width == fbWidth, "All attachments should have the same width");
+        }
+        if (fbHeight) 
+        {
+            LVK_ASSERT_MSG(dim.height == fbHeight, "All attachments should have the same height");
+        }
+        mipLevel = descDepth.level;
+        fbWidth = dim.width;
+        fbHeight = dim.height;
+    }
+
+    const uint32_t width = max(fbWidth >> mipLevel, 1u);
+    const uint32_t height = max(fbHeight >> mipLevel, 1u);
+    const Viewport viewport = {0.0f, 0.0f, (float)width, (float)height, 0.0f, +1.0f};
+    const ScissorRect scissor = {0, 0, width, height};
+
+    VkRenderingAttachmentInfo stencilAttachment = depthAttachment;
+
+    const bool isStencilFormat = renderPass.stencil.loadOp != LoadOp_Invalid;
+
+    const VkRenderingInfo renderingInfo = {
+        .sType = VK_STRUCTURE_TYPE_RENDERING_INFO,
+        .pNext = nullptr,
+        .flags = 0,
+        .renderArea = {VkOffset2D{(int32_t)scissor.x, (int32_t)scissor.y}, VkExtent2D{scissor.width, scissor.height}},
+        .layerCount = 1,
+        .viewMask = 0,
+        .colorAttachmentCount = numFbColorAttachments,
+        .pColorAttachments = colorAttachments,
+        .pDepthAttachment = depthTex ? &depthAttachment : nullptr,
+        .pStencilAttachment = isStencilFormat ? &stencilAttachment : nullptr,
+    };
+
+    cmdBindViewport(viewport);
+    cmdBindScissorRect(scissor);
+    cmdBindDepthState({});
+
+    buf->ctx_->checkAndUpdateDescriptorSets();
+
+    vkCmdSetDepthCompareOp(buf->wrapper_->cmdBuf_, VK_COMPARE_OP_ALWAYS);
+    vkCmdSetDepthBiasEnable(buf->wrapper_->cmdBuf_, VK_FALSE);
+
+    vkCmdBeginRendering(buf->wrapper_->cmdBuf_, &renderingInfo);
+}
+
+VkSpecializationInfo getPipelineShaderStageSpecializationInfo(SpecializationConstantDesc desc,
+                                                                   VkSpecializationMapEntry* outEntries) 
+{
+  const uint32_t numEntries = desc.getNumSpecializationConstants();
+  if (outEntries) {
+    for (uint32_t i = 0; i != numEntries; i++) {
+      outEntries[i] = VkSpecializationMapEntry{
+          .constantID = desc.entries[i].constantId,
+          .offset = desc.entries[i].offset,
+          .size = desc.entries[i].size,
+      };
+    }
+  }
+  return VkSpecializationInfo{
+      .mapEntryCount = numEntries,
+      .pMapEntries = outEntries,
+      .dataSize = desc.dataSize,
+      .pData = desc.data,
+  };
+}
+
+
+internal VkPipelineShaderStageCreateInfo
+vulkan_pipeline_shader_stage_create_info(VkShaderStageFlagBits stage,
+                                        VkShaderModule shaderModule,
+                                        const char* entryPoint,
+                                        VkSpecializationInfo* specializationInfo)
+{
+    VkPipelineShaderStageCreateInfo result = {
+        .sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
+        .flags = 0,
+        .stage = stage,
+        .module = shaderModule,
+        .pName = entryPoint ? entryPoint : "main",
+        .pSpecializationInfo = specializationInfo,
+    };
+
+    return result;
+}
+
+internal VkPipeline
+vulkan_context_pipeline(VulkanContext *ctx, RenderPipelineHandle handle)
+{
+    //RenderPipelineState* rps = renderPipelinesPool_.get(handle);
+    RenderPipelineState* rps = pool_get(&ctx->renderPipelinesPool_, handle);
+
+    if (!rps) {
+        return VK_NULL_HANDLE;
+    }
+
+    if (rps->lastVkDescriptorSetLayout_ != ctx->vkDSL_) {
+        deferredTask(ctx, std::packaged_task<void()>(
+            [device = ctx->device, pipeline = rps->pipeline_]() { vkDestroyPipeline(device, pipeline, nullptr); }));
+        deferredTask(ctx, std::packaged_task<void()>(
+            [device = ctx->device, layout = rps->pipelineLayout_]() { vkDestroyPipelineLayout(device, layout, nullptr); }));
+        rps->pipeline_ = VK_NULL_HANDLE;
+        rps->lastVkDescriptorSetLayout_ = ctx->vkDSL_;
+    }
+
+    if (rps->pipeline_ != VK_NULL_HANDLE) {
+        return rps->pipeline_;
+    }
+
+    // build a new Vulkan pipeline
+
+    VkPipelineLayout layout = VK_NULL_HANDLE;
+    VkPipeline pipeline = VK_NULL_HANDLE;
+
+    const RenderPipelineDesc& desc = rps->desc_;
+
+    const uint32_t numColorAttachments = rps->desc_.getNumColorAttachments();
+
+    // Not all attachments are valid. We need to create color blend attachments only for active attachments
+    VkPipelineColorBlendAttachmentState colorBlendAttachmentStates[LVK_MAX_COLOR_ATTACHMENTS] = {};
+    VkFormat colorAttachmentFormats[LVK_MAX_COLOR_ATTACHMENTS] = {};
+
+    for (uint32_t i = 0; i != numColorAttachments; i++) {
+        const ColorAttachment& attachment = desc.color[i];
+        assert(attachment.format != Format_Invalid);
+        colorAttachmentFormats[i] = formatToVkFormat(attachment.format);
+        if (!attachment.blendEnabled) {
+        colorBlendAttachmentStates[i] = VkPipelineColorBlendAttachmentState{
+            .blendEnable = VK_FALSE,
+            .srcColorBlendFactor = VK_BLEND_FACTOR_ONE,
+            .dstColorBlendFactor = VK_BLEND_FACTOR_ZERO,
+            .colorBlendOp = VK_BLEND_OP_ADD,
+            .srcAlphaBlendFactor = VK_BLEND_FACTOR_ONE,
+            .dstAlphaBlendFactor = VK_BLEND_FACTOR_ZERO,
+            .alphaBlendOp = VK_BLEND_OP_ADD,
+            .colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT,
+        };
+        } else {
+        colorBlendAttachmentStates[i] = VkPipelineColorBlendAttachmentState{
+            .blendEnable = VK_TRUE,
+            .srcColorBlendFactor = blendFactorToVkBlendFactor(attachment.srcRGBBlendFactor),
+            .dstColorBlendFactor = blendFactorToVkBlendFactor(attachment.dstRGBBlendFactor),
+            .colorBlendOp = blendOpToVkBlendOp(attachment.rgbBlendOp),
+            .srcAlphaBlendFactor = blendFactorToVkBlendFactor(attachment.srcAlphaBlendFactor),
+            .dstAlphaBlendFactor = blendFactorToVkBlendFactor(attachment.dstAlphaBlendFactor),
+            .alphaBlendOp = blendOpToVkBlendOp(attachment.alphaBlendOp),
+            .colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT,
+        };
+        }
+    }
+
+    const ShaderModuleState* vertModule = pool_get(&ctx->shaderModulesPool_, desc.smVert);
+    const ShaderModuleState* tescModule = pool_get(&ctx->shaderModulesPool_, desc.smTesc);
+    const ShaderModuleState* teseModule = pool_get(&ctx->shaderModulesPool_, desc.smTese);
+    const ShaderModuleState* geomModule = pool_get(&ctx->shaderModulesPool_, desc.smGeom);
+    const ShaderModuleState* fragModule = pool_get(&ctx->shaderModulesPool_, desc.smFrag);
+    const ShaderModuleState* taskModule = pool_get(&ctx->shaderModulesPool_, desc.smTask);
+    const ShaderModuleState* meshModule = pool_get(&ctx->shaderModulesPool_, desc.smMesh);
+
+    assert(vertModule || meshModule);
+    assert(fragModule);
+
+    if (tescModule || teseModule || desc.patchControlPoints) {
+        gui_assert(tescModule && teseModule, "Both tessellation control and evaluation shaders should be provided");
+        // TODO aca estaba tirando error, pero igual no tenia hecho el begin rendering...
+        assert(desc.patchControlPoints > 0 &&
+                desc.patchControlPoints <= ctx->vkPhysicalDeviceProperties2.properties.limits.maxTessellationPatchSize);
+    }
+
+    const VkPipelineVertexInputStateCreateInfo ciVertexInputState = {
+        .sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO,
+        .vertexBindingDescriptionCount = rps->numBindings_,
+        .pVertexBindingDescriptions = rps->numBindings_ ? rps->vkBindings_ : nullptr,
+        .vertexAttributeDescriptionCount = rps->numAttributes_,
+        .pVertexAttributeDescriptions = rps->numAttributes_ ? rps->vkAttributes_ : nullptr,
+    };
+
+    VkSpecializationMapEntry entries[SpecializationConstantDesc::LVK_SPECIALIZATION_CONSTANTS_MAX] = {};
+
+    VkSpecializationInfo si = getPipelineShaderStageSpecializationInfo(desc.specInfo, entries);
+
+    // create pipeline layout
+    {
+    #define UPDATE_PUSH_CONSTANT_SIZE(sm, bit)                                  \
+    if (sm) {                                                                 \
+        pushConstantsSize = max(pushConstantsSize, sm->pushConstantsSize); \
+        rps->shaderStageFlags_ |= bit;                                          \
+    }
+        rps->shaderStageFlags_ = 0;
+        uint32_t pushConstantsSize = 0;
+        UPDATE_PUSH_CONSTANT_SIZE(vertModule, VK_SHADER_STAGE_VERTEX_BIT);
+        UPDATE_PUSH_CONSTANT_SIZE(tescModule, VK_SHADER_STAGE_TESSELLATION_CONTROL_BIT);
+        UPDATE_PUSH_CONSTANT_SIZE(teseModule, VK_SHADER_STAGE_TESSELLATION_EVALUATION_BIT);
+        UPDATE_PUSH_CONSTANT_SIZE(geomModule, VK_SHADER_STAGE_GEOMETRY_BIT);
+        UPDATE_PUSH_CONSTANT_SIZE(fragModule, VK_SHADER_STAGE_FRAGMENT_BIT);
+        UPDATE_PUSH_CONSTANT_SIZE(taskModule, VK_SHADER_STAGE_TASK_BIT_EXT);
+        UPDATE_PUSH_CONSTANT_SIZE(meshModule, VK_SHADER_STAGE_MESH_BIT_EXT);
+    #undef UPDATE_PUSH_CONSTANT_SIZE
+
+        // maxPushConstantsSize is guaranteed to be at least 128 bytes
+        // https://www.khronos.org/registry/vulkan/specs/1.3/html/vkspec.html#features-limits
+        // Table 32. Required Limits
+        const VkPhysicalDeviceLimits& limits = vulkan_get_physical_device_props(ctx).limits;
+        if (!(pushConstantsSize <= limits.maxPushConstantsSize)) 
+        {
+            printf("Push constants size exceeded %u (max %u bytes)\n", pushConstantsSize, limits.maxPushConstantsSize);
+        }
+
+        // duplicate for MoltenVK
+        const VkDescriptorSetLayout dsls[] = {ctx->vkDSL_, ctx->vkDSL_, ctx->vkDSL_, ctx->vkDSL_};
+        const VkPushConstantRange range = {
+            .stageFlags = rps->shaderStageFlags_,
+            .offset = 0,
+            .size = pushConstantsSize,
+        };
+        const VkPipelineLayoutCreateInfo ci = {
+            .sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
+            .setLayoutCount = (u32)array_count(dsls),
+            .pSetLayouts = dsls,
+            .pushConstantRangeCount = pushConstantsSize ? 1u : 0u,
+            .pPushConstantRanges = pushConstantsSize ? &range : nullptr,
+        };
+        VK_ASSERT(vkCreatePipelineLayout(ctx->device, &ci, nullptr, &layout));
+        char pipelineLayoutName[256] = {0};
+        if (rps->desc_.debugName) {
+        snprintf(pipelineLayoutName, sizeof(pipelineLayoutName) - 1, "Pipeline Layout: %s", rps->desc_.debugName);
+        }
+        VK_ASSERT(setDebugObjectName(ctx->device, VK_OBJECT_TYPE_PIPELINE_LAYOUT, (uint64_t)layout, pipelineLayoutName));
+    }
+
+    VulkanPipelineBuilder()
+        // from Vulkan 1.0
+        .dynamicState(VK_DYNAMIC_STATE_VIEWPORT)
+        .dynamicState(VK_DYNAMIC_STATE_SCISSOR)
+        .dynamicState(VK_DYNAMIC_STATE_DEPTH_BIAS)
+        .dynamicState(VK_DYNAMIC_STATE_BLEND_CONSTANTS)
+        // from Vulkan 1.3 or VK_EXT_extended_dynamic_state
+        .dynamicState(VK_DYNAMIC_STATE_DEPTH_TEST_ENABLE)
+        .dynamicState(VK_DYNAMIC_STATE_DEPTH_WRITE_ENABLE)
+        .dynamicState(VK_DYNAMIC_STATE_DEPTH_COMPARE_OP)
+        // from Vulkan 1.3 or VK_EXT_extended_dynamic_state2
+        .dynamicState(VK_DYNAMIC_STATE_DEPTH_BIAS_ENABLE)
+        .primitiveTopology(topologyToVkPrimitiveTopology(desc.topology))
+        .rasterizationSamples(getVulkanSampleCountFlags(desc.samplesCount, getFramebufferMSAABitMask(ctx)), desc.minSampleShading)
+        .polygonMode(polygonModeToVkPolygonMode(desc.polygonMode))
+        .stencilStateOps(VK_STENCIL_FACE_FRONT_BIT,
+                        stencilOpToVkStencilOp(desc.frontFaceStencil.stencilFailureOp),
+                        stencilOpToVkStencilOp(desc.frontFaceStencil.depthStencilPassOp),
+                        stencilOpToVkStencilOp(desc.frontFaceStencil.depthFailureOp),
+                        compareOpToVkCompareOp(desc.frontFaceStencil.stencilCompareOp))
+        .stencilStateOps(VK_STENCIL_FACE_BACK_BIT,
+                        stencilOpToVkStencilOp(desc.backFaceStencil.stencilFailureOp),
+                        stencilOpToVkStencilOp(desc.backFaceStencil.depthStencilPassOp),
+                        stencilOpToVkStencilOp(desc.backFaceStencil.depthFailureOp),
+                        compareOpToVkCompareOp(desc.backFaceStencil.stencilCompareOp))
+        .stencilMasks(VK_STENCIL_FACE_FRONT_BIT, 0xFF, desc.frontFaceStencil.writeMask, desc.frontFaceStencil.readMask)
+        .stencilMasks(VK_STENCIL_FACE_BACK_BIT, 0xFF, desc.backFaceStencil.writeMask, desc.backFaceStencil.readMask)
+        .shaderStage(taskModule
+                        ? vulkan_pipeline_shader_stage_create_info(VK_SHADER_STAGE_TASK_BIT_EXT, taskModule->sm, desc.entryPointTask, &si)
+                        : VkPipelineShaderStageCreateInfo{.module = VK_NULL_HANDLE})
+        .shaderStage(meshModule
+                        ? vulkan_pipeline_shader_stage_create_info(VK_SHADER_STAGE_MESH_BIT_EXT, meshModule->sm, desc.entryPointMesh, &si)
+                        : vulkan_pipeline_shader_stage_create_info(VK_SHADER_STAGE_VERTEX_BIT, vertModule->sm, desc.entryPointVert, &si))
+        .shaderStage(vulkan_pipeline_shader_stage_create_info(VK_SHADER_STAGE_FRAGMENT_BIT, fragModule->sm, desc.entryPointFrag, &si))
+        .shaderStage(tescModule ? vulkan_pipeline_shader_stage_create_info(
+                                        VK_SHADER_STAGE_TESSELLATION_CONTROL_BIT, tescModule->sm, desc.entryPointTesc, &si)
+                                : VkPipelineShaderStageCreateInfo{.module = VK_NULL_HANDLE})
+        .shaderStage(teseModule ? vulkan_pipeline_shader_stage_create_info(
+                                        VK_SHADER_STAGE_TESSELLATION_EVALUATION_BIT, teseModule->sm, desc.entryPointTese, &si)
+                                : VkPipelineShaderStageCreateInfo{.module = VK_NULL_HANDLE})
+        .shaderStage(geomModule
+                        ? vulkan_pipeline_shader_stage_create_info(VK_SHADER_STAGE_GEOMETRY_BIT, geomModule->sm, desc.entryPointGeom, &si)
+                        : VkPipelineShaderStageCreateInfo{.module = VK_NULL_HANDLE})
+        .cullMode(cullModeToVkCullMode(desc.cullMode))
+        .frontFace(windingModeToVkFrontFace(desc.frontFaceWinding))
+        .vertexInputState(ciVertexInputState)
+        .colorAttachments(colorBlendAttachmentStates, colorAttachmentFormats, numColorAttachments)
+        .depthAttachmentFormat(formatToVkFormat(desc.depthFormat))
+        .stencilAttachmentFormat(formatToVkFormat(desc.stencilFormat))
+        .patchControlPoints(desc.patchControlPoints)
+        .build(ctx->device, ctx->pipelineCache_, layout, &pipeline, desc.debugName);
+
+    rps->pipeline_ = pipeline;
+    rps->pipelineLayout_ = layout;
+
+    return pipeline;
+}
+
+internal void
+vulkan_context_bind_default_descriptor_sets(VulkanContext *ctx, VkCommandBuffer cmdBuf, VkPipelineBindPoint bindPoint, VkPipelineLayout layout)
+{
+    //LVK_PROFILER_FUNCTION();
+    const VkDescriptorSet dsets[4] = {ctx->vkDSet_, ctx->vkDSet_,ctx->vkDSet_,ctx->vkDSet_};
+    vkCmdBindDescriptorSets(cmdBuf, bindPoint, layout, 0, (u32) array_count(dsets), dsets, 0, nullptr);
 }
 
 internal void
@@ -5299,6 +5872,7 @@ vulkan_cmd_bind_render_pipeline(CommandBuffer *buf, RenderPipelineHandle handle)
     // TODO
     // Just implement these two methods!
     //VkPipeline pipeline = buf->ctx_->getVkPipeline(handle);
+    VkPipeline pipeline = vulkan_context_pipeline(buf->ctx_, handle);
 
     assert(pipeline != VK_NULL_HANDLE);
 
@@ -5308,6 +5882,7 @@ vulkan_cmd_bind_render_pipeline(CommandBuffer *buf, RenderPipelineHandle handle)
         vkCmdBindPipeline(buf->wrapper_->cmdBuf_, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline);
         // TODO
         // Just implement these two methods!
+        vulkan_context_bind_default_descriptor_sets(buf->ctx_, buf->wrapper_->cmdBuf_, VK_PIPELINE_BIND_POINT_GRAPHICS, rps->pipelineLayout_);
         //buf->ctx_->bindDefaultDescriptorSets(buf->wrapper_->cmdBuf_, VK_PIPELINE_BIND_POINT_GRAPHICS, rps->pipelineLayout_);
     }
 }
@@ -5389,15 +5964,14 @@ int main()
     {
         Win32ProcessPendingMessages();
         CommandBuffer *buf = vulkan_cmd_buffer_acquire(ctx);
-        
-        vulkan_cmd_begin_rendering( buf, 
-            { .color = { { .loadOp = LoadOp_Clear, .clearColor = { 1.0f, 1.0f, 1.0f, 1.0f } } } },
-            { .color = { { .texture =  vulkan_swapchain_get_current_texture(ctx) } } });
+        RenderPass r_pass = { .color = { { .loadOp = LoadOp_Clear, .clearColor = { 1.0f, 1.0f, 1.0f, 1.0f } } } };
+        Framebuffer fb = { .color = { { .texture =  vulkan_swapchain_get_current_texture(ctx) } } };
+        vulkan_cmd_begin_rendering(buf, &r_pass, &fb);
         {
-        //    vulkan_cmd_bind_render_pipeline(buf, rp_triangle);
-        //    vulkan_cmd_push_debug_group_label("Render Triangle", 0xFF0000FF);
-        //    vulkan_cmd_draw(buf, 3);
-        //    vulkan_cmd_pop_debug_group_label(buf);
+            vulkan_cmd_bind_render_pipeline(buf, rp_triangle);
+            vulkan_cmd_push_debug_group_label(buf, "Render Triangle", 0xFF0000FF);
+            vulkan_cmd_draw(buf, 3);
+            vulkan_cmd_pop_debug_group_label(buf);
         }
         vulkan_cmd_end_rendering(buf);
 

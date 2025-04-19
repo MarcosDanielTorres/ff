@@ -3,9 +3,16 @@
 #define arena_push_size(arena, value, count, ...) (value*) _push_size(arena, sizeof(value) * count, ##__VA_ARGS__);
 #define arena_push_copy(arena, size, source, ...) memcpy((void*) _push_size(arena, size, ##__VA_ARGS__), source, size);
 
-void arena_init(Arena* arena, size_t size) 
+void arena_init(Arena* arena, size_t size, u8* base) 
 {
-    arena->base = (u8*)VirtualAlloc(0, size, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+    if (base)
+    {
+        arena->base = base;
+    }
+    else
+    {
+        arena->base = (u8*)VirtualAlloc(0, size, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+    }
     arena->len = 0;
     arena->max_len = size;
     arena->temp_count = 0;

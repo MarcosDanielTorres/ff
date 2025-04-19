@@ -488,11 +488,15 @@ getPipelineStageAccess(VkImageLayout layout)
     }
 }
 
+// TODO tidy up this is defined inside VulkanImage as well
 [[nodiscard]] inline b32 vulkan_image_is_sampled_image(VkImageUsageFlags vkUsageFlags_) { return (vkUsageFlags_ & VK_IMAGE_USAGE_SAMPLED_BIT) > 0; }
 [[nodiscard]] inline b32 vulkan_image_is_storage_image(VkImageUsageFlags vkUsageFlags_) { return (vkUsageFlags_ & VK_IMAGE_USAGE_STORAGE_BIT) > 0; }
 [[nodiscard]] inline b32 vulkan_image_is_color_attachment(VkImageUsageFlags vkUsageFlags_) { return (vkUsageFlags_ & VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT) > 0; }
 [[nodiscard]] inline b32 vulkan_image_is_depth_attachment(VkImageUsageFlags vkUsageFlags_) { return (vkUsageFlags_ & VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT) > 0; }
 [[nodiscard]] inline b32 vulkan_image_is_attachment(VkImageUsageFlags vkUsageFlags_) { return (vkUsageFlags_ & (VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT|VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT)) > 0; }
+
+
+
 
 internal void
 vulkan_image_transition_layout(VulkanImage *image, VkCommandBuffer commandBuffer, VkImageLayout newImageLayout, VkImageSubresourceRange subresourceRange)
@@ -545,7 +549,7 @@ vulkan_image_transition_layout(VulkanImage *image, VkCommandBuffer commandBuffer
 }
 
 internal VkImageAspectFlags
-vulkan_image_get_image_aspect_flags(VulkanImage *image)
+vulkan_image_get_aspect_flags(VulkanImage *image)
 {
     VkImageAspectFlags flags = 0;
 
@@ -634,7 +638,7 @@ vulkan_image_generate_mipmap(VulkanImage *image, VkCommandBuffer commandBuffer)
         return VK_FILTER_NEAREST;
     }(image->isDepthFormat_ || image->isStencilFormat_, image->vkFormatProperties_.optimalTilingFeatures & VK_FORMAT_FEATURE_SAMPLED_IMAGE_FILTER_LINEAR_BIT);
 
-    VkImageAspectFlags imageAspectFlags = vulkan_image_get_image_aspect_flags(image);
+    VkImageAspectFlags imageAspectFlags = vulkan_image_get_aspect_flags(image);
 
     if (vkCmdBeginDebugUtilsLabelEXT) {
         VkDebugUtilsLabelEXT utilsLabel = {
@@ -927,8 +931,9 @@ vulkan_create_fence(VkDevice device, const char *debug_name)
     return fence;
 }
 
+
 internal b32
-vulkan_immediate_commands_is_ready(VulkanImmediateCommands *immediate, SubmitHandle handle, b32 fast_check_no_vulkan)
+vulkan_immediate_commands_is_ready(VulkanImmediateCommands *immediate, SubmitHandle handle, b32 fast_check_no_vulkan = false)
 {
     assert(handle.bufferIndex_ < immediate->kMaxCommandBuffers);
     if(handle.empty())
@@ -953,6 +958,7 @@ vulkan_immediate_commands_is_ready(VulkanImmediateCommands *immediate, SubmitHan
     }
     return vkWaitForFences(immediate->device, 1, &buf->fence_, VK_TRUE, 0) == VK_SUCCESS;
 }
+
 
 internal void
 vulkan_immediate_commands_create(VulkanImmediateCommands *immediate, VkDevice device, u32 queue_family_index, const char *debug_name)
@@ -1035,6 +1041,30 @@ vulkan_immediate_commands_purge(VulkanImmediateCommands *immediate)
             }
         }
     }
+}
+
+internal void
+vulkan_immediate_commands_wait(VulkanImmediateCommands *imm, SubmitHandle handle)
+{
+    //LVK_PROFILER_FUNCTION_COLOR(LVK_PROFILER_COLOR_WAIT);
+
+    if (handle.empty()) {
+        vkDeviceWaitIdle(imm->device);
+        return;
+    }
+
+    if (vulkan_immediate_commands_is_ready(imm, handle)) {
+        return;
+    }
+
+    if (!(!imm->buffers[handle.bufferIndex_].isEncoding_)) {
+        // we are waiting for a buffer which has not been submitted - this is probably a logic error somewhere in the calling code
+        return;
+    }
+
+    VK_ASSERT(vkWaitForFences(imm->device, 1, &imm->buffers[handle.bufferIndex_].fence_, VK_TRUE, UINT64_MAX));
+
+    vulkan_immediate_commands_purge(imm);
 }
 
 internal VkSemaphore
@@ -1298,6 +1328,41 @@ vulkan_image_view_create(VulkanImage *image,
     VK_ASSERT(setDebugObjectName(device, VK_OBJECT_TYPE_IMAGE_VIEW, (u64)vkView, debugName));
 
     return vkView;
+}
+
+internal VkImageView
+getOrCreateVkImageViewForFramebuffer(VulkanImage *img, VulkanContext *ctx, uint8_t level, uint16_t layer) 
+{
+  assert(level < LVK_MAX_MIP_LEVELS);
+  assert(layer < array_count(img->imageViewForFramebuffer_[0]));
+
+  if (level >= LVK_MAX_MIP_LEVELS || layer >= array_count(img->imageViewForFramebuffer_[0])) {
+    return VK_NULL_HANDLE;
+  }
+
+  if (img->imageViewForFramebuffer_[level][layer] != VK_NULL_HANDLE) {
+    return img->imageViewForFramebuffer_[level][layer];
+  }
+
+  char debugNameImageView[256] = {0};
+  snprintf(
+      debugNameImageView, sizeof(debugNameImageView) - 1, "Image View: '%s' imageViewForFramebuffer_[%u][%u]", img->debugName_, level, layer);
+
+  img->imageViewForFramebuffer_[level][layer] = vulkan_image_view_create(
+                                                            img,
+                                                            ctx->device,
+                                                            VK_IMAGE_VIEW_TYPE_2D,
+                                                            img->vkImageFormat_,
+                                                            vulkan_image_get_aspect_flags(img),
+                                                            level,
+                                                            1u,
+                                                            layer,
+                                                            1u,
+                                                            {},
+                                                            nullptr,
+                                                            debugNameImageView);
+
+  return img->imageViewForFramebuffer_[level][layer];
 }
 
 internal VkFormat
@@ -1990,12 +2055,11 @@ growDescriptorPool(VulkanContext *context, u32 maxTextures, u32 maxSamplers, u32
 #endif
 
 
-  // IMPORTANT these two uses of the function defferedTask is not used at least not even in the HelloTriangle!
   if (context->vkDSL_ != VK_NULL_HANDLE) {
-    //deferredTask(std::packaged_task<void()>([device = context->device, dsl = context->vkDSL_]() { vkDestroyDescriptorSetLayout(device, dsl, nullptr); }));
+    deferredTask(context, std::packaged_task<void()>([device = context->device, dsl = context->vkDSL_]() { vkDestroyDescriptorSetLayout(device, dsl, nullptr); }));
   }
   if (context->vkDPool_ != VK_NULL_HANDLE) {
-    //deferredTask(std::packaged_task<void()>([device = context->device, dp = context->vkDPool_]() { vkDestroyDescriptorPool(device, dp, nullptr); }));
+    deferredTask(context, std::packaged_task<void()>([device = context->device, dp = context->vkDPool_]() { vkDestroyDescriptorPool(device, dp, nullptr); }));
   }
 
   bool hasYUVImages = false;
@@ -2145,25 +2209,6 @@ enum StorageType
     StorageType_Memoryless
 };
 
-struct Dimensions
-{
-    u32 width = 1;
-    u32 height = 1;
-    u32 depth = 1;
-    inline Dimensions divide1D(u32 v) const {
-        return {.width = width / v, .height = height, .depth = depth};
-    }
-    inline Dimensions divide2D(u32 v) const {
-        return {.width = width / v, .height = height / v, .depth = depth};
-    }
-    inline Dimensions divide3D(u32 v) const {
-        return {.width = width / v, .height = height / v, .depth = depth / v};
-    }
-    inline bool operator==(const Dimensions& other) const {
-        return width == other.width && height == other.height && depth == other.depth;
-    }
-
-};
 
 struct TextureDesc
 {
@@ -2183,9 +2228,14 @@ struct TextureDesc
     const char* debugName = "";
 };
 
+internal u32
+getNumImagePlanes(Format format) {
+  return properties[format].numPlanes;
+}
+
 
 internal u32
-getNumImagePlanes(Format format)
+getNumImagePlanes(VkFormat format)
 {
     switch (format) {
         case VK_FORMAT_UNDEFINED:
@@ -3805,6 +3855,8 @@ vkGetPhysicalDeviceProperties2(context->physical_device, &context->vkPhysicalDev
     std::vector<const char*> deviceExtensionNames = 
     {
         VK_KHR_SWAPCHAIN_EXTENSION_NAME,
+        // NOTE seems its not needed
+        //VK_KHR_SHADER_NON_SEMANTIC_INFO_EXTENSION_NAME,
     #if defined(__APPLE__)
         // All supported Vulkan 1.3 extensions
         // https://github.com/KhronosGroup/MoltenVK/issues/1930
@@ -4611,7 +4663,9 @@ vulkan_create_context_with_swapchain(Arena *arena, Arena *transient, OS_Window w
     VulkanContext context = {0};
     context = vulkan_create_context_inside(transient, window.handle);
     #else
-    VulkanContext* context = (VulkanContext*)arena_push_size(arena, VulkanContext, 1);
+    //VulkanContext* context = (VulkanContext*)arena_push_size(arena, VulkanContext, 1);
+    void *raw = arena_push_size(arena, VulkanContext, 1);
+    auto* context = new (raw) VulkanContext();
     //VulkanContext context = {0};
     vulkan_create_context(transient, window.handle, context);
     #endif
@@ -4620,6 +4674,53 @@ vulkan_create_context_with_swapchain(Arena *arena, Arena *transient, OS_Window w
     vulkan_init_context(arena, transient, context, &queried_devices.out_devices[0]);
     vulkan_init_swapchain(arena, transient, context, width, height);
     return context;
+}
+
+
+internal void vulkan_cmd_bind_Viewport(CommandBuffer *cmd_buf, Viewport viewport)
+{
+    // https://www.saschawillems.de/blog/2019/03/29/flipping-the-vulkan-viewport/
+    VkViewport vp = {
+        .x = viewport.x, // float x;
+        .y = viewport.height - viewport.y, // float y;
+        .width = viewport.width, // float width;
+        .height = -viewport.height, // float height;
+        .minDepth = viewport.minDepth, // float minDepth;
+        .maxDepth = viewport.maxDepth, // float maxDepth;
+    };
+    vkCmdSetViewport(cmd_buf->wrapper_->cmdBuf_, 0, 1, &vp);
+
+}
+
+internal void vulkan_cmd_bind_ScissorRect(CommandBuffer *cmd_buf, ScissorRect rect)
+{
+    VkRect2D scissor = {
+        VkOffset2D{(int32_t)rect.x, (int32_t)rect.y},
+        VkExtent2D{rect.width, rect.height},
+    };
+    vkCmdSetScissor(cmd_buf->wrapper_->cmdBuf_, 0, 1, &scissor);
+}
+
+internal void vulkan_cmd_bind_DepthState(CommandBuffer *cmd_buf, DepthState desc)
+{
+    //LVK_PROFILER_FUNCTION();
+
+    VkCompareOp op = compareOpToVkCompareOp(desc.compareOp);
+    vkCmdSetDepthWriteEnable(cmd_buf->wrapper_->cmdBuf_, desc.isDepthWriteEnabled ? VK_TRUE : VK_FALSE);
+    vkCmdSetDepthTestEnable(cmd_buf->wrapper_->cmdBuf_, op != VK_COMPARE_OP_ALWAYS || desc.isDepthWriteEnabled);
+
+    #if defined(ANDROID)
+        /* 
+        This is a workaround for the issue
+        On Android (Mali-G715-Immortalis MC11 v1.r38p1-01eac0.c1a71ccca2acf211eb87c5db5322f569)
+        if depth-stencil texture is not set, call of vkCmdSetDepthCompareOp leads to disappearing of all content.
+        */
+        if(!cmd_buf->framebuffer_.depthStencil.texture)
+        {
+            return;
+        }
+    #endif
+    vkCmdSetDepthCompareOp(cmd_buf->wrapper_->cmdBuf_, op);
 }
 
 internal CommandBuffer *
@@ -4642,11 +4743,34 @@ vulkan_cmd_buffer_acquire(VulkanContext *ctx)
 internal void
 processDeferredTasks(VulkanContext *ctx)
 {
+    #if 0
     while(!ctx->deferredTasks_.empty() && vulkan_immediate_commands_is_ready(ctx->immediate_, ctx->deferredTasks_.front().handle_, true))
     {
+        //auto task = ctx->deferredTasks_.front().task_();
+        //task.pop_front();
         ctx->deferredTasks_.front().task_();
         ctx->deferredTasks_.pop_front();
     }
+    #endif
+
+    #if 1
+    // 1) Steal out all the ready entries up front
+    std::deque<DeferredTask> ready;
+
+    while (!ctx->deferredTasks_.empty()) {
+        auto &entry = ctx->deferredTasks_.front();
+        if (!vulkan_immediate_commands_is_ready(ctx->immediate_, entry.handle_, true))
+            break;
+
+        ready.push_back(std::move(entry));
+        ctx->deferredTasks_.pop_front();  // safe now, because no one else can mutate 'ready'
+    }
+
+    // 2) Execute them *after* we’ve fully drained the deque
+    for (auto &taskEntry : ready) {
+        taskEntry.task_();
+    }
+    #endif
 }
 
 internal SubmitHandle
@@ -4793,6 +4917,41 @@ topologyToVkPrimitiveTopology(Topology t)
   gui_assert(false, "Implement Topology = %u", (u32)t);
   return VK_PRIMITIVE_TOPOLOGY_MAX_ENUM;
 }
+
+VkAttachmentLoadOp loadOpToVkAttachmentLoadOp(LoadOp a) {
+  switch (a) {
+  case LoadOp_Invalid:
+    assert(false);
+    return VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+  case LoadOp_DontCare:
+    return VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+  case LoadOp_Load:
+    return VK_ATTACHMENT_LOAD_OP_LOAD;
+  case LoadOp_Clear:
+    return VK_ATTACHMENT_LOAD_OP_CLEAR;
+  case LoadOp_None:
+    return VK_ATTACHMENT_LOAD_OP_NONE_EXT;
+  }
+  assert(false);
+  return VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+}
+
+VkAttachmentStoreOp storeOpToVkAttachmentStoreOp(StoreOp a) {
+  switch (a) {
+  case StoreOp_DontCare:
+    return VK_ATTACHMENT_STORE_OP_DONT_CARE;
+  case StoreOp_Store:
+    return VK_ATTACHMENT_STORE_OP_STORE;
+  case StoreOp_MsaaResolve:
+    // for MSAA resolve, we have to store data into a special "resolve" attachment
+    return VK_ATTACHMENT_STORE_OP_DONT_CARE;
+  case StoreOp_None:
+    return VK_ATTACHMENT_STORE_OP_NONE;
+  }
+  assert(false);
+  return VK_ATTACHMENT_STORE_OP_DONT_CARE;
+}
+
 
 
 VkShaderStageFlagBits shaderStageToVkShaderStage(ShaderStage stage) {
@@ -5389,9 +5548,307 @@ vulkan_create_render_pipeline(VulkanContext *ctx, RenderPipelineDesc desc)
     return pool_create(&ctx->renderPipelinesPool_, rps);
 }
 
+
+internal void
+vulkan_cmd_transition_to_shader_read_only(CommandBuffer *cmd_buf, TextureHandle handle)
+{
+    VulkanImage *img = pool_get(&cmd_buf->ctx_->texturesPool_, handle);
+    assert(!img->isSwapchainImage_);
+
+    // transition only non-multisampled images - MSAA images cannot be accessed from shaders!
+    if(img->vkSamples_ == VK_SAMPLE_COUNT_1_BIT)
+    {
+        //VkImageAspectFlags flags = img->getImageAspectFlags();        
+        VkImageAspectFlags flags = vulkan_image_get_aspect_flags(img);
+
+        vulkan_image_transition_layout(img, cmd_buf->wrapper_->cmdBuf_,
+                                    img->isSampledImage() ? VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL : VK_IMAGE_LAYOUT_GENERAL,
+                                    VkImageSubresourceRange(flags, 0, VK_REMAINING_MIP_LEVELS, 0, VK_REMAINING_ARRAY_LAYERS));
+        //img->transitionLayout(cmd_buf->wrapper_->_cmdBuf_,
+        //                    img->isSampledImage() ? VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL : VK_IMAGE_LAYOUT_GENERAL,
+        //                    VkImageSubresourceRange(flags, 0, VK_REMAINING_MIP_LEVELS, 0, VK_REMAINING_ARRAY_LAYERS));
+    }
+}
+
+internal void
+vulkan_cmd_buf_barrier(CommandBuffer *cmd_buf, BufferHandle handle, VkPipelineStageFlags2 srcStage, VkPipelineStageFlags2 dstStage)
+{
+    VulkanBuffer *buf = pool_get(&cmd_buf->ctx_->buffersPool_, handle);
+
+    VkBufferMemoryBarrier2 barrier = 
+    {
+        .sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER_2,
+        .srcStageMask = srcStage,
+        .srcAccessMask = 0,
+        .dstStageMask = dstStage,
+        .dstAccessMask = 0,
+        .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+        .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+        .buffer = buf->vkBuffer_,
+        .offset = 0,
+        .size = VK_WHOLE_SIZE,
+    };
+
+    if (srcStage & VK_PIPELINE_STAGE_2_TRANSFER_BIT) {
+        barrier.srcAccessMask |= VK_ACCESS_2_TRANSFER_READ_BIT | VK_ACCESS_2_TRANSFER_WRITE_BIT;
+    } else {
+        barrier.srcAccessMask |= VK_ACCESS_2_SHADER_READ_BIT | VK_ACCESS_2_SHADER_WRITE_BIT;
+    }
+
+    if (dstStage & VK_PIPELINE_STAGE_2_TRANSFER_BIT) {
+        barrier.dstAccessMask |= VK_ACCESS_2_TRANSFER_READ_BIT | VK_ACCESS_2_TRANSFER_WRITE_BIT;
+    } else {
+        barrier.dstAccessMask |= VK_ACCESS_2_SHADER_READ_BIT | VK_ACCESS_2_SHADER_WRITE_BIT;
+    }
+    if (dstStage & VK_PIPELINE_STAGE_2_DRAW_INDIRECT_BIT) {
+        barrier.dstAccessMask |= VK_ACCESS_2_INDIRECT_COMMAND_READ_BIT;
+    }
+    if (buf->vkUsageFlags_ & VK_BUFFER_USAGE_INDEX_BUFFER_BIT) {
+        barrier.dstAccessMask |= VK_ACCESS_2_INDEX_READ_BIT;
+    }
+
+    const VkDependencyInfo depInfo = {
+        .sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO,
+        .bufferMemoryBarrierCount = 1,
+        .pBufferMemoryBarriers = &barrier,
+    };
+
+    vkCmdPipelineBarrier2(cmd_buf->wrapper_->cmdBuf_, &depInfo);
+}
+
+void transitionToColorAttachment(VkCommandBuffer buffer, VulkanImage* colorTex) {
+    if (!(colorTex)) {
+        return;
+    }
+
+    if (!(!colorTex->isDepthFormat_ && !colorTex->isStencilFormat_)) {
+        gui_assert(false, "Color attachments cannot have depth/stencil formats");
+        return;
+    }
+
+    gui_assert(colorTex->vkImageFormat_ != VK_FORMAT_UNDEFINED, "Invalid color attachment format");
+
+    vulkan_image_transition_layout(colorTex, buffer, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VkImageSubresourceRange{VK_IMAGE_ASPECT_COLOR_BIT, 0, VK_REMAINING_MIP_LEVELS, 0, VK_REMAINING_ARRAY_LAYERS});
+    //colorTex->transitionLayout(buffer,
+    //VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VkImageSubresourceRange{VK_IMAGE_ASPECT_COLOR_BIT, 0, VK_REMAINING_MIP_LEVELS, 0, VK_REMAINING_ARRAY_LAYERS});
+}
+
+internal void
+checkAndUpdateDescriptorSets(VulkanContext *ctx) {
+  if (!ctx->awaitingCreation_) {
+    // nothing to update here
+    return;
+  }
+
+  // newly created resources can be used immediately - make sure they are put into descriptor sets
+  //LVK_PROFILER_FUNCTION();
+
+  // update Vulkan descriptor set here
+
+  // make sure the guard values are always there
+  //assert(texturesPool_.numObjects() >= 1);
+  //assert(samplersPool_.numObjects() >= 1);
+  assert(ctx->texturesPool_.count >= 1);
+  assert(ctx->samplersPool_.count >= 1);
+
+  uint32_t newMaxTextures = ctx->currentMaxTextures_;
+  uint32_t newMaxSamplers = ctx->currentMaxSamplers_;
+  uint32_t newMaxAccelStructs = ctx->currentMaxAccelStructs_;
+
+  // TODO see where this is useful to have!
+  // This is only for growing the pools if its needed.
+  // In my case i dont support dynamically growing pools so ill ignore for now!
+  #if 0
+    while (texturesPool_.objects_.size() > newMaxTextures) {
+        newMaxTextures *= 2;
+    }
+    while (samplersPool_.objects_.size() > newMaxSamplers) {
+        newMaxSamplers *= 2;
+    }
+    while (accelStructuresPool_.objects_.size() > newMaxAccelStructs) {
+        newMaxAccelStructs *= 2;
+    }
+  #endif
+  if (newMaxTextures != ctx->currentMaxTextures_ || newMaxSamplers != ctx->currentMaxSamplers_ || ctx->awaitingNewImmutableSamplers_ ||
+      newMaxAccelStructs != ctx->currentMaxAccelStructs_) {
+    growDescriptorPool(ctx, newMaxTextures, newMaxSamplers, newMaxAccelStructs);
+  }
+
+  // 1. Sampled and storage images
+  std::vector<VkDescriptorImageInfo> infoSampledImages;
+  std::vector<VkDescriptorImageInfo> infoStorageImages;
+  std::vector<VkDescriptorImageInfo> infoYUVImages;
+
+  //infoSampledImages.reserve(texturesPool_.numObjects());
+  //infoStorageImages.reserve(texturesPool_.numObjects());
+  infoSampledImages.reserve(ctx->texturesPool_.count);
+  infoStorageImages.reserve(ctx->texturesPool_.count);
+
+  const bool hasYcbcrSamplers = ctx->numYcbcrSamplers_ > 0;
+
+  if (hasYcbcrSamplers) {
+    //infoYUVImages.reserve(texturesPool_.numObjects());
+    infoYUVImages.reserve(ctx->texturesPool_.count);
+  }
+
+  // use the dummy texture to avoid sparse array
+  //VkImageView dummyImageView = texturesPool_.objects_[0].obj_.imageView_;
+  VkImageView dummyImageView = ctx->texturesPool_.entries[0].data.imageView_;
+
+  //for (const auto& obj : ctx->texturesPool_.entries) {
+  for (u32 i = 0; i < ctx->texturesPool_.count; i++) {
+    const auto& obj = ctx->texturesPool_.entries[i];
+    const VulkanImage& img = obj.data;
+    const VkImageView view = obj.data.imageView_;
+    const VkImageView storageView = obj.data.imageViewStorage_ ? obj.data.imageViewStorage_ : view;
+    // multisampled images cannot be directly accessed from shaders
+    const bool isTextureAvailable = (img.vkSamples_ & VK_SAMPLE_COUNT_1_BIT) == VK_SAMPLE_COUNT_1_BIT;
+    const bool isYUVImage = isTextureAvailable && img.isSampledImage() && getNumImagePlanes(img.vkImageFormat_) > 1;
+    const bool isSampledImage = isTextureAvailable && img.isSampledImage() && !isYUVImage;
+    const bool isStorageImage = isTextureAvailable && img.isStorageImage();
+    infoSampledImages.push_back(VkDescriptorImageInfo{
+        .sampler = VK_NULL_HANDLE,
+        .imageView = isSampledImage ? view : dummyImageView,
+        .imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+    });
+    assert(infoSampledImages.back().imageView != VK_NULL_HANDLE);
+    infoStorageImages.push_back(VkDescriptorImageInfo{
+        .sampler = VK_NULL_HANDLE,
+        .imageView = isStorageImage ? storageView : dummyImageView,
+        .imageLayout = VK_IMAGE_LAYOUT_GENERAL,
+    });
+    if (hasYcbcrSamplers) {
+      // we don't need to update this if there're no YUV samplers
+      infoYUVImages.push_back(VkDescriptorImageInfo{
+          .imageView = isYUVImage ? view : dummyImageView,
+          .imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+      });
+    }
+  }
+
+  // 2. Samplers
+  std::vector<VkDescriptorImageInfo> infoSamplers;
+  infoSamplers.reserve(ctx->samplersPool_.count);
+
+  //for (const auto& sampler : ctx->samplersPool_.entries) {
+  for (u32 i = 0; i < ctx->samplersPool_.count; i++) {
+    const auto& sampler = ctx->samplersPool_.entries[i];
+    infoSamplers.push_back({
+        .sampler = sampler.data ? sampler.data : ctx->samplersPool_.entries[0].data,
+        .imageView = VK_NULL_HANDLE,
+        .imageLayout = VK_IMAGE_LAYOUT_UNDEFINED,
+    });
+  }
+
+  #if 0
+  // 3. Acceleration structures
+  std::vector<VkAccelerationStructureKHR> handlesAccelStructs;
+  handlesAccelStructs.reserve(ctx->accelStructuresPool_.count);
+
+  VkAccelerationStructureKHR dummyTLAS = VK_NULL_HANDLE;
+  // use the first valid TLAS as a dummy
+  for (const auto& as : ctx->accelStructuresPool_.entries) {
+    if (as.data.vkHandle && as.data.isTLAS) {
+      dummyTLAS = as.data.vkHandle;
+    }
+  }
+  for (const auto& as : ctx->accelStructuresPool_.entries) {
+    handlesAccelStructs.push_back(as.data.isTLAS ? as.data.vkHandle : dummyTLAS);
+  }
+
+  VkWriteDescriptorSetAccelerationStructureKHR writeAccelStruct = {
+      .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET_ACCELERATION_STRUCTURE_KHR,
+      .accelerationStructureCount = (uint32_t)handlesAccelStructs.size(),
+      .pAccelerationStructures = handlesAccelStructs.data(),
+  };
+
+
+  if (!handlesAccelStructs.empty()) {
+    write[numWrites++] = VkWriteDescriptorSet{
+        .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+        .pNext = &writeAccelStruct,
+        .dstSet = ctx->vkDSet_,
+        .dstBinding = kBinding_AccelerationStructures,
+        .dstArrayElement = 0,
+        .descriptorCount = (uint32_t)handlesAccelStructs.size(),
+        .descriptorType = VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR,
+    };
+  }
+  #endif
+
+  VkWriteDescriptorSet write[kBinding_NumBindings] = {};
+  uint32_t numWrites = 0;
+
+  if (!infoSampledImages.empty()) {
+    write[numWrites++] = VkWriteDescriptorSet{
+        .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+        .dstSet = ctx->vkDSet_,
+        .dstBinding = kBinding_Textures,
+        .dstArrayElement = 0,
+        .descriptorCount = (uint32_t)infoSampledImages.size(),
+        .descriptorType = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,
+        .pImageInfo = infoSampledImages.data(),
+    };
+  }
+
+  if (!infoSamplers.empty()) {
+    write[numWrites++] = VkWriteDescriptorSet{
+        .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+        .dstSet = ctx->vkDSet_,
+        .dstBinding = kBinding_Samplers,
+        .dstArrayElement = 0,
+        .descriptorCount = (uint32_t)infoSamplers.size(),
+        .descriptorType = VK_DESCRIPTOR_TYPE_SAMPLER,
+        .pImageInfo = infoSamplers.data(),
+    };
+  }
+
+  if (!infoStorageImages.empty()) {
+    write[numWrites++] = VkWriteDescriptorSet{
+        .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+        .dstSet = ctx->vkDSet_,
+        .dstBinding = kBinding_StorageImages,
+        .dstArrayElement = 0,
+        .descriptorCount = (uint32_t)infoStorageImages.size(),
+        .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,
+        .pImageInfo = infoStorageImages.data(),
+    };
+  }
+
+  if (!infoYUVImages.empty()) {
+    write[numWrites++] = VkWriteDescriptorSet{
+        .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+        .dstSet = ctx->vkDSet_,
+        .dstBinding = kBinding_YUVImages,
+        .dstArrayElement = 0,
+        .descriptorCount = (uint32_t)infoYUVImages.size(),
+        .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+        .pImageInfo = infoYUVImages.data(),
+    };
+  }
+
+  // do not switch to the next descriptor set if there is nothing to update
+  if (numWrites) {
+    //#if LVK_VULKAN_PRINT_COMMANDS
+    //    LLOGL("vkUpdateDescriptorSets()\n");
+    //#endif // LVK_VULKAN_PRINT_COMMANDS
+    //ctx->immediate_->wait(immediate_->getLastSubmitHandle());
+
+    //ctx->immediate_->wait(immediate_->getLastSubmitHandle());
+    vulkan_immediate_commands_wait(ctx->immediate_, ctx->immediate_->lastSubmitHandle_);
+
+    //LVK_PROFILER_ZONE("vkUpdateDescriptorSets()", LVK_PROFILER_COLOR_PRESENT);
+    vkUpdateDescriptorSets(ctx->device, numWrites, write, 0, nullptr);
+    //LVK_PROFILER_ZONE_END();
+  }
+
+  ctx->awaitingCreation_ = false;
+}
+
+
 // CONTINUE HERE
 internal void
-vulkan_cmd_begin_rendering(CommandBuffer *cmd_buf, RenderPass *render_pass, Framebuffer *fb, Dependencies *deps = {})
+vulkan_cmd_begin_rendering(CommandBuffer *cmd_buf, RenderPass *renderPass, Framebuffer fb, Dependencies deps = {})
 {
     //LVK_PROFILER_FUNCTION();
 
@@ -5399,13 +5856,16 @@ vulkan_cmd_begin_rendering(CommandBuffer *cmd_buf, RenderPass *render_pass, Fram
 
     cmd_buf->isRendering_ = true;
 
-    for (uint32_t i = 0; i != Dependencies::LVK_MAX_SUBMIT_DEPENDENCIES && deps->textures[i]; i++) {
-        transitionToShaderReadOnly(deps->textures[i]);
+    for (uint32_t i = 0; i != Dependencies::LVK_MAX_SUBMIT_DEPENDENCIES && deps.textures[i]; i++)
+    {
+        //transitionToShaderReadOnly(cmd_buf, deps->textures[i]);
+        vulkan_cmd_transition_to_shader_read_only(cmd_buf, deps.textures[i]);
     }
-    for (uint32_t i = 0; i != Dependencies::LVK_MAX_SUBMIT_DEPENDENCIES && deps->buffers[i]; i++) {
+
+    for (uint32_t i = 0; i != Dependencies::LVK_MAX_SUBMIT_DEPENDENCIES && deps.buffers[i]; i++) {
         VkPipelineStageFlags2 dstStageFlags = VK_PIPELINE_STAGE_2_VERTEX_SHADER_BIT | VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT;
         //const VulkanBuffer* buf = ctx_->buffersPool_.get(deps.buffers[i]);
-        VulkanBuffer* buf = pool_get(&cmd_buf->ctx_->buffersPool_, deps->buffers[i]);
+        VulkanBuffer* buf = pool_get(&cmd_buf->ctx_->buffersPool_, deps.buffers[i]);
         assert(buf);
         if ((buf->vkUsageFlags_ & VK_BUFFER_USAGE_INDEX_BUFFER_BIT) || (buf->vkUsageFlags_ & VK_BUFFER_USAGE_VERTEX_BUFFER_BIT)) {
         dstStageFlags |= VK_PIPELINE_STAGE_2_VERTEX_INPUT_BIT;
@@ -5413,15 +5873,16 @@ vulkan_cmd_begin_rendering(CommandBuffer *cmd_buf, RenderPass *render_pass, Fram
         if (buf->vkUsageFlags_ & VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT) {
         dstStageFlags |= VK_PIPELINE_STAGE_2_DRAW_INDIRECT_BIT;
         }
-        bufferBarrier(deps->buffers[i], VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT, dstStageFlags);
+        //bufferBarrier(deps->buffers[i], VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT, dstStageFlags);
+        vulkan_cmd_buf_barrier(cmd_buf, deps.buffers[i], VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT, dstStageFlags);
     }
 
     const uint32_t numFbColorAttachments = fb.getNumColorAttachments();
-    const uint32_t numPassColorAttachments = renderPass.getNumColorAttachments();
+    const uint32_t numPassColorAttachments = renderPass->getNumColorAttachments();
 
-    LVK_ASSERT(numPassColorAttachments == numFbColorAttachments);
+    assert(numPassColorAttachments == numFbColorAttachments);
 
-    framebuffer_ = fb;
+    cmd_buf->framebuffer_ = fb;
 
     // transition all the color attachments
     for (uint32_t i = 0; i != numFbColorAttachments; i++) {
@@ -5442,24 +5903,31 @@ vulkan_cmd_begin_rendering(CommandBuffer *cmd_buf, RenderPass *render_pass, Fram
     TextureHandle depthTex = fb.depthStencil.texture;
     if (depthTex) {
         //const lvk::VulkanImage& depthImg = *ctx_->texturesPool_.get(depthTex);
-        VulkanImage& depthImg = *pool_get(&cmd_buf->ctx_->texturesPool_, depthTex);
-        gui_assert(depthImg.vkImageFormat_ != VK_FORMAT_UNDEFINED, "Invalid depth attachment format");
-        gui_assert(depthImg.isDepthFormat_, "Invalid depth attachment format");
-        const VkImageAspectFlags flags = depthImg.getImageAspectFlags();
-        depthImg.transitionLayout(buf->wrapper_->cmdBuf_,
-                                VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
-                                VkImageSubresourceRange{flags, 0, VK_REMAINING_MIP_LEVELS, 0, VK_REMAINING_ARRAY_LAYERS});
+        VulkanImage *depthImg = pool_get(&cmd_buf->ctx_->texturesPool_, depthTex);
+        gui_assert(depthImg->vkImageFormat_ != VK_FORMAT_UNDEFINED, "Invalid depth attachment format");
+        gui_assert(depthImg->isDepthFormat_, "Invalid depth attachment format");
+        VkImageAspectFlags flags = vulkan_image_get_aspect_flags(depthImg);
+        vulkan_image_transition_layout(depthImg, cmd_buf->wrapper_->cmdBuf_, VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
+                                        VkImageSubresourceRange{flags, 0, VK_REMAINING_MIP_LEVELS, 0, VK_REMAINING_ARRAY_LAYERS});
+        //const VkImageAspectFlags flags = depthImg.getImageAspectFlags();
+        //depthImg.transitionLayout(buf->wrapper_->cmdBuf_,
+        //                        VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
+        //                        VkImageSubresourceRange{flags, 0, VK_REMAINING_MIP_LEVELS, 0, VK_REMAINING_ARRAY_LAYERS});
     }
     // handle depth MSAA
     if (TextureHandle handle = fb.depthStencil.resolveTexture) {
         //lvk::VulkanImage& depthResolveImg = *ctx_->texturesPool_.get(handle);
-        VulkanImage& depthResolveImg = *pool_get(&buf->ctx_->texturesPool_, handle);
-        gui_assert(depthResolveImg.isDepthFormat_, "Invalid resolve depth attachment format");
-        depthResolveImg.isResolveAttachment = true;
-        const VkImageAspectFlags flags = depthResolveImg.getImageAspectFlags();
-        depthResolveImg.transitionLayout(buf->wrapper_->cmdBuf_,
-                                        VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
+        VulkanImage *depthResolveImg = pool_get(&cmd_buf->ctx_->texturesPool_, handle);
+        gui_assert(depthResolveImg->isDepthFormat_, "Invalid resolve depth attachment format");
+        depthResolveImg->isResolveAttachment = true;
+        //const VkImageAspectFlags flags = depthResolveImg.getImageAspectFlags();
+        VkImageAspectFlags flags = vulkan_image_get_aspect_flags(depthResolveImg);
+
+        vulkan_image_transition_layout(depthResolveImg, cmd_buf->wrapper_->cmdBuf_, VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
                                         VkImageSubresourceRange{flags, 0, VK_REMAINING_MIP_LEVELS, 0, VK_REMAINING_ARRAY_LAYERS});
+        //depthResolveImg.transitionLayout(buf->wrapper_->cmdBuf_,
+        //                                VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
+        //                                VkImageSubresourceRange{flags, 0, VK_REMAINING_MIP_LEVELS, 0, VK_REMAINING_ARRAY_LAYERS});
     }
 
     VkSampleCountFlagBits samples = VK_SAMPLE_COUNT_1_BIT;
@@ -5471,29 +5939,29 @@ vulkan_cmd_begin_rendering(CommandBuffer *cmd_buf, RenderPass *render_pass, Fram
 
     for (uint32_t i = 0; i != numFbColorAttachments; i++) {
         const Framebuffer::AttachmentDesc& attachment = fb.color[i];
-        LVK_ASSERT(!attachment.texture.empty());
+        assert(!handle_is_empty(attachment.texture));
 
         //lvk::VulkanImage& colorTexture = *ctx_->texturesPool_.get(attachment.texture);
-        VulkanImage& colorTexture = *pool_get(&buf->ctx_->texturesPool_, attachment.texture);
-        RenderPass::AttachmentDesc& descColor = renderPass.color[i];
+        VulkanImage* colorTexture = pool_get(&cmd_buf->ctx_->texturesPool_, attachment.texture);
+        RenderPass::AttachmentDesc& descColor = renderPass->color[i];
         if (mipLevel && descColor.level) {
-        gui_assert(descColor.level == mipLevel, "All color attachments should have the same mip-level");
+            gui_assert(descColor.level == mipLevel, "All color attachments should have the same mip-level");
         }
-        const VkExtent3D dim = colorTexture.vkExtent_;
+        const VkExtent3D dim = colorTexture->vkExtent_;
         if (fbWidth) {
-        gui_assert(dim.width == fbWidth, "All attachments should have the same width");
+            gui_assert(dim.width == fbWidth, "All attachments should have the same width");
         }
         if (fbHeight) {
-        gui_assert(dim.height == fbHeight, "All attachments should have the same height");
+            gui_assert(dim.height == fbHeight, "All attachments should have the same height");
         }
         mipLevel = descColor.level;
         fbWidth = dim.width;
         fbHeight = dim.height;
-        samples = colorTexture.vkSamples_;
+        samples = colorTexture->vkSamples_;
         colorAttachments[i] = {
             .sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
             .pNext = nullptr,
-            .imageView = colorTexture.getOrCreateVkImageViewForFramebuffer(*buf->ctx_, descColor.level, descColor.layer),
+            .imageView = getOrCreateVkImageViewForFramebuffer(colorTexture, cmd_buf->ctx_, descColor.level, descColor.layer),
             .imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
             .resolveMode = (samples > 1) ? VK_RESOLVE_MODE_AVERAGE_BIT : VK_RESOLVE_MODE_NONE,
             .resolveImageView = VK_NULL_HANDLE,
@@ -5506,11 +5974,11 @@ vulkan_cmd_begin_rendering(CommandBuffer *cmd_buf, RenderPass *render_pass, Fram
         // handle MSAA
         if (descColor.storeOp == StoreOp_MsaaResolve) {
         assert(samples > 1);
-        gui_assert(!attachment.resolveTexture.empty(), "Framebuffer attachment should contain a resolve texture");
+        gui_assert(!handle_is_empty(attachment.resolveTexture), "Framebuffer attachment should contain a resolve texture");
         //lvk::VulkanImage& colorResolveTexture = *ctx_->texturesPool_.get(attachment.resolveTexture);
-        VulkanImage& colorResolveTexture = *pool_get(&ctx_->texturesPool_, attachment.resolveTexture);
+        VulkanImage *colorResolveTexture = pool_get(&cmd_buf->ctx_->texturesPool_, attachment.resolveTexture);
         colorAttachments[i].resolveImageView =
-            colorResolveTexture.getOrCreateVkImageViewForFramebuffer(*ctx_, descColor.level, descColor.layer);
+            getOrCreateVkImageViewForFramebuffer(colorResolveTexture, cmd_buf->ctx_, descColor.level, descColor.layer);
         colorAttachments[i].resolveImageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
         }
     }
@@ -5519,13 +5987,13 @@ vulkan_cmd_begin_rendering(CommandBuffer *cmd_buf, RenderPass *render_pass, Fram
 
     if (fb.depthStencil.texture) {
         //lvk::VulkanImage& depthTexture = *ctx_->texturesPool_.get(fb.depthStencil.texture);
-        VulkanImage& depthTexture = *pool_get(&buf->ctx_->texturesPool_., fb.depthStencil.texture);
-        const RenderPass::AttachmentDesc& descDepth = renderPass.depth;
+        VulkanImage *depthTexture = pool_get(&cmd_buf->ctx_->texturesPool_, fb.depthStencil.texture);
+        const RenderPass::AttachmentDesc& descDepth = renderPass->depth;
         gui_assert(descDepth.level == mipLevel, "Depth attachment should have the same mip-level as color attachments");
         depthAttachment = {
             .sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
             .pNext = nullptr,
-            .imageView = depthTexture.getOrCreateVkImageViewForFramebuffer(*buf->ctx_, descDepth.level, descDepth.layer),
+            .imageView = getOrCreateVkImageViewForFramebuffer(depthTexture, cmd_buf->ctx_, descDepth.level, descDepth.layer),
             .imageLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
             .resolveMode = VK_RESOLVE_MODE_NONE,
             .resolveImageView = VK_NULL_HANDLE,
@@ -5536,23 +6004,23 @@ vulkan_cmd_begin_rendering(CommandBuffer *cmd_buf, RenderPass *render_pass, Fram
         };
         // handle depth MSAA
         if (descDepth.storeOp == StoreOp_MsaaResolve) {
-        assert(depthTexture.vkSamples_ == samples);
-        const lvk::Framebuffer::AttachmentDesc& attachment = fb.depthStencil;
-        gui_assert(!attachment.resolveTexture.empty(), "Framebuffer depth attachment should contain a resolve texture");
+        assert(depthTexture->vkSamples_ == samples);
+        const Framebuffer::AttachmentDesc& attachment = fb.depthStencil;
+        gui_assert(!handle_is_empty(attachment.resolveTexture), "Framebuffer depth attachment should contain a resolve texture");
         //lvk::VulkanImage& depthResolveTexture = *ctx_->texturesPool_.get(attachment.resolveTexture);
-        VulkanImage& depthResolveTexture = *pool_get(&ctx_->texturesPool_, attachment.resolveTexture);
-        depthAttachment.resolveImageView = depthResolveTexture.getOrCreateVkImageViewForFramebuffer(*buf->ctx_, descDepth.level, descDepth.layer);
+        VulkanImage *depthResolveTexture = pool_get(&cmd_buf->ctx_->texturesPool_, attachment.resolveTexture);
+        depthAttachment.resolveImageView = getOrCreateVkImageViewForFramebuffer(depthResolveTexture, cmd_buf->ctx_, descDepth.level, descDepth.layer);
         depthAttachment.resolveImageLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
-        depthAttachment.resolveMode = buf->ctx_->depthResolveMode_;
+        depthAttachment.resolveMode = cmd_buf->ctx_->depthResolveMode_;
         }
-        const VkExtent3D dim = depthTexture.vkExtent_;
+        const VkExtent3D dim = depthTexture->vkExtent_;
         if (fbWidth) 
         {
-            LVK_ASSERT_MSG(dim.width == fbWidth, "All attachments should have the same width");
+            gui_assert(dim.width == fbWidth, "All attachments should have the same width");
         }
         if (fbHeight) 
         {
-            LVK_ASSERT_MSG(dim.height == fbHeight, "All attachments should have the same height");
+            gui_assert(dim.height == fbHeight, "All attachments should have the same height");
         }
         mipLevel = descDepth.level;
         fbWidth = dim.width;
@@ -5566,7 +6034,7 @@ vulkan_cmd_begin_rendering(CommandBuffer *cmd_buf, RenderPass *render_pass, Fram
 
     VkRenderingAttachmentInfo stencilAttachment = depthAttachment;
 
-    const bool isStencilFormat = renderPass.stencil.loadOp != LoadOp_Invalid;
+    const bool isStencilFormat = renderPass->stencil.loadOp != LoadOp_Invalid;
 
     const VkRenderingInfo renderingInfo = {
         .sType = VK_STRUCTURE_TYPE_RENDERING_INFO,
@@ -5581,16 +6049,20 @@ vulkan_cmd_begin_rendering(CommandBuffer *cmd_buf, RenderPass *render_pass, Fram
         .pStencilAttachment = isStencilFormat ? &stencilAttachment : nullptr,
     };
 
-    cmdBindViewport(viewport);
-    cmdBindScissorRect(scissor);
-    cmdBindDepthState({});
+    //cmdBindViewport(viewport);
+    //cmdBindScissorRect(scissor);
+    //cmdBindDepthState({});
+    vulkan_cmd_bind_Viewport(cmd_buf, viewport);
+    vulkan_cmd_bind_ScissorRect(cmd_buf, scissor);
+    vulkan_cmd_bind_DepthState(cmd_buf, {});
 
-    buf->ctx_->checkAndUpdateDescriptorSets();
+    //cmd_buf->ctx_->checkAndUpdateDescriptorSets();
+    checkAndUpdateDescriptorSets(cmd_buf->ctx_);
 
-    vkCmdSetDepthCompareOp(buf->wrapper_->cmdBuf_, VK_COMPARE_OP_ALWAYS);
-    vkCmdSetDepthBiasEnable(buf->wrapper_->cmdBuf_, VK_FALSE);
+    vkCmdSetDepthCompareOp(cmd_buf->wrapper_->cmdBuf_, VK_COMPARE_OP_ALWAYS);
+    vkCmdSetDepthBiasEnable(cmd_buf->wrapper_->cmdBuf_, VK_FALSE);
 
-    vkCmdBeginRendering(buf->wrapper_->cmdBuf_, &renderingInfo);
+    vkCmdBeginRendering(cmd_buf->wrapper_->cmdBuf_, &renderingInfo);
 }
 
 VkSpecializationInfo getPipelineShaderStageSpecializationInfo(SpecializationConstantDesc desc,
@@ -5963,19 +6435,19 @@ int main()
     while(global_w32_window.is_running)
     {
         Win32ProcessPendingMessages();
-        CommandBuffer *buf = vulkan_cmd_buffer_acquire(ctx);
+        CommandBuffer *cmd_buf = vulkan_cmd_buffer_acquire(ctx);
         RenderPass r_pass = { .color = { { .loadOp = LoadOp_Clear, .clearColor = { 1.0f, 1.0f, 1.0f, 1.0f } } } };
         Framebuffer fb = { .color = { { .texture =  vulkan_swapchain_get_current_texture(ctx) } } };
-        vulkan_cmd_begin_rendering(buf, &r_pass, &fb);
+        vulkan_cmd_begin_rendering(cmd_buf, &r_pass, fb);
         {
-            vulkan_cmd_bind_render_pipeline(buf, rp_triangle);
-            vulkan_cmd_push_debug_group_label(buf, "Render Triangle", 0xFF0000FF);
-            vulkan_cmd_draw(buf, 3);
-            vulkan_cmd_pop_debug_group_label(buf);
+            vulkan_cmd_bind_render_pipeline(cmd_buf, rp_triangle);
+            vulkan_cmd_push_debug_group_label(cmd_buf, "Render Triangle", 0xFF0000FF);
+            vulkan_cmd_draw(cmd_buf, 3);
+            vulkan_cmd_pop_debug_group_label(cmd_buf);
         }
-        vulkan_cmd_end_rendering(buf);
+        vulkan_cmd_end_rendering(cmd_buf);
 
-        vulkan_cmd_buffer_submit(ctx, buf, vulkan_swapchain_get_current_texture(ctx));    
+        vulkan_cmd_buffer_submit(ctx, cmd_buf, vulkan_swapchain_get_current_texture(ctx));    
     }
     vkDestroyInstance(ctx->instance, nullptr);
 }

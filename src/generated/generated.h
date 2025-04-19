@@ -11,10 +11,10 @@ b32 handle_is_valid(ShaderModuleHandle handle)
 
 b32 handle_is_empty(ShaderModuleHandle handle)
 {
-    b32 result = false;
+    b32 result = 0;
     if (handle.gen == 0)
     {
-        result = true;
+        result = 1;
     }
     return result;
 }
@@ -26,7 +26,7 @@ struct Pool_ShaderModule
         u32 gen = 1;
         ShaderModuleState data;
     };
-    u32 count = 1;
+    u32 count = 0;
     Pool_ShaderModule_Entry entries[15];
 };
 
@@ -44,7 +44,7 @@ ShaderModuleHandle pool_create(Pool_ShaderModule *pool, ShaderModuleState data)
 ShaderModuleState *pool_get(Pool_ShaderModule *pool, ShaderModuleHandle handle)
 {
     ShaderModuleState *result = 0;
-    if(handle_is_valid(handle));
+    if(!handle_is_empty(handle))
     {
         result = &pool->entries[handle.idx].data;
     }
@@ -78,7 +78,7 @@ struct Pool_RenderPipeline
         u32 gen = 1;
         RenderPipelineState data;
     };
-    u32 count = 1;
+    u32 count = 0;
     Pool_RenderPipeline_Entry entries[15];
 };
 
@@ -96,7 +96,7 @@ RenderPipelineHandle pool_create(Pool_RenderPipeline *pool, RenderPipelineState 
 RenderPipelineState *pool_get(Pool_RenderPipeline *pool, RenderPipelineHandle handle)
 {
     RenderPipelineState *result = 0;
-    if(handle_is_valid(handle));
+    if(!handle_is_empty(handle));
     {
         result = &pool->entries[handle.idx].data;
     }
@@ -130,7 +130,7 @@ struct Pool_Buffer
         u32 gen = 1;
         VulkanBuffer data;
     };
-    u32 count = 1;
+    u32 count = 0;
     Pool_Buffer_Entry entries[15];
 };
 
@@ -148,7 +148,7 @@ BufferHandle pool_create(Pool_Buffer *pool, VulkanBuffer data)
 VulkanBuffer *pool_get(Pool_Buffer *pool, BufferHandle handle)
 {
     VulkanBuffer *result = 0;
-    if(handle_is_valid(handle));
+    if(!handle_is_empty(handle));
     {
         result = &pool->entries[handle.idx].data;
     }
@@ -182,7 +182,7 @@ struct Pool_Sampler
         u32 gen = 1;
         VkSampler data;
     };
-    u32 count = 1;
+    u32 count = 0;
     Pool_Sampler_Entry entries[15];
 };
 
@@ -200,7 +200,7 @@ SamplerHandle pool_create(Pool_Sampler *pool, VkSampler data)
 VkSampler *pool_get(Pool_Sampler *pool, SamplerHandle handle)
 {
     VkSampler *result = 0;
-    if(handle_is_valid(handle));
+    if(!handle_is_empty(handle));
     {
         result = &pool->entries[handle.idx].data;
     }
@@ -234,7 +234,7 @@ struct Pool_Texture
         u32 gen = 1;
         VulkanImage data;
     };
-    u32 count = 1;
+    u32 count = 0;
     Pool_Texture_Entry entries[15];
 };
 
@@ -252,7 +252,7 @@ TextureHandle pool_create(Pool_Texture *pool, VulkanImage data)
 VulkanImage *pool_get(Pool_Texture *pool, TextureHandle handle)
 {
     VulkanImage *result = 0;
-    if(handle_is_valid(handle));
+    if(!handle_is_empty(handle));
     {
         result = &pool->entries[handle.idx].data;
     }

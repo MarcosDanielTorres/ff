@@ -25,6 +25,25 @@ enum Topology : u8 {
 
 enum CullMode : u8 { CullMode_None, CullMode_Front, CullMode_Back };
 enum WindingMode : u8 { WindingMode_CCW, WindingMode_CW };
+
+enum CompareOp : u8 
+{
+    CompareOp_Never = 0,
+    CompareOp_Less,
+    CompareOp_Equal,
+    CompareOp_LessEqual,
+    CompareOp_Greater,
+    CompareOp_NotEqual,
+    CompareOp_GreaterEqual,
+    CompareOp_AlwaysPass
+};
+
+struct DepthState
+{
+    CompareOp compareOp = CompareOp_AlwaysPass;
+    b32 isDepthWriteEnabled = false;
+};
+
 enum PolygonMode : u8 
 {
     PolygonMode_Fill = 0,
@@ -224,17 +243,45 @@ enum BlendFactor : u8
     BlendFactor_OneMinusSrc1Alpha
 };
 
-enum CompareOp : u8 
+struct ScissorRect 
 {
-    CompareOp_Never = 0,
-    CompareOp_Less,
-    CompareOp_Equal,
-    CompareOp_LessEqual,
-    CompareOp_Greater,
-    CompareOp_NotEqual,
-    CompareOp_GreaterEqual,
-    CompareOp_AlwaysPass
+    uint32_t x = 0;
+    uint32_t y = 0;
+    uint32_t width = 0;
+    uint32_t height = 0;
 };
+
+
+struct Dimensions
+{
+    u32 width = 1;
+    u32 height = 1;
+    u32 depth = 1;
+    inline Dimensions divide1D(u32 v) const {
+        return {.width = width / v, .height = height, .depth = depth};
+    }
+    inline Dimensions divide2D(u32 v) const {
+        return {.width = width / v, .height = height / v, .depth = depth};
+    }
+    inline Dimensions divide3D(u32 v) const {
+        return {.width = width / v, .height = height / v, .depth = depth / v};
+    }
+    inline bool operator==(const Dimensions& other) const {
+        return width == other.width && height == other.height && depth == other.depth;
+    }
+
+};
+
+struct Viewport {
+  float x = 0.0f;
+  float y = 0.0f;
+  float width = 1.0f;
+  float height = 1.0f;
+  float minDepth = 0.0f;
+  float maxDepth = 1.0f;
+};
+
+
 
 enum StencilOp : u8 
 {
@@ -477,6 +524,14 @@ struct RenderPipelineState
 
 struct VulkanImage
 {
+     // clang-format off
+    [[nodiscard]] inline bool isSampledImage() const { return (vkUsageFlags_ & VK_IMAGE_USAGE_SAMPLED_BIT) > 0; }
+    [[nodiscard]] inline bool isStorageImage() const { return (vkUsageFlags_ & VK_IMAGE_USAGE_STORAGE_BIT) > 0; }
+    [[nodiscard]] inline bool isColorAttachment() const { return (vkUsageFlags_ & VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT) > 0; }
+    [[nodiscard]] inline bool isDepthAttachment() const { return (vkUsageFlags_ & VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT) > 0; }
+    [[nodiscard]] inline bool isAttachment() const { return (vkUsageFlags_ & (VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT|VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT)) > 0; }
+    // clang-format on
+
     VkImage vkImage_ = VK_NULL_HANDLE;
     VkImageUsageFlags vkUsageFlags_ = 0;
     VkDeviceMemory vkMemory_[3] = {VK_NULL_HANDLE, VK_NULL_HANDLE, VK_NULL_HANDLE};

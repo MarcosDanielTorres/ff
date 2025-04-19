@@ -3,19 +3,6 @@
 #include "base/base_string.h"
 #include "base/base_arena.h"
 #include "os/os_core.h"
-struct Point2D
-{
-    f32 x;
-    f32 y;
-};
-
-struct Rect2D
-{
-    f32 x;
-    f32 y;
-    f32 w;
-    f32 h;
-};
 #include "draw/draw.h"
 #include "font/font.h"
 

@@ -106,6 +106,36 @@ random_step3_for(Entity *ent)
     return (f32)(random_u32_for(ent) % 3) - 1.0f;
 }
 
+/*
+
+
+    0---------3
+    |         |
+    |         |
+    |         |
+    1---------2
+*/
+
+global_variable u32 adj_list[4][2] =
+{
+    {1, 3},
+    {0, 2},
+    {1, 3},
+    {2, 0}
+};
+
+global_variable Vec2 locations[4] =
+{
+    {350.0f, 100.0f},
+    {350.0f, 500.0f},
+    {950.0f, 500.0f},
+    {950.0f, 100.0f}
+};
+
+global_variable u32 vehicle_color = 0xFFFF00FF;
+global_variable u32 node_color = 0xFF00FF0F;
+global_variable u32 node_w = 20;
+global_variable u32 h_node_w = node_w * 0.5;;
 void main_game_loop(OS_PixelBuffer *buffer, GameInput *input, GameMemory *memory)
 {
 
@@ -125,10 +155,28 @@ void main_game_loop(OS_PixelBuffer *buffer, GameInput *input, GameMemory *memory
         memory->init = true;
     }
 
+    for(u32 node_idx = 0; node_idx < array_count(adj_list); node_idx++)
+    {
+        Vec2 node_p = locations[node_idx];
+        draw_rect(buffer, node_p.x, node_p.y, node_w, node_w, node_color);
+        for(u32 neighbour = 0; neighbour < array_count(adj_list[0]); neighbour++)
+        {
+            u32 neighbour_idx = adj_list[node_idx][neighbour];
+            Vec2 neighbour_p = locations[neighbour_idx];
+            printf("Node %d, neighbour: %d\n", node_idx, neighbour_idx);
+            draw_line(buffer, node_p.x + h_node_w, node_p.y + h_node_w, neighbour_p.x + h_node_w, neighbour_p.y + h_node_w);
+        }
+        //draw_rect(buffer, node_p.x + 5, node_p.y + 5, 10, 10, vehicle_color);
+    }
+
+    /*  TODOs
+        place a vehicle in one of the nodes
+        move it to another different node
+    */
+
+    /*
     for(u32 i = 0; i < game_state->world.count; i++)
     {
-
-
         Entity *ent = game_state->world.entities + i;
         if (ent->type == EntityType_Player)
         {
@@ -138,7 +186,7 @@ void main_game_loop(OS_PixelBuffer *buffer, GameInput *input, GameMemory *memory
         {
             if (ent->framec < 500)
             {
-                ent->framec ++;
+                ent->framec++;
             }
             else
             {
@@ -160,4 +208,5 @@ void main_game_loop(OS_PixelBuffer *buffer, GameInput *input, GameMemory *memory
             draw_rect(buffer, ent->p.x, ent->p.y, 10, 10);
         }
     }
+    */
 }

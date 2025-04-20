@@ -255,6 +255,6 @@ int main()
         input_update(&global_input);
         LONGLONG dt_long = aim_timer_get_os_time() - time_now;
         global_input.dt = aim_timer_ticks_to_sec(dt_long, frequency);
-        printf("%f\n", global_input.dt);
+        //printf("%f.2fms\n", aim_timer_ticks_to_ms(dt_long, frequency));
     }
 }

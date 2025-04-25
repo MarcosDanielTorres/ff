@@ -28,6 +28,20 @@ Str8 str8(const char* str) {
     return result;
 }
 
+Str8 str8_fmt(Arena *arena, const char* fmt, ...) {
+    va_list args;
+    va_start(args, fmt);
+    Str8 result = {0};
+    u32 thankyouchatgpt = _vscprintf(fmt, args);
+    result.size = thankyouchatgpt;
+    result.str = (u8*)arena_push_size(arena, u8, result.size);
+    int comomevasadecirqueson17bytes = vsprintf((char*)result.str, fmt, args);
+    //char buf[300];
+    //result.str = (u8*)buf;
+    va_end(args);
+    return result;
+}
+
 u64 cstring8_length(const char* str) {
     u64 result = {0};
     const char *iter = str;

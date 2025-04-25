@@ -1,11 +1,12 @@
 #include <stdio.h>
 #include "base/base_core.h"
-#include "base/base_string.h"
 #include "base/base_arena.h"
+#include "base/base_string.h"
 #include "os/os_core.h"
+#include "math/mmath.h"
 
-#include "base/base_string.cpp"
 #include "base/base_arena.cpp"
+#include "base/base_string.cpp"
 #include "os/os_core.cpp"
 
 #define AIM_PROFILER 1
@@ -28,12 +29,16 @@
 #define WGL_CONTEXT_FLAGS_ARB                   0x2094
 #define ERROR_INVALID_PROFILE_ARB               0x2096
 
-typedef HGLRC (WINAPI * PFNWGLCREATECONTEXTATTRIBSARBPROC) (HDC hDC, HGLRC hShareContext, const int *attribList);
+typedef HGLRC (WINAPI *PFNWGLCREATECONTEXTATTRIBSARBPROC) (HDC hDC, HGLRC hShareContext, const int *attribList);
 typedef const char *(WINAPI * PFNWGLGETEXTENSIONSSTRINGEXTPROC) (void);
-typedef int (WINAPI * PFNWGLGETSWAPINTERVALEXTPROC) (void);
+typedef int (WINAPI *PFNWGLGETSWAPINTERVALEXTPROC) (void);
 
-typedef BOOL (WINAPI * PFNWGLSWAPINTERVALEXTPROC) (int interval);
-typedef int (WINAPI * PFNWGLGETSWAPINTERVALEXTPROC) (void);
+typedef BOOL (WINAPI *PFNWGLSWAPINTERVALEXTPROC) (int interval);
+typedef int (WINAPI *PFNWGLGETSWAPINTERVALEXTPROC) (void);
+
+
+typedef void (WINAPI *PFNGLDELETEVERTEXARRAYSPROC) (GLsizei n, const GLuint *arrays);
+PFNGLDELETEVERTEXARRAYSPROC glDeleteVertexArrays = 0;
 
 
 LRESULT WndProc(HWND window, UINT message, WPARAM w_param, LPARAM l_param) 
@@ -100,7 +105,14 @@ void str8list_push_malloc(Str8List* list, Str8 string) {
     }
 }
 
-b32 is_running = true;
+
+typedef void (WINAPI* PFNGLGENVERTEXARRAYSPROC) (GLsizei n, GLuint *arrays);
+typedef void (WINAPI* PFNGLBINDVERTEXARRAYPROC) (GLuint array);
+
+// state
+global_variable b32 is_running = true;
+global_variable GLuint global_vao;
+
 void Win32ProcessPendingMessages() {
     MSG Message;
     while(PeekMessage(&Message, 0, 0, 0, PM_REMOVE))
@@ -117,12 +129,16 @@ void Win32ProcessPendingMessages() {
     }
 }
 
-typedef void (WINAPI* PFNGLGENVERTEXARRAYSPROC) (GLsizei n, GLuint *arrays);
-typedef void (WINAPI* PFNGLBINDVERTEXARRAYPROC) (GLuint array);
 
-global_variable GLuint global_vao;
-int WINAPI WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_line, i32 show_code) {
+//int WINAPI WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_line, i32 show_code) {
+int main() {
 
+    AllocConsole();
+
+    FILE* fDummy;
+    freopen_s(&fDummy, "CONIN$", "r", stdin);
+    freopen_s(&fDummy, "CONOUT$", "w", stderr);
+    freopen_s(&fDummy, "CONOUT$", "w", stdout);
 
     aim_profiler_begin();
 
@@ -133,7 +149,7 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_li
         wndclass.cbSize = sizeof(WNDCLASSEX);
         wndclass.style = CS_HREDRAW|CS_VREDRAW;
         wndclass.lpfnWndProc = WndProc;
-        wndclass.hInstance = instance;
+        wndclass.hInstance = 0;
         wndclass.lpszClassName = L"graphical-window";
         RegisterClassExW(&wndclass);
     }
@@ -146,7 +162,7 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_li
         1280,
         720,
         0, 0,
-        instance,
+        0,
         0
     );
 
@@ -190,8 +206,8 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_li
     
     PFNGLGENVERTEXARRAYSPROC glGenVertexArrays = (PFNGLGENVERTEXARRAYSPROC) wglGetProcAddress("glGenVertexArrays"); 
     PFNGLBINDVERTEXARRAYPROC glBindVertexArray = (PFNGLBINDVERTEXARRAYPROC) wglGetProcAddress("glBindVertexArray"); 
-    glGenVertexArrays(1, &global_vao);
-    glBindVertexArray(global_vao);
+    glDeleteVertexArrays = (PFNGLDELETEVERTEXARRAYSPROC) wglGetProcAddress("glDeleteVertexArrays");
+
 
     PFNWGLGETEXTENSIONSSTRINGEXTPROC wglGetExtensionsStringEXT = (PFNWGLGETEXTENSIONSSTRINGEXTPROC) wglGetProcAddress("wglGetExtensionsStringEXT");
 
@@ -200,6 +216,7 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_li
 
     b32 swap_control_supported = false;
 
+    i32 vsynch = -1;
     {
         aim_profiler_time_block("OpenGL Extensions extraction ARENA");
 		const char* at = extensions;
@@ -227,7 +244,6 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_li
 
             str8list_push(&arena, extensions_list, extension);
         }
-        i32 vsynch = -1;
         if(swap_control_supported) {
             PFNWGLSWAPINTERVALEXTPROC wglSwapIntervalEXT = (PFNWGLSWAPINTERVALEXTPROC) wglGetProcAddress("wglSwapIntervalEXT");
             PFNWGLGETSWAPINTERVALEXTPROC wglGetSwapIntervalEXT = (PFNWGLGETSWAPINTERVALEXTPROC) wglGetProcAddress("wglGetSwapIntervalEXT");
@@ -238,13 +254,48 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_li
             }
         }
     }
+    for(Str8ListNode *node = extensions_list->first; node; node = node->next)
+    {
+        printf("%.*s, ", (u32)node->str.size, node->str.str);
+    }
+    printf("\n");
 
     aim_profiler_end();
     aim_profiler_print();
 
+    glGenVertexArrays(1, &global_vao);
+    glBindVertexArray(global_vao);
+
+    Vec2 a = {0};
+    Vec2 b = {2.0f};
+    Vec2 c = a + b;
+    Vec2 d = {1.0f, 1.0f};
+    c += d;
+
+    c = c * 5.0f;
+    c = 3.0f * c;
+
+
     while(is_running){
         Win32ProcessPendingMessages();
+        glViewport(0, 0, 500, 500);
+        glEnable(GL_DEPTH_TEST);
+        glEnable(GL_CULL_FACE);
+        glPointSize(5.0f);
+        glBindVertexArray(global_vao);
+
+        glClearColor(0.5f, 0.6f, 0.8f, 1.0f);
+        //glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
+        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+        SwapBuffers(hdc);
     }
-    //PFNWGLGETSWAPINTERVALEXTPROC wglGetSwapIntervalEXT = (PFNWGLGETSWAPINTERVALEXTPROC) wglGetProcAddress("wglGetSwapIntervalEXT");
+
+    // cleanup
+    HGLRC hglrc = wglGetCurrentContext();
+
+    glBindVertexArray(0);
+    glDeleteVertexArrays(1, &global_vao);
+    wglMakeCurrent(NULL, NULL);
+    wglDeleteContext(hglrc);
 }
 

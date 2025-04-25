@@ -3,6 +3,7 @@ setlocal enabledelayedexpansion
 set root=%cd%
 
 set freetype_lib_path=%root%\build\libfreetype
+set opengl_lib_path=%root%\src\samples\opengl\thirdpartya
 set some_path=%root%\build
 set freetype_root=%root%\thirdparty\freetype-2.13.3
 
@@ -14,12 +15,13 @@ set inc_files=%inc_files% -I%root%\src
 set inc_files=%inc_files% -I%some_path%
 
 set main=0
-set ui=0
-set opengl=0
-set vulkan=0
+set ui=1
+set opengl=1
+set vulkan=1
 set cmdline=0
 set meta=0
 set game=1
+set openglrewrite=1
 
 @rem TODO combine them together!
 if "%vulkan%"=="1" set inc_files=%inc_files% -I%VULKAN_SDK%\Include
@@ -48,5 +50,6 @@ if "%opengl%"=="1"              %compile% ..\src\samples\opengl.cpp /link user32
 if "%ui%"=="1"                  %compile% ..\src\samples\ui\ui.cpp /link /LIBPATH:%freetype_lib_path% libfreetype.lib user32.lib gdi32.lib comdlg32.lib
 @rem if "%vulkan%"=="1"              %compile% ..\src\samples\vulkan.cpp /link /LIBPATH:%freetype_lib_path% libfreetype.lib user32.lib gdi32.lib comdlg32.lib /LIBPATH:%vulkan_lib_path% vulkan-1.lib
 if "%vulkan%"=="1"              %compile% -MDd ..\src\samples\vulkan\vulkan.cpp /link /INFERASANLIBS /LIBPATH:%freetype_lib_path% libfreetype.lib user32.lib gdi32.lib comdlg32.lib glslangd.lib glslang-default-resource-limitsd.lib SPIRVd.lib spirv-reflect-staticd.lib
-if "%game%"=="1"             %compile% ..\src\samples\2d_game\game.cpp /link /LIBPATH:%freetype_lib_path% libfreetype.lib user32.lib gdi32.lib comdlg32.lib
+if "%game%"=="1"                %compile% ..\src\samples\2d_game\game.cpp /link /LIBPATH:%freetype_lib_path% libfreetype.lib user32.lib gdi32.lib comdlg32.lib
+if "%openglrewrite%"=="1"       %compile% /MTd ..\src\samples\opengl\maain.cpp -DJPH_CROSS_PLATFORM_DETERMINISTIC=1 -DJPH_OBJECT_LAYER_BITS=32 -DJPH_DEBUG_RENDERER=1 -DJPH_USE_AVX2=1 -DJPH_USE_AVX=1 -DJPH_USE_SSE4_1=1 -DJPH_USE_SSE4_2=1 -DJPH_USE_LZCNT=1 -DJPH_USE_TZCNT=1 -DJPH_USE_F16C=1 /I%VULKAN_SDK%\Include /I%opengl_lib_path%\glad /I%opengl_lib_path%\JoltPhysics-5.0.0\include /I%opengl_lib_path%\assimp-5.2.5\include /I%opengl_lib_path%\glfw-3.4\include -Fmmain.map /link /LIBPATH:%opengl_lib_path%\glfw-3.4\lib glfw3d.lib /LIBPATH:%opengl_lib_path%\assimp-5.2.5\lib\Debug assimp-vc143-mtd.lib /LIBPATH:%opengl_lib_path%\JoltPhysics-5.0.0\lib Joltd.lib shell32.lib msvcrtd.lib libcmtd.lib opengl32.lib user32.lib gdi32.lib
 popd

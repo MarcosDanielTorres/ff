@@ -4,6 +4,7 @@
 #include <processthreadsapi.h>
 
 
+typedef LRESULT (CALLBACK *WIN32MAINCALLBACK) (HWND Window, UINT Message, WPARAM wParam, LPARAM lParam);
 typedef u32 WindowOpenFlags;
 enum
 {
@@ -39,4 +40,4 @@ void os_win32_toggle_fullscreen(HWND handle);
 OS_Window_Dimension os_win32_get_window_dimension(HWND handle);
 OS_PixelBuffer os_win32_create_buffer(int width, int height);
 void os_win32_display_buffer(HDC device_context, OS_PixelBuffer* buffer, i32 window_width, i32 window_height);
-OS_Window os_win32_open_window(RECT rect);
+OS_Window os_win32_open_window(const char* window_name, u32 window_width, u32 window_height, WIN32MAINCALLBACK w32_main_callback, WindowOpenFlags flags, HINSTANCE instance = 0);

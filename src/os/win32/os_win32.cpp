@@ -82,9 +82,8 @@ void os_win32_display_buffer(HDC device_context, OS_PixelBuffer* buffer, i32 win
 
 
 
-typedef LRESULT (CALLBACK *WIN32MAINCALLBACK) (HWND Window, UINT Message, WPARAM wParam, LPARAM lParam);
 
-OS_Window os_win32_open_window(const char* window_name, u32 window_width, u32 window_height, WIN32MAINCALLBACK w32_main_callback, WindowOpenFlags flags) 
+OS_Window os_win32_open_window(const char* window_name, u32 window_width, u32 window_height, WIN32MAINCALLBACK w32_main_callback, WindowOpenFlags flags, HINSTANCE instance) 
 {
     RECT window_rect = {0};
     if(flags & WindowOpenFlags_Centered)
@@ -106,7 +105,9 @@ OS_Window os_win32_open_window(const char* window_name, u32 window_width, u32 wi
         WindowClass.style = CS_HREDRAW|CS_VREDRAW;
         WindowClass.lpfnWndProc = w32_main_callback;
         // TODO I don't know if this is useful or not
-        //WindowClass.hInstance = instance;
+        // TODO Same here, is instance useful? No I believe instance is only useful if im using WinMain and pass
+        // the instance defined there. But... given that I can open a window using main() then for these cases instance may be null
+        WindowClass.hInstance = instance;
         WindowClass.hCursor = LoadCursor(0, IDC_ARROW);
         WindowClass.lpszClassName = "graphical-window";
         RegisterClass(&WindowClass);
@@ -129,7 +130,7 @@ OS_Window os_win32_open_window(const char* window_name, u32 window_width, u32 wi
         0, //[in, optional] HWND      hWndParent,
         0, //[in, optional] HMENU     hMenu,
         // TODO Same here, is instance useful?
-        0, //[in, optional] HINSTANCE hInstance,
+        instance, //[in, optional] HINSTANCE hInstance,
         0 //[in, optional] LPVOID    lpParam
     );
     result.handle = handle;

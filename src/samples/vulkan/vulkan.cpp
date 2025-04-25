@@ -6,12 +6,12 @@
 #include <deque>
 #include <set>
 #include "base/base_core.h"
-#include "base/base_string.h"
 #include "base/base_arena.h"
+#include "base/base_string.h"
 #include "os/os_core.h"
 
-#include "base/base_string.cpp"
 #include "base/base_arena.cpp"
+#include "base/base_string.cpp"
 #include "os/os_core.cpp"
 
 global_variable bool hasAccelerationStructure_ = false;

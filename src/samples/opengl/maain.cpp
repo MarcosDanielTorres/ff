@@ -1,18 +1,36 @@
-#include <glad/glad.h>
-#include "glad.c"
+#include <stdint.h>
+#include <vector>
+#include <stdio.h>
 
-#include <GLFW/glfw3.h>
+#define global_variable static
+#define internal static
+#define local_persist static
 
+typedef uint8_t u8;
+typedef uint16_t u16;
+typedef uint32_t u32;
+typedef uint64_t u64;
+typedef int8_t i8;
+typedef int16_t i16;
+typedef int32_t i32;
+typedef int64_t i64;
+typedef float f32;
+typedef double f64;
+typedef uint32_t b32;
+typedef u32 b32;
+
+// thirdparty
+// glm
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/type_ptr.hpp>
 #include <glm/gtc/quaternion.hpp>
 
-#include <vector>
-#include <stdio.h>
-
+#if 0
+// assimp
 #include "AssimpLoader.h"
 
+// jolt
 #include <Jolt/Jolt.h>
 #include <Jolt/RegisterTypes.h>
 #include <Jolt/Core/Factory.h>
@@ -34,27 +52,16 @@
 #include <Jolt/Physics/Vehicle/WheeledVehicleController.h>
 // debug renderer
 #include <Jolt/Renderer/DebugRenderer.h>
+#include "physics/jolt_debug_renderer.h"
+#include "physics/physics_system.h"
 
-//#include "base/base_core.h"
+#include "physics/jolt_debug_renderer.cpp"
+#include "physics/physics_system.cpp"
+#endif
 
-#include <stdint.h>
 
-#define global_variable static
-#define internal static
-#define local_persist static
+// TODO fix assert collision with windows.h or something else!
 
-typedef uint8_t u8;
-typedef uint16_t u16;
-typedef uint32_t u32;
-typedef uint64_t u64;
-typedef int8_t i8;
-typedef int16_t i16;
-typedef int32_t i32;
-typedef int64_t i64;
-typedef float f32;
-typedef double f64;
-typedef uint32_t b32;
-typedef u32 b32;
 
 
 #include "platform/platform.h"
@@ -69,19 +76,12 @@ typedef u32 b32;
 #include "components.h"
 using namespace aim::Components;
 
-#include "physics/jolt_debug_renderer.h"
-#include "physics/physics_system.h"
-
-#include "physics/jolt_debug_renderer.cpp"
-#include "physics/physics_system.cpp"
-
 // TODO fix
 //#include "logger/logger.h"
 //#include "logger/logger.cpp"
 #include "shader.h"
 
-
-
+///////// TODO cleanup ////////////
 // global state
 // game input
 global_variable GameInput* game_input{};
@@ -130,7 +130,6 @@ glm::vec3 model_material_diffuse(1.0f, 0.5f, 0.31f);
 glm::vec3 model_material_specular(0.5f, 0.5f, 0.5f);
 float model_material_shininess(32.0f);
 
-
 static bool gui_mode = false;
 static bool fps_mode = false;
 
@@ -138,6 +137,7 @@ Camera free_camera(FREE_CAMERA, glm::vec3(0.0f, 5.0f, 19.0f));
 Camera fps_camera(FPS_CAMERA, glm::vec3(0.0f, 8.0f, 3.0f));
 
 Camera& curr_camera = free_camera;
+///////// TODO cleanup ////////////
 
 struct MeshBox {
 	Transform3D transform;
@@ -211,6 +211,7 @@ struct DirectionalLight {
 };
 
 
+#if 0
 void framebuffer_size_callback(GLFWwindow* window, int width, int height) {
 	// Note: width and height will be significantly larger than specified on retina displays.
 	glViewport(0, 0, width, height);
@@ -246,32 +247,36 @@ void mouse_callback(GLFWwindow* window, double xposIn, double yposIn) {
 void scroll_callback(GLFWwindow* window, double xoffset, double yoffset) {
 	curr_camera.process_mouse_scroll(static_cast<float>(yoffset));
 }
+#endif
 
 
 int main() {
-    glfwInit();
-    glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
-	glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
-	glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
+    //glfwInit();
+    //glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
+	//glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
+	//glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
 
-    GLFWwindow* window = glfwCreateWindow(SRC_WIDTH, SRC_HEIGHT, "Some GLFW Window!", NULL, NULL);
+    //GLFWwindow* window = glfwCreateWindow(SRC_WIDTH, SRC_HEIGHT, "Some GLFW Window!", NULL, NULL);
 
-	glfwMakeContextCurrent(window);
-    glfwSetFramebufferSizeCallback(window, framebuffer_size_callback);
-	glfwSetKeyCallback(window, keyboard_callback);
-	glfwSetCursorPosCallback(window, mouse_callback);
-	glfwSetScrollCallback(window, scroll_callback);
+	//glfwMakeContextCurrent(window);
+ 	//glfwSetFramebufferSizeCallback(window, framebuffer_size_callback);
+	//glfwSetKeyCallback(window, keyboard_callback);
+	//glfwSetCursorPosCallback(window, mouse_callback);
+	//glfwSetScrollCallback(window, scroll_callback);
 
-	glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
+	//glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
 
-	if (!gladLoadGLLoader((GLADloadproc)glfwGetProcAddress)) {
-		return -1;
-	}
+	//if (!gladLoadGLLoader((GLADloadproc)glfwGetProcAddress)) {
+	//	return -1;
+	//}
 
     // init game input
     GameInput temp_game_input{};
     game_input = &temp_game_input;
 
+	
+	// physics-init
+	#if 0
     JPH::RegisterDefaultAllocator();
 	PhysicsSystem physics_system{};
 	JPH::BodyCreationSettings sphere_settings(new JPH::SphereShape(1.5f), JPH::RVec3(0.0_r, 15.0_r, 0.0_r), JPH::Quat::sIdentity(), JPH::EMotionType::Dynamic, Layers::MOVING);
@@ -289,7 +294,7 @@ int main() {
 	settings->mMass = 70.0f;
 	settings->mShape = mStandingShape;
 	JPH::Ref<JPH::CharacterVirtual> mCharacter = new JPH::CharacterVirtual(settings, JPH::Vec3::sZero(), JPH::Quat::sIdentity(), 0, &physics_system.inner_physics_system);
-
+	#endif
 
     // rendering
     glm::mat4 projection;
@@ -364,8 +369,8 @@ int main() {
 	glEnableVertexAttribArray(2);
 
 	MeshBox floor_meshbox = MeshBox(Transform3D(glm::vec3(floor_pos.x, floor_pos.y, floor_pos.z), glm::vec3(floor_scale.x, floor_scale.y, floor_scale.z)));
-    	std::vector<MeshBox> boxes = {
-
+    std::vector<MeshBox> boxes = 
+	{
 		///////
 		MeshBox(Transform3D(glm::vec3(-3.0f,  1.0f, -5.0f))),
 		MeshBox(Transform3D(glm::vec3(-2.0f,  1.0f, -5.0f))),
@@ -445,8 +450,10 @@ int main() {
 		MeshBox(Transform3D(glm::vec3(0.0f,  34.0f, 0.0f))),
 	};
 
-    	PointLight point_lights[] = {
-		PointLight{
+    PointLight point_lights[] = 
+	{
+		PointLight
+		{
 			.transform = Transform3D(glm::vec3(0.7f,  0.2f,  2.0f)),
 			.ambient = glm::vec3(0.05f, 0.05f, 0.05f),
 			.diffuse = glm::vec3(0.8f, 0.8f, 0.8f),
@@ -455,7 +462,8 @@ int main() {
 			.linear = 0.09f,
 			.quadratic = 0.032f,
 		},
-		PointLight{
+		PointLight
+		{
 			.transform = Transform3D(glm::vec3(2.3f,  -3.3f,  -4.0f)),
 			.ambient = glm::vec3(0.05f, 0.05f, 0.05f),
 			.diffuse = glm::vec3(0.8f, 0.8f, 0.8f),
@@ -464,7 +472,8 @@ int main() {
 			.linear = 0.09f,
 			.quadratic = 0.032f,
 		},
-		PointLight{
+		PointLight
+		{
 			.transform = Transform3D(glm::vec3(-4.0f,  2.0f,  -12.0f)),
 			.ambient = glm::vec3(0.05f, 0.05f, 0.05f),
 			.diffuse = glm::vec3(0.8f, 0.8f, 0.8f),
@@ -473,7 +482,8 @@ int main() {
 			.linear = 0.09f,
 			.quadratic = 0.032f,
 		},
-		PointLight{
+		PointLight
+		{
 			.transform = Transform3D(glm::vec3(0.0f,  0.0f,  -3.0f)),
 			.ambient = glm::vec3(0.05f, 0.05f, 0.05f),
 			.diffuse = glm::vec3(0.8f, 0.8f, 0.8f),
@@ -484,14 +494,16 @@ int main() {
 		},
 	};
 
-	DirectionalLight directional_light{
+	DirectionalLight directional_light
+	{
 		.direction = glm::vec3(-0.2f, -1.0f, -0.3f),
 		.ambient = glm::vec3(0.05f, 0.05f, 0.05f),
 		.diffuse = glm::vec3(0.4f, 0.4f, 0.4f),
 		.specular = glm::vec3(0.5f, 0.5f, 0.5f)
 	};
 
-	SpotLight spot_light{
+	SpotLight spot_light
+	{
 		.ambient = glm::vec3(0.0f, 0.0f, 0.0f),
 		.diffuse = glm::vec3(1.0f, 1.0f, 1.0f),
 		.specular = glm::vec3(1.0f, 1.0f, 1.0f),
@@ -502,7 +514,8 @@ int main() {
 		.outerCutOff = glm::cos(glm::radians(15.0f)),
 	};
 
-    while (!glfwWindowShouldClose(window)) {
+    while (!glfwWindowShouldClose(window)) 
+	{
         float currentFrame = static_cast<float>(glfwGetTime());
 		deltaTime = currentFrame - lastFrame;
 		lastFrame = currentFrame;

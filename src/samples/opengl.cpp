@@ -14,31 +14,7 @@
 #include "aim_timer.h"
 #include "aim_profiler.cpp"
 #include "aim_timer.cpp"
-
-#include <gl/gl.h>
-
-#include<windows.h>
-
-#define WGL_CONTEXT_DEBUG_BIT_ARB               0x00000001
-#define WGL_CONTEXT_FORWARD_COMPATIBLE_BIT_ARB  0x00000002
-#define WGL_CONTEXT_PROFILE_MASK_ARB            0x9126
-#define WGL_CONTEXT_CORE_PROFILE_BIT_ARB        0x00000001
-#define WGL_CONTEXT_MAJOR_VERSION_ARB           0x2091
-#define WGL_CONTEXT_MINOR_VERSION_ARB           0x2092
-#define WGL_CONTEXT_LAYER_PLANE_ARB             0x2093
-#define WGL_CONTEXT_FLAGS_ARB                   0x2094
-#define ERROR_INVALID_PROFILE_ARB               0x2096
-
-typedef HGLRC (WINAPI *PFNWGLCREATECONTEXTATTRIBSARBPROC) (HDC hDC, HGLRC hShareContext, const int *attribList);
-typedef const char *(WINAPI * PFNWGLGETEXTENSIONSSTRINGEXTPROC) (void);
-typedef int (WINAPI *PFNWGLGETSWAPINTERVALEXTPROC) (void);
-
-typedef BOOL (WINAPI *PFNWGLSWAPINTERVALEXTPROC) (int interval);
-typedef int (WINAPI *PFNWGLGETSWAPINTERVALEXTPROC) (void);
-
-
-typedef void (WINAPI *PFNGLDELETEVERTEXARRAYSPROC) (GLsizei n, const GLuint *arrays);
-PFNGLDELETEVERTEXARRAYSPROC glDeleteVertexArrays = 0;
+#include "opengl_bindings.cpp"
 
 
 LRESULT WndProc(HWND window, UINT message, WPARAM w_param, LPARAM l_param) 
@@ -106,8 +82,6 @@ void str8list_push_malloc(Str8List* list, Str8 string) {
 }
 
 
-typedef void (WINAPI* PFNGLGENVERTEXARRAYSPROC) (GLsizei n, GLuint *arrays);
-typedef void (WINAPI* PFNGLBINDVERTEXARRAYPROC) (GLuint array);
 
 // state
 global_variable b32 is_running = true;
@@ -184,12 +158,12 @@ int main() {
         __debugbreak();
     }
 
-
     HGLRC tempRC = wglCreateContext(hdc);
     if(wglMakeCurrent(hdc, tempRC))
     {
         // NOTE It seems that in order to get anything from `wglGetProcAddress`, `wglMakeCurrent` must have been called!
-        PFNWGLCREATECONTEXTATTRIBSARBPROC wglCreateContextAttribsARB = (PFNWGLCREATECONTEXTATTRIBSARBPROC) wglGetProcAddress("wglCreateContextAttribsARB");
+        wglCreateContextAttribsARB = OpenGLGetFunction(wglCreateContextAttribsARB);
+
 
         i32 attrib_list[] = {
             WGL_CONTEXT_MAJOR_VERSION_ARB, 3,
@@ -203,13 +177,8 @@ int main() {
         wglDeleteContext(tempRC);
         wglMakeCurrent(hdc, hglrc);
     }
-    
-    PFNGLGENVERTEXARRAYSPROC glGenVertexArrays = (PFNGLGENVERTEXARRAYSPROC) wglGetProcAddress("glGenVertexArrays"); 
-    PFNGLBINDVERTEXARRAYPROC glBindVertexArray = (PFNGLBINDVERTEXARRAYPROC) wglGetProcAddress("glBindVertexArray"); 
-    glDeleteVertexArrays = (PFNGLDELETEVERTEXARRAYSPROC) wglGetProcAddress("glDeleteVertexArrays");
 
-
-    PFNWGLGETEXTENSIONSSTRINGEXTPROC wglGetExtensionsStringEXT = (PFNWGLGETEXTENSIONSSTRINGEXTPROC) wglGetProcAddress("wglGetExtensionsStringEXT");
+    wglGetExtensionsStringEXT = OpenGLGetFunction(wglGetExtensionsStringEXT);
 
     const char* extensions = wglGetExtensionsStringEXT();
     Str8List* extensions_list = arena_push_size(&arena, Str8List, 1);
@@ -245,8 +214,8 @@ int main() {
             str8list_push(&arena, extensions_list, extension);
         }
         if(swap_control_supported) {
-            PFNWGLSWAPINTERVALEXTPROC wglSwapIntervalEXT = (PFNWGLSWAPINTERVALEXTPROC) wglGetProcAddress("wglSwapIntervalEXT");
-            PFNWGLGETSWAPINTERVALEXTPROC wglGetSwapIntervalEXT = (PFNWGLGETSWAPINTERVALEXTPROC) wglGetProcAddress("wglGetSwapIntervalEXT");
+            wglSwapIntervalEXT = OpenGLGetFunction(wglSwapIntervalEXT);
+            wglGetSwapIntervalEXT = OpenGLGetFunction(wglGetSwapIntervalEXT);
             if(wglSwapIntervalEXT(1)) 
             {
                 vsynch = wglGetSwapIntervalEXT();
@@ -254,6 +223,10 @@ int main() {
             }
         }
     }
+
+    glGenVertexArrays = OpenGLGetFunction(glGenVertexArrays);
+    glBindVertexArray = OpenGLGetFunction(glBindVertexArray);
+    glDeleteVertexArrays = OpenGLGetFunction(glDeleteVertexArrays);
     for(Str8ListNode *node = extensions_list->first; node; node = node->next)
     {
         printf("%.*s, ", (u32)node->str.size, node->str.str);

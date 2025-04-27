@@ -4658,6 +4658,10 @@ internal VulkanContext *
 vulkan_create_context_with_swapchain(Arena *arena, Arena *transient, OS_Window window, u32 width, u32 height)
 {
 
+    // NOTE Stack problem with Vulkan context creation
+    // Here i was having a problem where i was declaring a stack VulkanContext inside the create_context
+    // and returning it. buuut the problem was that that context had pointers as members variables so when i returned it
+    // the previously init pointers ended up pointing to wrong memory!
 
     #if 0
     VulkanContext context = {0};

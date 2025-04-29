@@ -7,13 +7,13 @@
 #include "draw/draw.h"
 #include "font/font.h"
 #include "aim_timer.h"
+#include "input/input.h"
 
 #include "base/base_arena.cpp"
 #include "base/base_string.cpp"
 #include "os/os_core.cpp"
 #include "draw/draw.cpp"
 #include "font/font.cpp"
-#include "game_types.h"
 #include "logic/game.h"
 #include "aim_timer.cpp"
 
@@ -22,66 +22,6 @@ global_variable OS_Window global_w32_window;
 global_variable OS_PixelBuffer global_pixel_buffer;
 global_variable u32 os_modifiers;
 global_variable GameInput global_input;
-
-void input_update(GameInput *input)
-{
-    input->prev_keyboard_state = input->curr_keyboard_state;
-    input->prev_mouse_state = input->curr_mouse_state;
-    memset(&input->curr_keyboard_state, 0, sizeof(input->curr_keyboard_state));
-    // If i let this line uncommented i will only have a mouse position when im actively moving the mouse. Which is not what i want!
-    // GameInput in general seems wrong
-    //memset(&input->curr_mouse_state, 0, sizeof(input->curr_mouse_state));
-    //memset(&input->curr_mouse_state.button, 0, sizeof(input->curr_mouse_state.button));
-}
-
-u32 input_click_left_down(GameInput* input) {
-    u32 result = 0;
-    result = input->curr_mouse_state.button[Buttons_LeftClick] == 1;
-    return result;
-}
-
-u32 input_click_left_up(GameInput* input) {
-    u32 result = 0;
-    result = input->curr_mouse_state.button[Buttons_LeftClick] == 0;
-    return result;
-}
-
-u32 input_is_key_just_pressed(GameInput* input, Keys key) {
-    u32 result = 0;
-    result = input->curr_keyboard_state.keys[key] == 1 && input->prev_keyboard_state.keys[key] == 0;
-    return result;
-}
-
-u32 input_is_key_just_released(GameInput* input, Keys key) {
-    u32 result = 0;
-    result = input->curr_keyboard_state.keys[key] == 0 && input->prev_keyboard_state.keys[key] == 1;
-    return result;
-}
-
-u32 input_is_key_pressed(GameInput* input, Keys key) {
-    u32 result = 0;
-    result = input->curr_keyboard_state.keys[key] == 1;
-    return result;
-}
-
-u32 input_is_key_released(GameInput* input, Keys key) {
-    u32 result = 0;
-    result = input->curr_keyboard_state.keys[key] == 0;
-    return result;
-}
-
-u32 input_is_any_modifier_pressed(GameInput* input, u32 key) {
-    u32 result = 0;
-    result = (
-        input_is_key_pressed(input, Keys_Shift) ||
-        input_is_key_pressed(input, Keys_ShiftLeft) ||
-        input_is_key_pressed(input, Keys_ShiftRight) ||
-        input_is_key_pressed(input, Keys_ControlLeft) ||
-        input_is_key_pressed(input, Keys_ControlRight)
-    );
-    return result;
-}
-
 
 
 void win32_process_pending_msgs() {
@@ -151,30 +91,30 @@ void win32_process_pending_msgs() {
             break;
             case WM_LBUTTONUP:
             {
-                global_input.curr_mouse_state.button[Buttons_LeftClick] = 0;
+                global_input.curr_mouse_state.button[MouseButtons_LeftClick] = 0;
 
             } break;
             case WM_MBUTTONUP:
             {
-                global_input.curr_mouse_state.button[Buttons_MiddleClick] = 0;
+                global_input.curr_mouse_state.button[MouseButtons_MiddleClick] = 0;
             } break;
             case WM_RBUTTONUP:
             {
-                global_input.curr_mouse_state.button[Buttons_RightClick] = 0;
+                global_input.curr_mouse_state.button[MouseButtons_RightClick] = 0;
             } break;
 
             case WM_LBUTTONDOWN:
             {
-                global_input.curr_mouse_state.button[Buttons_LeftClick] = 1;
+                global_input.curr_mouse_state.button[MouseButtons_LeftClick] = 1;
 
             } break;
             case WM_MBUTTONDOWN:
             {
-                global_input.curr_mouse_state.button[Buttons_MiddleClick] = 1;
+                global_input.curr_mouse_state.button[MouseButtons_MiddleClick] = 1;
             } break;
             case WM_RBUTTONDOWN:
             {
-                global_input.curr_mouse_state.button[Buttons_RightClick] = 1;
+                global_input.curr_mouse_state.button[MouseButtons_RightClick] = 1;
             } break;
             default:
             {

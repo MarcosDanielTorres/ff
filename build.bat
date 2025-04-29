@@ -15,13 +15,13 @@ set inc_files=%inc_files% -I%root%\src
 set inc_files=%inc_files% -I%some_path%
 
 set main=0
-set ui=0
-set opengl=1
+set ui=1
+set opengl=0
 set vulkan=0
 set cmdline=0
 set meta=0
-set game=0
-set openglrewrite=0
+set game=1
+set openglrewrite=1
 
 @rem TODO combine them together!
 if "%vulkan%"=="1" set inc_files=%inc_files% -I%VULKAN_SDK%\Include

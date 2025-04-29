@@ -63,8 +63,7 @@ typedef u32 b32;
 // TODO fix assert collision with windows.h or something else!
 
 
-
-#include "platform/platform.h"
+#include "input/input.h"
 #include "camera.h"
 //TODO: get the timer
 //#include "aim_timer.h"

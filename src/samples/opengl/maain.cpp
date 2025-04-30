@@ -1,10 +1,21 @@
 #include <stdint.h>
-#include <vector>
 #include <stdio.h>
 
+
+#include "samples/opengl_bindings.cpp"
+// thirdparty
+
+/* TODO primero ver de sacar lo que esta en shader, capaz es el causante del internal
+    y no glm. Seria ideal asi no tengo que renombrar todo ahora, y de paso tengo
+    que dejar de usar la poronga de string igual asi que...
+
+    primero migrar glfw, despues shader, despues chequear el internal
+*/
+#define internal_linkage static
+//#define internal static
 #define global_variable static
-#define internal static
 #define local_persist static
+#define RAW_INPUT 1
 
 typedef uint8_t u8;
 typedef uint16_t u16;
@@ -19,7 +30,6 @@ typedef double f64;
 typedef uint32_t b32;
 typedef u32 b32;
 
-// thirdparty
 // glm
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
@@ -62,15 +72,37 @@ typedef u32 b32;
 
 // TODO fix assert collision with windows.h or something else!
 
+#define gui_assert(expr, fmt, ...) do {                                       \
+    if (!(expr)) {                                                            \
+        char _msg_buf[1024];                                                  \
+                snprintf(_msg_buf, sizeof(_msg_buf),                                        \
+            "Assertion failed!\n\n"                                                 \
+            "File: %s\n"                                                            \
+            "Line: %d\n"                                                            \
+            "Condition: %s\n\n"                                                     \
+            fmt,                                                                    \
+            __FILE__, __LINE__, #expr, __VA_ARGS__);                                \
+        MessageBoxA(0, _msg_buf, "Assertion Failed", MB_OK | MB_ICONERROR);   \
+        __debugbreak();                                                       \
+    }                                                                         \
+} while (0)
 
+//#include "base/base_core.h"
+#include "base/base_arena.h"
+#include "base/base_string.h"
+#include "os/os_core.h"
+#include "base/base_arena.cpp"
+#include "base/base_string.cpp"
+#include "os/os_core.cpp"
 #include "input/input.h"
+typedef Input GameInput;
 #include "camera.h"
 //TODO: get the timer
-//#include "aim_timer.h"
+#include "aim_timer.h"
 
 
 #include "camera.cpp"
-//#include "aim_timer.cpp"
+#include "aim_timer.cpp"
 
 #include "components.h"
 using namespace aim::Components;
@@ -78,13 +110,58 @@ using namespace aim::Components;
 // TODO fix
 //#include "logger/logger.h"
 //#include "logger/logger.cpp"
+
+#define OpenGLSetFunction(name) (opengl->name) = OpenGLGetFunction(name);
+#define OpenGLDeclareMemberFunction(name) OpenGLType_##name name
+
+struct OpenGL
+{
+    i32 vsynch;
+    // OpenGLType__wglCreateContextAttribsARB wglCreateContextAttribsARB
+    OpenGLDeclareMemberFunction(wglCreateContextAttribsARB);
+    OpenGLDeclareMemberFunction(wglGetExtensionsStringEXT);
+    OpenGLDeclareMemberFunction(wglSwapIntervalEXT);
+    OpenGLDeclareMemberFunction(wglGetSwapIntervalEXT);
+    OpenGLDeclareMemberFunction(glGenVertexArrays);
+    OpenGLDeclareMemberFunction(glBindVertexArray);
+    OpenGLDeclareMemberFunction(glDeleteVertexArrays);
+
+	OpenGLDeclareMemberFunction(glGenBuffers);
+	OpenGLDeclareMemberFunction(glBindBuffer);
+	OpenGLDeclareMemberFunction(glBufferData);
+	OpenGLDeclareMemberFunction(glVertexAttribPointer);
+	OpenGLDeclareMemberFunction(glEnableVertexAttribArray);
+
+    OpenGLDeclareMemberFunction(glCreateShader);
+    OpenGLDeclareMemberFunction(glCompileShader);
+    OpenGLDeclareMemberFunction(glShaderSource);
+    OpenGLDeclareMemberFunction(glCreateProgram);
+    OpenGLDeclareMemberFunction(glAttachShader);
+    OpenGLDeclareMemberFunction(glLinkProgram);
+    OpenGLDeclareMemberFunction(glDeleteShader);
+    OpenGLDeclareMemberFunction(glUseProgram);
+    OpenGLDeclareMemberFunction(glGetShaderiv);
+    OpenGLDeclareMemberFunction(glGetShaderInfoLog);
+    OpenGLDeclareMemberFunction(glGetProgramiv);
+    OpenGLDeclareMemberFunction(glGetProgramInfoLog);
+
+    OpenGLDeclareMemberFunction(glUniform1i);
+    OpenGLDeclareMemberFunction(glUniform1f);
+    OpenGLDeclareMemberFunction(glUniform2fv);
+    OpenGLDeclareMemberFunction(glUniform2f);
+    OpenGLDeclareMemberFunction(glUniform3fv);
+    OpenGLDeclareMemberFunction(glUniform3f);
+    OpenGLDeclareMemberFunction(glUniform4fv);
+    OpenGLDeclareMemberFunction(glUniform4f);
+    OpenGLDeclareMemberFunction(glUniformMatrix2fv);
+    OpenGLDeclareMemberFunction(glUniformMatrix3fv);
+    OpenGLDeclareMemberFunction(glUniformMatrix4fv);
+    OpenGLDeclareMemberFunction(glGetUniformLocation);
+};
 #include "shader.h"
 
 ///////// TODO cleanup ////////////
 // global state
-// game input
-global_variable GameInput* game_input{};
-
 // window size
 global_variable u32 SRC_WIDTH = 1280;
 global_variable u32 SRC_HEIGHT = 720;
@@ -247,13 +324,402 @@ void scroll_callback(GLFWwindow* window, double xoffset, double yoffset) {
 	curr_camera.process_mouse_scroll(static_cast<float>(yoffset));
 }
 #endif
+global_variable OS_Window global_w32_window;
+global_variable u32 os_modifiers;
+global_variable GameInput global_input;
+void win32_process_pending_msgs() {
+    MSG Message;
+    while(PeekMessage(&Message, 0, 0, 0, PM_REMOVE))
+    {
+        TranslateMessage(&Message);
+        switch(Message.message)
+        {
+            case WM_QUIT:
+            {
+                global_w32_window.is_running = false;
+            } break;
+
+            case WM_SYSKEYDOWN:
+            case WM_SYSKEYUP:
+            case WM_KEYDOWN:
+            case WM_KEYUP:
+            {
+                WPARAM wparam = Message.wParam;
+                LPARAM lparam = Message.lParam;
+
+                u32 key = (u32)wparam;
+                u32 alt_key_is_pressed = (lparam & (1 << 29)) != 0;
+                u32 was_pressed = (lparam & (1 << 30)) != 0;
+                u32 is_pressed = (lparam & (1 << 31)) == 0;
+                global_input.curr_keyboard_state.keys[key] = u8(is_pressed);
+                global_input.prev_keyboard_state.keys[key] = u8(was_pressed);
+                if (GetKeyState(VK_SHIFT) & (1 << 15)) {
+                    os_modifiers |= OS_Modifiers_Shift;
+                }
+                // NOTE reason behin this is that every key will be an event and each event knows what are the modifiers pressed when they key was processed
+                // It the key is a modifier as well then the modifiers of this key wont containt itself. Meaning if i press Shift and i consult the modifiers pressed
+                // for this key, shift will not be set
+                if (GetKeyState(VK_CONTROL) & (1 << 15)) {
+                    os_modifiers |= OS_Modifiers_Ctrl;
+                }
+                if (GetKeyState(VK_MENU) & (1 << 15)) {
+                    os_modifiers |= OS_Modifiers_Alt;
+                }
+                if (key == Keys_Shift && os_modifiers & OS_Modifiers_Shift) {
+                    os_modifiers &= ~OS_Modifiers_Shift;
+                }
+                if (key == Keys_Control && os_modifiers & OS_Modifiers_Ctrl) {
+                    os_modifiers &= ~OS_Modifiers_Ctrl;
+                }
+                if (key == Keys_Alt && os_modifiers & OS_Modifiers_Alt) {
+                    os_modifiers &= ~OS_Modifiers_Alt;
+                }
+            } break;
+
+            case WM_MOUSEMOVE:
+            {
+                i32 xPos = (Message.lParam & 0x0000FFFF); 
+                i32 yPos = ((Message.lParam & 0xFFFF0000) >> 16); 
+                if(xPos >= 0 && xPos < SRC_WIDTH && yPos >= 0 && yPos < SRC_HEIGHT)
+                {
+                }
+                // comente esto
+                //SetCapture(global_w32_window.handle);
+
+                i32 xxPos = LOWORD(Message.lParam);
+                i32 yyPos = HIWORD(Message.lParam);
+                char buf[100];
+                sprintf(buf,  "MOUSE MOVE: x: %d, y: %d\n", xPos, yPos);
+                //printf(buf);
+
+                assert((xxPos == xPos && yyPos == yPos));
+                global_input.curr_mouse_state.x = xPos;
+                global_input.curr_mouse_state.y = yPos;
+                
+                #if !defined(RAW_INPUT)
+                global_input.dx = global_input.curr_mouse_state.x - global_input.prev_mouse_state.x;
+                global_input.dy = -(global_input.curr_mouse_state.y - global_input.prev_mouse_state.y);
+                #endif
+
+            }
+            break;
+            #if RAW_INPUT
+            case WM_INPUT: {
+                UINT size;
+                GetRawInputData((HRAWINPUT)Message.lParam, RID_INPUT, NULL, &size, sizeof(RAWINPUTHEADER));
+
+                gui_assert(size < 1000, "GetRawInputData surpassed 1000 bytes");
+                u8 bytes[1000];
+                RAWINPUT* raw = (RAWINPUT*)bytes;
+                GetRawInputData((HRAWINPUT)Message.lParam, RID_INPUT, raw, &size, sizeof(RAWINPUTHEADER));
+                if (!(raw->data.mouse.usFlags & MOUSE_MOVE_ABSOLUTE))
+                {
+                    if (raw->header.dwType == RIM_TYPEMOUSE) 
+                    {
+                        LONG dx = raw->data.mouse.lLastX;
+                        LONG dy = raw->data.mouse.lLastY;
+                        global_input.dx = f32(dx);
+                        global_input.dy = f32(-dy);
+                    }
+                }else
+                {
+                    gui_assert(1 < 0, "MOUSE_MOVE_ABSOLUTE");
+                }
+                POINT center = { LONG(SRC_WIDTH)/2, LONG(SRC_HEIGHT)/2 };
+                ClientToScreen(global_w32_window.handle, &center);
+                SetCursorPos(center.x, center.y);
+                //printf("RECENTERING!!!\n");
+
+            } break;
+            #endif
+            case WM_LBUTTONUP:
+            {
+                global_input.curr_mouse_state.button[MouseButtons_LeftClick] = 0;
+
+            } break;
+            case WM_MBUTTONUP:
+            {
+                global_input.curr_mouse_state.button[MouseButtons_MiddleClick] = 0;
+            } break;
+            case WM_RBUTTONUP:
+            {
+                global_input.curr_mouse_state.button[MouseButtons_RightClick] = 0;
+            } break;
+
+            case WM_LBUTTONDOWN:
+            {
+                global_input.curr_mouse_state.button[MouseButtons_LeftClick] = 1;
+
+            } break;
+            case WM_MBUTTONDOWN:
+            {
+                global_input.curr_mouse_state.button[MouseButtons_MiddleClick] = 1;
+            } break;
+            case WM_RBUTTONDOWN:
+            {
+                global_input.curr_mouse_state.button[MouseButtons_RightClick] = 1;
+            } break;
+            default:
+            {
+                DispatchMessageA(&Message);
+            } break;
+        }
+    }
+    #if RAW_INPUT
+    if (global_w32_window.focused)
+    {
+        if (global_input.prev_mouse_state.x != SRC_WIDTH / 2 ||
+            global_input.prev_mouse_state.y != SRC_HEIGHT / 2)
+        {
+            POINT pos = {i32(SRC_WIDTH / 2), i32(SRC_HEIGHT / 2)};
+            ClientToScreen(global_w32_window.handle, &pos);
+            SetCursorPos(pos.x, pos.y);
+            //printf("RECENTERING!!!\n");
+        }
+    }
+    #endif
+}
+
+LRESULT CALLBACK win32_main_callback(HWND Window, UINT Message, WPARAM wParam, LPARAM lParam) {
+    LRESULT result = 0;
+    switch(Message)
+    {
+        case WM_DESTROY:
+        {
+            global_w32_window.is_running = false;
+        } break;
+        case WM_SIZE:
+        {
+            // os get window dimensions
+        RECT r;
+        GetClientRect(global_w32_window.handle, &r);
+        u32 width = r.right - r.left;
+        u32 height = r.bottom - r.top;
+        if (width != SRC_WIDTH || height != SRC_HEIGHT)
+        {
+            //SRC_WIDTH = width;
+            //SRC_HEIGHT = height;
+            glViewport(0, 0, width, height);
+        }
+        }break;
+        #if RAW_INPUT
+        case WM_KILLFOCUS:
+        {
+            global_w32_window.focused = false;
+            //while( ShowCursor(TRUE) < 0 );
+            printf("KILL FOCUS\n");
+            RAWINPUTDEVICE rid = { 0x01, 0x02, RIDEV_REMOVE, NULL };
+
+            if (!RegisterRawInputDevices(&rid, 1, sizeof(rid)))
+            {
+                assert('wtf');
+            }
+            ClipCursor(NULL);
+            ReleaseCapture();
+            ShowCursor(1);
+        }break;
+        case WM_SETFOCUS:
+        {
+            global_w32_window.focused = true;
+            ShowCursor(0);
+            //while( ShowCursor(FALSE) >= 0 );
+            //POINT center = { LONG(SRC_WIDTH)/2, LONG(SRC_HEIGHT)/2 };
+            //ClientToScreen(global_w32_window.handle, &center);
+            //SetCursorPos(center.x, center.y);
+
+            printf("SET FOCUS\n");
+            RAWINPUTDEVICE rid = {
+                .usUsagePage = 0x01,                   // generic desktop controls
+                .usUsage     = 0x02,                   // mouse
+                //.dwFlags     = RIDEV_INPUTSINK       // receive even when not focused
+                //            | RIDEV_NOLEGACY,      // no WM_MOUSEMOVE fallback
+                .dwFlags = 0,
+                .hwndTarget  = global_w32_window.handle,
+            };
+
+            if (!RegisterRawInputDevices(&rid, 1, sizeof(rid))) {
+                // failure!
+            }
+            //RECT clipRect;
+            //GetClientRect(Window, &clipRect);
+            //ClientToScreen(Window, (POINT*) &clipRect.left);
+            //ClientToScreen(Window, (POINT*) &clipRect.right);
+            //ClipCursor(&clipRect);
+
+            //RECT ja;
+            //GetWindowRect(Window, &ja);
+            //ClipCursor(&ja);
+        }break;
+        #endif
+        //case WM_PAINT: {
+        //    PAINTSTRUCT Paint;
+        //    HDC DeviceContext = BeginPaint(Window, &Paint);
+        //    OS_Window_Dimension Dimension = os_win32_get_window_dimension(Window);
+        //    os_win32_display_buffer(DeviceContext, &global_pixel_buffer,
+        //                               Dimension.width, Dimension.height);
+        //    EndPaint(Window, &Paint);
+        //}break;
+        default:
+        {
+            result = DefWindowProcA(Window, Message, wParam, lParam);
+        } break;
+    }
+    return result;
+}
 
 
 int main() {
+    global_w32_window = os_win32_open_window("opengl", SRC_WIDTH, SRC_HEIGHT, win32_main_callback, 1);
+
+    //os_win32_toggle_fullscreen(global_w32_window.handle, &global_w32_window.window_placement);
+
+    #if RAW_INPUT
+    RAWINPUTDEVICE rid = {
+        .usUsagePage = 0x01,                   // generic desktop controls
+        .usUsage     = 0x02,                   // mouse
+        //.dwFlags     = RIDEV_INPUTSINK       // receive even when not focused
+        //            | RIDEV_NOLEGACY,      // no WM_MOUSEMOVE fallback
+        .dwFlags = 0,
+        .hwndTarget  = global_w32_window.handle,
+    };
+
+    if (!RegisterRawInputDevices(&rid, 1, sizeof(rid))) {
+        // failure!
+    }
+    // clamp the cursor to your client rect if you want absolute confinement:
+    #endif                        
+
+    ShowCursor(0);
+
+    OpenGL _opengl = {0};
+    OpenGL *opengl = &_opengl;
+    opengl->vsynch = -1;
+
+    HDC hdc = GetDC(global_w32_window.handle);
+    PIXELFORMATDESCRIPTOR pfd = {0};
+    pfd.nSize = sizeof(PIXELFORMATDESCRIPTOR);
+    pfd.nVersion = 1;
+    pfd.dwFlags = PFD_DRAW_TO_WINDOW | PFD_SUPPORT_OPENGL | PFD_DOUBLEBUFFER;
+    pfd.iPixelType = PFD_TYPE_RGBA;
+    pfd.cColorBits = 24;
+    pfd.cAlphaBits = 8;
+    pfd.cDepthBits = 32;
+    pfd.iLayerType = PFD_MAIN_PLANE;
+
+    int pixel_format = ChoosePixelFormat(hdc, &pfd);
+    if(pixel_format) {
+        SetPixelFormat(hdc, pixel_format, &pfd);
+    }else{
+        __debugbreak();
+    }
+
+    HGLRC tempRC = wglCreateContext(hdc);
+    if(wglMakeCurrent(hdc, tempRC))
+    {
+        // NOTE It seems that in order to get anything from `wglGetProcAddress`, `wglMakeCurrent` must have been called!
+        //wglCreateContextAttribsARB = OpenGLGetFunction(wglCreateContextAttribsARB);
+        OpenGLSetFunction(wglCreateContextAttribsARB)
+
+
+        i32 attrib_list[] = {
+            WGL_CONTEXT_MAJOR_VERSION_ARB, 3,
+            WGL_CONTEXT_MINOR_VERSION_ARB, 3,
+            WGL_CONTEXT_FLAGS_ARB, 0,
+            WGL_CONTEXT_PROFILE_MASK_ARB,
+            WGL_CONTEXT_CORE_PROFILE_BIT_ARB, 0
+        };
+        HGLRC hglrc = opengl->wglCreateContextAttribsARB(hdc, 0, attrib_list);
+        wglMakeCurrent(0, 0);
+        wglDeleteContext(tempRC);
+        wglMakeCurrent(hdc, hglrc);
+    }
+
+    //wglGetExtensionsStringEXT = OpenGLGetFunction(wglGetExtensionsStringEXT);
+    OpenGLSetFunction(wglGetExtensionsStringEXT);
+
+    {
+        const char* extensions = opengl->wglGetExtensionsStringEXT();
+        b32 swap_control_supported = false;
+		const char* at = extensions;
+        while(*at) 
+        {
+            while(*at == ' ') {
+                at++;
+            }
+
+            const char* start = at;
+            while(*at && *at != ' ') {
+                at++; 
+            }
+            if (!*at) {
+                break;
+            }
+            size_t count = at - start;
+            Str8 extension = str8((char*)start, count);
+            b32 res1 = str8_equals(extension, str8_lit("WGL_EXT_framebuffer_sRGB"));
+            b32 res2 = str8_equals(extension, str8_lit("WGL_ARB_framebuffer_sRGB"));
+            if(str8_equals(extension, str8_lit("WGL_EXT_swap_control")))
+            {
+                swap_control_supported = true;
+            }
+
+        }
+        if(swap_control_supported) {
+            //wglSwapIntervalEXT = OpenGLGetFunction(wglSwapIntervalEXT);
+            OpenGLSetFunction(wglSwapIntervalEXT);
+            //wglGetSwapIntervalEXT = OpenGLGetFunction(wglGetSwapIntervalEXT);
+            OpenGLSetFunction(wglGetSwapIntervalEXT);
+            if(opengl->wglSwapIntervalEXT(1)) 
+            {
+                opengl->vsynch = opengl->wglGetSwapIntervalEXT();
+            }
+        }
+    }
+
+    //glGenVertexArrays = OpenGLGetFunction(glGenVertexArrays);
+    OpenGLSetFunction(glGenVertexArrays);
+    //glBindVertexArray = OpenGLGetFunction(glBindVertexArray);
+    OpenGLSetFunction(glBindVertexArray);
+    //glDeleteVertexArrays = OpenGLGetFunction(glDeleteVertexArrays);
+    OpenGLSetFunction(glDeleteVertexArrays);
+
+	OpenGLSetFunction(glGenBuffers);
+	OpenGLSetFunction(glBindBuffer);
+	OpenGLSetFunction(glBufferData);
+	OpenGLSetFunction(glVertexAttribPointer);
+	OpenGLSetFunction(glEnableVertexAttribArray);
+
+
+    OpenGLSetFunction(glCreateShader);
+    OpenGLSetFunction(glCompileShader);
+    OpenGLSetFunction(glShaderSource);
+    OpenGLSetFunction(glCreateProgram);
+    OpenGLSetFunction(glAttachShader);
+    OpenGLSetFunction(glLinkProgram);
+    OpenGLSetFunction(glDeleteShader);
+    OpenGLSetFunction(glUseProgram);
+    OpenGLSetFunction(glGetShaderiv);
+    OpenGLSetFunction(glGetShaderInfoLog);
+    OpenGLSetFunction(glGetProgramiv);
+    OpenGLSetFunction(glGetProgramInfoLog);
+
+    OpenGLSetFunction(glUniform1i);
+    OpenGLSetFunction(glUniform1f);
+    OpenGLSetFunction(glUniform2fv);
+    OpenGLSetFunction(glUniform2f);
+    OpenGLSetFunction(glUniform3fv);
+    OpenGLSetFunction(glUniform3f);
+    OpenGLSetFunction(glUniform4fv);
+    OpenGLSetFunction(glUniform4f);
+    OpenGLSetFunction(glUniformMatrix2fv);
+    OpenGLSetFunction(glUniformMatrix3fv);
+    OpenGLSetFunction(glUniformMatrix4fv);
+    OpenGLSetFunction(glGetUniformLocation);
     //glfwInit();
     //glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
 	//glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
 	//glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
+
 
     //GLFWwindow* window = glfwCreateWindow(SRC_WIDTH, SRC_HEIGHT, "Some GLFW Window!", NULL, NULL);
 
@@ -270,8 +736,8 @@ int main() {
 	//}
 
     // init game input
-    GameInput temp_game_input{};
-    game_input = &temp_game_input;
+    //GameInput temp_game_input{};
+    //game_input = &temp_game_input;
 
 	
 	// physics-init
@@ -300,7 +766,7 @@ int main() {
     projection = glm::perspective(glm::radians(curr_camera.zoom), (float)SRC_WIDTH / (float)SRC_HEIGHT, 0.1f, 10000.0f);
 
     // shaders
-    Shader skinning_shader("skel_shader-2.vs.glsl", "6.multiple_lights.fs.glsl");
+    Shader skinning_shader("skel_shader-2.vs.glsl", "6.multiple_lights.fs.glsl", opengl);
 	float vertices[] = {
 		// Back face
 		-0.5f, -0.5f, -0.5f,	0.0f,  0.0f, -1.0f,			0.0f, 0.0f, // Bottom-left
@@ -346,26 +812,26 @@ int main() {
 		 -0.5f,  0.5f,  0.5f,	0.0f,  1.0f,  0.0f,			0.0f, 0.0f  // bottom-left        
 	};
     unsigned int VBO, cubeVAO;
-	glGenVertexArrays(1, &cubeVAO);
-	glGenBuffers(1, &VBO);
+	opengl->glGenVertexArrays(1, &cubeVAO);
+	opengl->glGenBuffers(1, &VBO);
 
 
-	glBindBuffer(GL_ARRAY_BUFFER, VBO);
-	glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_STATIC_DRAW);
+	opengl->glBindBuffer(GL_ARRAY_BUFFER, VBO);
+	opengl->glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_STATIC_DRAW);
 
-	glBindVertexArray(cubeVAO);
+	opengl->glBindVertexArray(cubeVAO);
 
 	// position attribute
-	glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void*)0);
-	glEnableVertexAttribArray(0);
+	opengl->glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void*)0);
+	opengl->glEnableVertexAttribArray(0);
 
 	// normal attribute
-	glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void*)(3 * sizeof(float)));
-	glEnableVertexAttribArray(1);
+	opengl->glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void*)(3 * sizeof(float)));
+	opengl->glEnableVertexAttribArray(1);
 
 	// texture attribute
-	glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void*)(6 * sizeof(float)));
-	glEnableVertexAttribArray(2);
+	opengl->glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void*)(6 * sizeof(float)));
+	opengl->glEnableVertexAttribArray(2);
 
 	MeshBox floor_meshbox = MeshBox(Transform3D(glm::vec3(floor_pos.x, floor_pos.y, floor_pos.z), glm::vec3(floor_scale.x, floor_scale.y, floor_scale.z)));
     std::vector<MeshBox> boxes = 
@@ -513,24 +979,42 @@ int main() {
 		.outerCutOff = glm::cos(glm::radians(15.0f)),
 	};
 
-    while (!glfwWindowShouldClose(window)) 
+    //while (!glfwWindowShouldClose(window)) 
+    LONGLONG frequency = aim_timer_get_os_freq();
+    LONGLONG last_frame = 0;
+    global_w32_window.is_running = true;
+    glViewport(0, 0, SRC_WIDTH, SRC_HEIGHT);
+    while (global_w32_window.is_running)
 	{
-        float currentFrame = static_cast<float>(glfwGetTime());
-		deltaTime = currentFrame - lastFrame;
-		lastFrame = currentFrame;
+        LONGLONG now = aim_timer_get_os_time();
+        LONGLONG dt_long = now - last_frame;
+        last_frame = now;
+        f32 dt = aim_timer_ticks_to_sec(dt_long, frequency);
+        global_input.dt = dt;
 
-        if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS)
-            curr_camera.process_keyboard(FORWARD, deltaTime);
-        if (glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS)
-            curr_camera.process_keyboard(BACKWARD, deltaTime);
-        if (glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS)
-            curr_camera.process_keyboard(LEFT, deltaTime);
-        if (glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS)
-            curr_camera.process_keyboard(RIGHT, deltaTime);
-        if (glfwGetKey(window, GLFW_KEY_SPACE) == GLFW_PRESS)
-			curr_camera.process_keyboard(UP, deltaTime);
-        if (glfwGetKey(window, GLFW_KEY_LEFT_CONTROL) == GLFW_PRESS)
-            curr_camera.process_keyboard(DOWN, deltaTime);
+        win32_process_pending_msgs();
+        if (input_is_key_pressed(&global_input, Keys_W))
+            curr_camera.process_keyboard(FORWARD, dt);
+        if (input_is_key_pressed(&global_input, Keys_S))
+            curr_camera.process_keyboard(BACKWARD, dt);
+        if (input_is_key_pressed(&global_input, Keys_A))
+            curr_camera.process_keyboard(LEFT, dt);
+        if (input_is_key_pressed(&global_input, Keys_D))
+            curr_camera.process_keyboard(RIGHT, dt);
+        if (input_is_key_pressed(&global_input, Keys_Space))
+			curr_camera.process_keyboard(UP, dt);
+        if (input_is_key_pressed(&global_input, Keys_Control))
+            curr_camera.process_keyboard(DOWN, dt);
+
+        
+        //if(global_input.curr_mouse_state.x - )
+        {
+
+            f32 xx = global_input.dx;
+            f32 yy = global_input.dy;
+            curr_camera.process_mouse_movement(xx, yy);
+        }
+        //global_input.curr_mouse_state.y = yPos;
 
         glEnable(GL_DEPTH_TEST);
         glDepthFunc(GL_LESS);
@@ -600,6 +1084,7 @@ int main() {
 			glm::scale(glm::mat4(1.0f), floor_meshbox.transform.scale);
 
 		skinning_shader.setMat4("model", model_mat);
+        // Esto va en OpenGL struct??
 		glDrawArrays(GL_TRIANGLES, 0, 36);
         for (unsigned int i = 0; i < boxes.size(); i++)
         {
@@ -620,15 +1105,10 @@ int main() {
             glDrawArrays(GL_TRIANGLES, 0, 36);
         }
 
-        if(is_key_just_pressed(game_input, KEY_A)){
-            printf("KEY_A is just pressed\n");
-        }
-
-        if(is_key_pressed(game_input, KEY_D)){
-            printf("KEY_A is just pressed\n");
-        }
-        game_input->keyboard_state.prev_state = game_input->keyboard_state.curr_state;
-        glfwPollEvents();
-        glfwSwapBuffers(window);
+        input_update(&global_input);
+        //game_input->keyboard_state.prev_state = game_input->keyboard_state.curr_state;
+        //glfwPollEvents();
+        //glfwSwapBuffers(window);
+        SwapBuffers(hdc);
     }
 }

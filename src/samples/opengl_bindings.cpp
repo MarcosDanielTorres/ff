@@ -1,5 +1,5 @@
-#include <gl/gl.h>
 #include<windows.h>
+#include <gl/gl.h>
 
 #define WGL_CONTEXT_MAJOR_VERSION_ARB           0x2091 // casey
 #define WGL_CONTEXT_MINOR_VERSION_ARB           0x2092 // casey
@@ -13,6 +13,16 @@
 #define ERROR_INVALID_PROFILE_ARB               0x2096
 #define WGL_CONTEXT_LAYER_PLANE_ARB             0x2093
 
+#define GL_FRAGMENT_SHADER                0x8B30
+#define GL_VERTEX_SHADER                  0x8B31
+#define GL_ARRAY_BUFFER                   0x8892
+#define GL_STATIC_DRAW                    0x88E4
+#define GL_COMPILE_STATUS                 0x8B81
+#define GL_LINK_STATUS                    0x8B82
+
+typedef ptrdiff_t GLsizeiptr;
+typedef char GLchar;
+
 #define OpenGLDefineFunction(name, ret, ...) \
  typedef ret (WINAPI *OpenGLType_##name) (__VA_ARGS__); \
  OpenGLType_##name name = 0;
@@ -25,12 +35,36 @@ OpenGLDefineFunction(glGenVertexArrays, void, GLsizei n, GLuint *arrays);
 OpenGLDefineFunction(glBindVertexArray, void, GLuint array);
 OpenGLDefineFunction(glDeleteVertexArrays, void, GLsizei n, const GLuint *arrays);
 
-	glGenBuffers(1, &VBO);
-	glBindBuffer(GL_ARRAY_BUFFER, VBO);
-	glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_STATIC_DRAW);
-	glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void*)(6 * sizeof(float)));
-	glEnableVertexAttribArray(2);
-    glDrawArrays(GL_TRIANGLES, 0, 36);
+OpenGLDefineFunction(glGenBuffers, void, GLsizei n, GLuint *buffers);
+OpenGLDefineFunction(glBindBuffer, void, GLenum target, GLuint buffer);
+OpenGLDefineFunction(glBufferData, void, GLenum target, GLsizeiptr size, const void *data, GLenum usage);
+OpenGLDefineFunction(glVertexAttribPointer, void, GLuint index, GLint size, GLenum type, GLboolean normalized, GLsizei stride, const void *pointer);
+OpenGLDefineFunction(glEnableVertexAttribArray, void, GLuint index);
 
+OpenGLDefineFunction(glCreateShader, GLuint, GLenum type);
+OpenGLDefineFunction(glCompileShader, void, GLuint shader);
+OpenGLDefineFunction(glShaderSource, void, GLuint shader, GLsizei count, const GLchar *const*string, const GLint *length);
+OpenGLDefineFunction(glCreateProgram, GLuint, void);
+OpenGLDefineFunction(glAttachShader, void, GLuint program, GLuint shader);
+OpenGLDefineFunction(glLinkProgram, void, GLuint program);
+OpenGLDefineFunction(glDeleteShader, void, GLuint shader);
+OpenGLDefineFunction(glUseProgram, void, GLuint program);
+OpenGLDefineFunction(glGetShaderiv, void, GLuint shader, GLenum pname, GLint *params);
+OpenGLDefineFunction(glGetShaderInfoLog, void, GLuint shader, GLsizei bufSize, GLsizei *length, GLchar *infoLog);
+OpenGLDefineFunction(glGetProgramiv, void, GLuint program, GLenum pname, GLint *params);
+OpenGLDefineFunction(glGetProgramInfoLog, void, GLuint program, GLsizei bufSize, GLsizei *length, GLchar *infoLog);
+
+OpenGLDefineFunction(glUniform1i, void, GLint location, GLint v0);
+OpenGLDefineFunction(glUniform1f, void, GLint location, GLfloat v0);
+OpenGLDefineFunction(glUniform2fv, void, GLint location, GLsizei count, const GLfloat *value);
+OpenGLDefineFunction(glUniform2f, void, GLint location, GLfloat v0, GLfloat v1);
+OpenGLDefineFunction(glUniform3fv, void, GLint location, GLsizei count, const GLfloat *value);
+OpenGLDefineFunction(glUniform3f, void, GLint location, GLfloat v0, GLfloat v1, GLfloat v2);
+OpenGLDefineFunction(glUniform4fv, void, GLint location, GLsizei count, const GLfloat *value);
+OpenGLDefineFunction(glUniform4f, void, GLint location, GLfloat v0, GLfloat v1, GLfloat v2, GLfloat v3);
+OpenGLDefineFunction(glUniformMatrix2fv, void, GLint location, GLsizei count, GLboolean transpose, const GLfloat *value);
+OpenGLDefineFunction(glUniformMatrix3fv, void, GLint location, GLsizei count, GLboolean transpose, const GLfloat *value);
+OpenGLDefineFunction(glUniformMatrix4fv, void, GLint location, GLsizei count, GLboolean transpose, const GLfloat *value);
+OpenGLDefineFunction(glGetUniformLocation, GLint, GLuint program, const GLchar *name);
 
 #define OpenGLGetFunction(name) (OpenGLType_##name) wglGetProcAddress(#name)

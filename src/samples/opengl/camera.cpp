@@ -76,8 +76,8 @@ void Camera::process_keyboard(Camera_Movement direction, float deltaTime)
 // processes input received from a mouse input system. Expects the offset value in both the x and y direction.
 void Camera::process_mouse_movement(float xoffset, float yoffset, GLboolean constrainPitch)
 {
-	xoffset *= mouse_sensitivity;
-	yoffset *= mouse_sensitivity;
+	xoffset *= mouse_sensitivity * 2.0f;
+	yoffset *= mouse_sensitivity * 2.0f;
 
 	yaw += xoffset;
 	pitch += yoffset;

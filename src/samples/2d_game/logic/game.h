@@ -358,7 +358,6 @@ void main_game_loop(OS_PixelBuffer *buffer, GameInput *input, GameMemory *memory
 
 
 #include <stdlib.h>
-#include <string.h>
 #include <math.h>
 #include <float.h>
 

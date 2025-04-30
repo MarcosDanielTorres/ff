@@ -379,7 +379,7 @@ int main()
 
     u32 window_width = 1280;
     u32 window_height = 720;
-    global_w32_window =  os_win32_open_window("UI example", window_width, window_height, win32_main_callback, WindowOpenFlags_Centered);
+    global_w32_window =  os_win32_open_window("UI example", window_width, window_height, win32_main_callback, 0);
     global_pixel_buffer = os_win32_create_buffer(window_width, window_height);
 
     // fonts
@@ -617,8 +617,27 @@ int main()
                 }
             }
 
-        const char* c  = "Test!";
-        draw_text(&global_pixel_buffer, 0, 100, c, font_info.font_table);
+        {
+            // TODO make this work
+            char buf[100];
+            char *at = buf;
+            char *end = buf + sizeof(buf);
+            const char* c  = "Mouse screen coordinates (%.2f, %.2f)";
+            at += _snprintf_s(at, (size_t)(end - at), (size_t)(end - at), c, mouse_p.x, mouse_p.y);
+            Str8 text = str8(buf, at - buf);
+            draw_text(&global_pixel_buffer, 0, 100, text, font_info.font_table);
+
+            /*
+            
+            char buf[200];
+            char *at = buf;
+            char *end = buf + sizeof(buf);
+
+            at += _snprintf_s(at, (size_t)(end - at), (size_t)(end - at), "(%2.f, %2.f)", debug_state->dmouse_p.x, debug_state->dmouse_p.y);
+            Str8 text = str8(buf, at - buf);
+            draw_text(&global_pixel_buffer, 100, 200, text, font_info.font_table);
+            */
+        }
 
 
         //debug_state->active = 0;

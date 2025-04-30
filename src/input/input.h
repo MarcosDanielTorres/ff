@@ -81,6 +81,8 @@ struct Input
     KeyboardState prev_keyboard_state;
     MouseState curr_mouse_state;
     MouseState prev_mouse_state;
+    f32 dx;
+    f32 dy;
     // TODO Esto no va aca
     f32 dt;
 };
@@ -88,9 +90,12 @@ struct Input
 // Just define a Input variable and call input_update and the end of the loop!
 void input_update(Input *input)
 {
+
+    input->dx = 0.0f;
+    input->dy = 0.0f;
     input->prev_keyboard_state = input->curr_keyboard_state;
     input->prev_mouse_state = input->curr_mouse_state;
-    memset(&input->curr_keyboard_state, 0, sizeof(input->curr_keyboard_state));
+    //memset(&input->curr_keyboard_state, 0, sizeof(input->curr_keyboard_state));
     // If i let this line uncommented i will only have a mouse position when im actively moving the mouse. Which is not what i want!
     // Input in general seems wrong
     //memset(&input->curr_mouse_state, 0, sizeof(input->curr_mouse_state));

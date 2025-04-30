@@ -1,4 +1,4 @@
-void os_win32_toggle_fullscreen(HWND handle, WINDOWPLACEMENT *window_placement) 
+static void os_win32_toggle_fullscreen(HWND handle, WINDOWPLACEMENT *window_placement) 
 {
   DWORD window_style = GetWindowLong(handle, GWL_STYLE);
   if (window_style & WS_OVERLAPPEDWINDOW) 
@@ -26,7 +26,7 @@ void os_win32_toggle_fullscreen(HWND handle, WINDOWPLACEMENT *window_placement)
   }
 }
 
-OS_Window_Dimension os_win32_get_window_dimension(HWND handle) {
+static OS_Window_Dimension os_win32_get_window_dimension(HWND handle) {
     OS_Window_Dimension result = {0};
     RECT rect = {0};
     GetClientRect(handle, &rect);
@@ -35,7 +35,7 @@ OS_Window_Dimension os_win32_get_window_dimension(HWND handle) {
     return result;
 }
 
-OS_PixelBuffer os_win32_create_buffer(int width, int height) {
+static OS_PixelBuffer os_win32_create_buffer(int width, int height) {
     OS_PixelBuffer result = {0};
     BITMAPINFO info = {0};
     info.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
@@ -55,7 +55,7 @@ OS_PixelBuffer os_win32_create_buffer(int width, int height) {
     return result;
 }
 
-void os_win32_display_buffer(HDC device_context, OS_PixelBuffer* buffer, i32 window_width, i32 window_height) {
+static void os_win32_display_buffer(HDC device_context, OS_PixelBuffer* buffer, i32 window_width, i32 window_height) {
     if(window_width >= buffer->width * 2 && 
        window_height >= buffer->height * 2)
     {
@@ -83,9 +83,12 @@ void os_win32_display_buffer(HDC device_context, OS_PixelBuffer* buffer, i32 win
 
 
 
-OS_Window os_win32_open_window(const char* window_name, u32 window_width, u32 window_height, WIN32MAINCALLBACK w32_main_callback, WindowOpenFlags flags, HINSTANCE instance) 
+static OS_Window os_win32_open_window(const char* window_name, u32 window_width, u32 window_height, WIN32MAINCALLBACK w32_main_callback, WindowOpenFlags flags, HINSTANCE instance) 
 {
     RECT window_rect = {0};
+    // TODO check this
+    window_rect.right = window_width;
+    window_rect.bottom = window_height;
     if(flags & WindowOpenFlags_Centered)
     {
         u32 screen_width = GetSystemMetrics(SM_CXSCREEN);
@@ -97,9 +100,12 @@ OS_Window os_win32_open_window(const char* window_name, u32 window_width, u32 wi
                 (screen_height / 2) + (window_height / 2));
     } 
 
+    // NOTE Its only needed if I'm using the WS_OVERLAPPEDWINDOW because it calculates the
+    // the actual window size based on the given client rectangle. This is how GLFW does it (visually at lesast, i havent' looked up the code)
+    // 
+    // if i use this for nothing: WS_POPUP then AdjustWindowRect is not needed as there is nothing but the client area to account for
     AdjustWindowRect(&window_rect, WS_OVERLAPPEDWINDOW | WS_VISIBLE, false);
-
-    OS_Window result = {0};
+    OS_Window result;
     WNDCLASSA WindowClass = {0};
     {
         WindowClass.style = CS_HREDRAW|CS_VREDRAW;
@@ -113,7 +119,18 @@ OS_Window os_win32_open_window(const char* window_name, u32 window_width, u32 wi
         RegisterClass(&WindowClass);
     }
 
-    DWORD style = (WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX | WS_MAXIMIZEBOX);
+    u32 window_left = window_rect.left;
+    u32 window_top = window_rect.top;
+    // im setting this to CW_USEDEFAULT because otherwise is too close to the top screen limits
+    // when i dont specify the centered flag.
+    if (window_rect.left < 0)
+    {
+        window_left = CW_USEDEFAULT;
+    }
+    if (window_rect.top < 0)
+    {
+        window_top = CW_USEDEFAULT;
+    }
     HWND handle = CreateWindowExA(
         0,
         "graphical-window", //[in, optional] LPCSTR    lpClassName,
@@ -123,8 +140,8 @@ OS_Window os_win32_open_window(const char* window_name, u32 window_width, u32 wi
         //CW_USEDEFAULT, //[in]           int       Y,
         //rect.right - rect.left,//[in]           int       nWidth,
         //rect.bottom - rect.top, //[in]           int       nHeight,
-        window_rect.left, //[in]           int       X,
-        window_rect.top, //[in]           int       Y,
+        window_left, //[in]           int       X,
+        window_top, //[in]           int       Y,
         window_rect.right - window_rect.left,//[in]           int       nWidth,
         window_rect.bottom - window_rect.top, //[in]           int       nHeight,
         0, //[in, optional] HWND      hWndParent,

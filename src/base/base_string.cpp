@@ -34,11 +34,64 @@ Str8 str8_fmt(Arena *arena, const char* fmt, ...) {
     Str8 result = {0};
     u32 thankyouchatgpt = _vscprintf(fmt, args);
     result.size = thankyouchatgpt;
+
+    //TODO 
     result.str = (u8*)arena_push_size(arena, u8, result.size);
-    int comomevasadecirqueson17bytes = vsprintf((char*)result.str, fmt, args);
+    // Lo puedo reemplazar por: ????
+    //result.str = (u8*)arena_push_copy(arena, result.size, (u8*) buf);?????
+
+    vsprintf((char*)result.str, fmt, args);
     //char buf[300];
     //result.str = (u8*)buf;
     va_end(args);
+    return result;
+}
+
+
+// todo completar
+void str8_to_cstring(Str8 a, u8* buf)
+{
+    for(u32 i = 0; i < a.size; i++)
+    {
+        *buf++ = a.str[i]; 
+    }
+    *buf = '\0';
+}
+
+Str8 str8_concat(Arena *arena, Str8 a, Str8 b)
+{
+    Str8 result = {0};
+    result.size = a.size + b.size;
+    // no arena alternative 
+    //char *buf = (char*)malloc(200);
+    // arena alternative 
+    char buf[200];
+
+    /*
+        TODO
+        otra alternativa es hacer lo que se hace en concat:
+        pushea un size el tamanio de a + b y despues lo lleno de cosas y retorno la arena... 
+
+        aca en estos ejemplos creo que el push copy no va, ni en concat ni en este porque 
+        el copy es copiarle algo a la memoria despues de hacer un push size, el tema
+        es que no tengo nada que copiar porque esta vacio
+
+        Supongo que no se usa copy en estos dos casos, ver! Donde mieraa uso un push_copy entonces?
+        Por ahora solo lo use en vulkan, se me ocurren ejemplos pero no es este el caso!
+    */
+    char *at = buf;
+    for(u32 i = 0; i < a.size; i++)
+    {
+        *at++ = a.str[i];
+    }
+    for(u32 i = 0; i < b.size; i++)
+    {
+        *at++ = b.str[i];
+    }
+    // no arena alternative 
+    // result.data = (u8*)buf;
+    // arena alternative 
+    result.str = (u8*)arena_push_copy(arena, result.size, (u8*)buf);
     return result;
 }
 

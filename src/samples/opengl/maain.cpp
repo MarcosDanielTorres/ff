@@ -1,6 +1,7 @@
 #include <stdint.h>
 #include <stdio.h>
-
+#include <vector>
+#include <string>
 
 #include "samples/opengl_bindings.cpp"
 // thirdparty
@@ -158,6 +159,7 @@ struct OpenGL
     OpenGLDeclareMemberFunction(glUniformMatrix4fv);
     OpenGLDeclareMemberFunction(glGetUniformLocation);
 };
+
 #include "shader.h"
 
 ///////// TODO cleanup ////////////
@@ -620,7 +622,6 @@ int main() {
         //wglCreateContextAttribsARB = OpenGLGetFunction(wglCreateContextAttribsARB);
         OpenGLSetFunction(wglCreateContextAttribsARB)
 
-
         i32 attrib_list[] = {
             WGL_CONTEXT_MAJOR_VERSION_ARB, 3,
             WGL_CONTEXT_MINOR_VERSION_ARB, 3,
@@ -633,10 +634,7 @@ int main() {
         wglDeleteContext(tempRC);
         wglMakeCurrent(hdc, hglrc);
     }
-
-    //wglGetExtensionsStringEXT = OpenGLGetFunction(wglGetExtensionsStringEXT);
     OpenGLSetFunction(wglGetExtensionsStringEXT);
-
     {
         const char* extensions = opengl->wglGetExtensionsStringEXT();
         b32 swap_control_supported = false;
@@ -665,9 +663,7 @@ int main() {
 
         }
         if(swap_control_supported) {
-            //wglSwapIntervalEXT = OpenGLGetFunction(wglSwapIntervalEXT);
             OpenGLSetFunction(wglSwapIntervalEXT);
-            //wglGetSwapIntervalEXT = OpenGLGetFunction(wglGetSwapIntervalEXT);
             OpenGLSetFunction(wglGetSwapIntervalEXT);
             if(opengl->wglSwapIntervalEXT(1)) 
             {
@@ -676,11 +672,8 @@ int main() {
         }
     }
 
-    //glGenVertexArrays = OpenGLGetFunction(glGenVertexArrays);
     OpenGLSetFunction(glGenVertexArrays);
-    //glBindVertexArray = OpenGLGetFunction(glBindVertexArray);
     OpenGLSetFunction(glBindVertexArray);
-    //glDeleteVertexArrays = OpenGLGetFunction(glDeleteVertexArrays);
     OpenGLSetFunction(glDeleteVertexArrays);
 
 	OpenGLSetFunction(glGenBuffers);
@@ -688,7 +681,6 @@ int main() {
 	OpenGLSetFunction(glBufferData);
 	OpenGLSetFunction(glVertexAttribPointer);
 	OpenGLSetFunction(glEnableVertexAttribArray);
-
 
     OpenGLSetFunction(glCreateShader);
     OpenGLSetFunction(glCompileShader);
@@ -715,31 +707,9 @@ int main() {
     OpenGLSetFunction(glUniformMatrix3fv);
     OpenGLSetFunction(glUniformMatrix4fv);
     OpenGLSetFunction(glGetUniformLocation);
-    //glfwInit();
-    //glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
-	//glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
-	//glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
-
-
-    //GLFWwindow* window = glfwCreateWindow(SRC_WIDTH, SRC_HEIGHT, "Some GLFW Window!", NULL, NULL);
-
-	//glfwMakeContextCurrent(window);
- 	//glfwSetFramebufferSizeCallback(window, framebuffer_size_callback);
-	//glfwSetKeyCallback(window, keyboard_callback);
-	//glfwSetCursorPosCallback(window, mouse_callback);
-	//glfwSetScrollCallback(window, scroll_callback);
 
 	//glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
 
-	//if (!gladLoadGLLoader((GLADloadproc)glfwGetProcAddress)) {
-	//	return -1;
-	//}
-
-    // init game input
-    //GameInput temp_game_input{};
-    //game_input = &temp_game_input;
-
-	
 	// physics-init
 	#if 0
     JPH::RegisterDefaultAllocator();
@@ -766,11 +736,14 @@ int main() {
     projection = glm::perspective(glm::radians(curr_camera.zoom), (float)SRC_WIDTH / (float)SRC_HEIGHT, 0.1f, 10000.0f);
 
     // shaders
-    Shader skinning_shader("skel_shader-2.vs.glsl", "6.multiple_lights.fs.glsl", opengl);
+    //Shader skinning_shader("skel_shader-2.vs.glsl", "6.multiple_lights.fs.glsl", opengl);
+    Shader skinning_shader = {};
+    //shader_init(&skinning_shader, opengl, str8("skel_shader-2.vs.glsl"), str8("6.multiple_lights.fs.glsl"));
+    shader_init(&skinning_shader, opengl, "skel_shader-2.vs.glsl", "6.multiple_lights.fs.glsl");
 	float vertices[] = {
 		// Back face
 		-0.5f, -0.5f, -0.5f,	0.0f,  0.0f, -1.0f,			0.0f, 0.0f, // Bottom-left
-		 0.5f,  0.5f, -0.5f,	0.0f,  0.0f, -1.0f,			1.0f, 1.0f, // top-right
+		 0.5f,  0.5f, -0.5f,	0.0f,  0.0f, -1.0f,			1.0f, 1.0f, // top-rightopengl, 
 		 0.5f, -0.5f, -0.5f,	0.0f,  0.0f, -1.0f,			1.0f, 0.0f, // bottom-right         
 		 0.5f,  0.5f, -0.5f,	0.0f,  0.0f, -1.0f,			1.0f, 1.0f, // top-right
 		-0.5f, -0.5f, -0.5f,	0.0f,  0.0f, -1.0f,			0.0f, 0.0f, // bottom-left
@@ -814,7 +787,6 @@ int main() {
     unsigned int VBO, cubeVAO;
 	opengl->glGenVertexArrays(1, &cubeVAO);
 	opengl->glGenBuffers(1, &VBO);
-
 
 	opengl->glBindBuffer(GL_ARRAY_BUFFER, VBO);
 	opengl->glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_STATIC_DRAW);
@@ -1025,49 +997,83 @@ int main() {
 
         glm::mat4 view = curr_camera.GetViewMatrix();
 
-        skinning_shader.use();
-		skinning_shader.setMat4("nodeMatrix", glm::mat4(1.0f));
+        shader_use(skinning_shader);
+		shader_set_mat4(skinning_shader, "nodeMatrix", glm::mat4(1.0f));
         glm::vec3 model_color = glm::vec3(1.0f, 0.5f, 0.31f);
-		skinning_shader.setVec3("objectColor", model_color.r, model_color.g, model_color.b);
-		skinning_shader.setInt("material.diffuse", 0);
-		skinning_shader.setInt("material.specular", 1);
-		skinning_shader.setFloat("material.shininess", model_material_shininess);
+		shader_set_vec3(skinning_shader, "objectColor", model_color.r, model_color.g, model_color.b);
+		shader_set_int(skinning_shader, "material.diffuse", 0);
+		shader_set_int(skinning_shader, "material.specular", 1);
+		shader_set_float(skinning_shader, "material.shininess", model_material_shininess);
 
-        skinning_shader.setVec3("viewPos", curr_camera.position);
-        skinning_shader.setVec3("spotLight.position", curr_camera.position);
-        skinning_shader.setVec3("spotLight.direction", curr_camera.forward);
+        shader_set_vec3(skinning_shader, "viewPos", curr_camera.position);
+        shader_set_vec3(skinning_shader, "spotLight.position", curr_camera.position);
+        shader_set_vec3(skinning_shader, "spotLight.direction", curr_camera.forward);
 
 		// directional_light
-		skinning_shader.setVec3("dirLight.direction", directional_light.direction);
-		skinning_shader.setVec3("dirLight.ambient", directional_light.ambient);
-		skinning_shader.setVec3("dirLight.diffuse", directional_light.diffuse);
-		skinning_shader.setVec3("dirLight.specular", directional_light.specular);
+		shader_set_vec3(skinning_shader, "dirLight.direction", directional_light.direction);
+		shader_set_vec3(skinning_shader, "dirLight.ambient", directional_light.ambient);
+		shader_set_vec3(skinning_shader, "dirLight.diffuse", directional_light.diffuse);
+		shader_set_vec3(skinning_shader, "dirLight.specular", directional_light.specular);
 
 		// point_lights
 		int n = sizeof(point_lights) / sizeof(point_lights[0]);
 		for (int i = 0; i < n; i++) {
-			std::string prefix = "pointLights[" + std::to_string(i) + "]";
+            //Str8 prefix = str8_fmt(&per_frame_arena, "pointLights[%d]", i);
+            
+			//shader_set_vec3(skinning_shader, str8_concat(prefix, str8(".position")), point_lights[i].transform.pos);
+			//shader_set_vec3(skinning_shader, str8_concat(prefix, str8(".ambient")), point_lights[i].ambient);
+			//shader_set_vec3(skinning_shader, str8_concat(prefix, str8(".diffuse")), point_lights[i].diffuse);
+			//shader_set_vec3(skinning_shader, str8_concat(prefix, str8(".specular")), point_lights[i].specular);
+			//shader_set_float(skinning_shader, str8_concat(prefix, str8(".constant")), point_lights[i].constant);
+			//shader_set_float(skinning_shader, str8_concat(prefix, str8(".linear")), point_lights[i].linear);
+			//shader_set_float(skinning_shader, str8_concat(prefix, str8(".quadratic")), point_lights[i].quadratic);
+            
 
-			skinning_shader.setVec3(prefix + ".position", point_lights[i].transform.pos);
-			skinning_shader.setVec3(prefix + ".ambient", point_lights[i].ambient);
-			skinning_shader.setVec3(prefix + ".diffuse", point_lights[i].diffuse);
-			skinning_shader.setVec3(prefix + ".specular", point_lights[i].specular);
-			skinning_shader.setFloat(prefix + ".constant", point_lights[i].constant);
-			skinning_shader.setFloat(prefix + ".linear", point_lights[i].linear);
-			skinning_shader.setFloat(prefix + ".quadratic", point_lights[i].quadratic);
+            #if 0
+            // NOTE using _sprintf_s here works because it appends a '\0' after processing. If not I would have to advance at by 
+            // the total written, place a '\0' and come back
+            // 
+            // Remark: "The _snprintf_s function formats and stores count or fewer characters in buffer and appends a terminating NULL."
+            // Source: https://learn.microsoft.com/en-us/cpp/c-runtime-library/reference/snprintf-s-snprintf-s-l-snwprintf-s-snwprintf-s-l?view=msvc-170#remarks
+            char prefix[300];
+            char *end = prefix + sizeof(prefix);
+            char *at = prefix;
+            at += _snprintf_s(at, (size_t)(end - at), (size_t)(end - at), "pointLights[%d]", i);
+
+            _snprintf_s(at, (size_t)(end - at), (size_t)(end - at), ".position");
+			shader_set_vec3(skinning_shader, prefix, point_lights[i].transform.pos);
+
+            _snprintf_s(at, (size_t)(end - at), (size_t)(end - at), ".ambient");
+			shader_set_vec3(skinning_shader, prefix, point_lights[i].ambient);
+
+            _snprintf_s(at, (size_t)(end - at), (size_t)(end - at), ".diffuse");
+			shader_set_vec3(skinning_shader, prefix, point_lights[i].diffuse);
+
+            _snprintf_s(at, (size_t)(end - at), (size_t)(end - at), ".specular");
+			shader_set_vec3(skinning_shader, prefix, point_lights[i].specular);
+
+            _snprintf_s(at, (size_t)(end - at), (size_t)(end - at), ".constant");
+			shader_set_float(skinning_shader, prefix, point_lights[i].constant);
+
+            _snprintf_s(at, (size_t)(end - at), (size_t)(end - at), ".linear");
+			shader_set_float(skinning_shader, prefix, point_lights[i].linear);
+
+            _snprintf_s(at, (size_t)(end - at), (size_t)(end - at), ".quadratic");
+			shader_set_float(skinning_shader, prefix, point_lights[i].quadratic);
+            #endif
 		}
 
 		// spot_light
-		skinning_shader.setVec3("spotLight.ambient", spot_light.ambient);
-		skinning_shader.setVec3("spotLight.diffuse", spot_light.diffuse);
-		skinning_shader.setVec3("spotLight.specular", spot_light.specular);
-		skinning_shader.setFloat("spotLight.constant", spot_light.constant);
-		skinning_shader.setFloat("spotLight.linear", spot_light.linear);
-		skinning_shader.setFloat("spotLight.quadratic", spot_light.quadratic);
-		skinning_shader.setFloat("spotLight.cutOff", spot_light.cutOff);
-		skinning_shader.setFloat("spotLight.outerCutOff", spot_light.outerCutOff);
-		skinning_shader.setMat4("projection", projection);
-		skinning_shader.setMat4("view", view);
+		shader_set_vec3(skinning_shader, "spotLight.ambient", spot_light.ambient);
+		shader_set_vec3(skinning_shader, "spotLight.diffuse", spot_light.diffuse);
+		shader_set_vec3(skinning_shader, "spotLight.specular", spot_light.specular);
+		shader_set_float(skinning_shader, "spotLight.constant", spot_light.constant);
+		shader_set_float(skinning_shader, "spotLight.linear", spot_light.linear);
+		shader_set_float(skinning_shader, "spotLight.quadratic", spot_light.quadratic);
+		shader_set_float(skinning_shader, "spotLight.cutOff", spot_light.cutOff);
+		shader_set_float(skinning_shader, "spotLight.outerCutOff", spot_light.outerCutOff);
+		shader_set_mat4(skinning_shader, "projection", projection);
+		shader_set_mat4(skinning_shader, "view", view);
         
 		// bind diffuse map
         #if 0
@@ -1083,7 +1089,7 @@ int main() {
 			glm::mat4_cast(floor_meshbox.transform.rot) *
 			glm::scale(glm::mat4(1.0f), floor_meshbox.transform.scale);
 
-		skinning_shader.setMat4("model", model_mat);
+		shader_set_mat4(skinning_shader, "model", model_mat);
         // Esto va en OpenGL struct??
 		glDrawArrays(GL_TRIANGLES, 0, 36);
         for (unsigned int i = 0; i < boxes.size(); i++)
@@ -1098,9 +1104,9 @@ int main() {
             glm::mat4 model = glm::translate(glm::mat4(1.0f), boxes[i].transform.pos) *
                 glm::mat4_cast(boxes[i].transform.rot) *
                 glm::scale(glm::mat4(1.0f), boxes[i].transform.scale);
-            skinning_shader.setMat4("model", model);
+            shader_set_mat4(skinning_shader, "model", model);
 
-            //skinning_shader.setMat4("nodeMatrix", glm::mat4(1.0f));
+            //shader_set_mat4("nodeMatrix", glm::mat4(1.0f));
 
             glDrawArrays(GL_TRIANGLES, 0, 36);
         }

@@ -1,10 +1,4 @@
 #pragma once
-#include <iostream>
-#include <fstream>
-#include <string>
-#include <sstream>
-#include <filesystem>
-
 
 struct Shader
 {
@@ -12,84 +6,61 @@ struct Shader
     OpenGL *opengl;
 };
 
-void checkCompileErrors(OpenGL *opengl, GLuint shader, std::string type);
-//void shader_init(Shader *shader, OpenGL *opengl, Str8 vertex_path, Str8 fragment_path)
-void shader_init(Shader *shader, OpenGL *opengl, const char *vertex_path, const char *fragment_path)
+void checkCompileErrors(OpenGL *opengl, GLuint shader, const char *type);
+
+void shader_init(Shader *shader, OpenGL *opengl, Str8 vertex_path, Str8 fragment_path)
 {
+	TempArena temp = temp_begin(&g_transient_arena);
     shader->opengl = opengl;
+	{
+		char buf[MAX_PATH];
+		if(GetCurrentDirectory(MAX_PATH, buf))
 		{
-			std::filesystem::path cwd = std::filesystem::current_path();
-			//AIM_DEBUG("CURRENT PATH: %s", cwd.string().c_str());
-			printf("CURRENT PATH: %s", cwd.string().c_str());
+			printf("CURRENT PATH: %s\n", buf);
 		}
+	}
 
 
-        // TODO deal with assets
-		//std::string vertexFullPath = std::string(AIM_ENGINE_ASSETS_PATH) + vertexPath;
-		//std::string fragmentFullPath = std::string(AIM_ENGINE_ASSETS_PATH)  + fragmentPath;
-		//AIM_DEBUG("Looking for vert shader at: %s", vertexFullPath.c_str());
-		//AIM_DEBUG("Looking for frag shader at: %s", fragmentFullPath.c_str());
-		std::string vertexFullPath = std::string("build/") + vertex_path;
-		std::string fragmentFullPath =  std::string("build/") + fragment_path;
-		printf("Looking for vert shader at: %s\n", vertexFullPath.c_str());
-		printf("Looking for frag shader at: %s\n", fragmentFullPath.c_str());
+	Str8 vertexFullPath = str8_concat(temp.arena, str8("build/"), vertex_path);
+	Str8 fragmentFullPath =  str8_concat(temp.arena, str8("build/"), fragment_path);
+	printf("Looking for vert shader at: %.*s\n", (u32)vertexFullPath.size, vertexFullPath.str);
+	printf("Looking for frag shader at: %.*s\n", (u32)fragmentFullPath.size, fragmentFullPath.str);
 
-		// 1. retrieve the vertex/fragment source code from filePath
-		std::string vertexCode;
-		std::string fragmentCode;
-		std::ifstream vShaderFile;
-		std::ifstream fShaderFile;
+	const char *vShaderPath = str8_to_cstring(temp.arena, vertexFullPath);
+	const char *fShaderPath = str8_to_cstring(temp.arena, fragmentFullPath);
 
-		// ensure ifstream objects can throw exceptions:
-		vShaderFile.exceptions(std::ifstream::failbit | std::ifstream::badbit);
-		fShaderFile.exceptions(std::ifstream::failbit | std::ifstream::badbit);
-		try
-		{
-			// open files
-			vShaderFile.open(vertexFullPath);
-			fShaderFile.open(fragmentFullPath);
-			std::stringstream vShaderStream, fShaderStream;
-			// read file's buffer contents into streams
-			vShaderStream << vShaderFile.rdbuf();
-			fShaderStream << fShaderFile.rdbuf();
-			// close file handlers
-			vShaderFile.close();
-			fShaderFile.close();
-			// convert stream into string
-			vertexCode = vShaderStream.str();
-			fragmentCode = fShaderStream.str();
-		}
-		catch (std::ifstream::failure& e)
-		{
-			std::cout << "ERROR::SHADER::FILE_NOT_SUCCESSFULLY_READ: " << e.what() << std::endl;
-		}
-		const char* vShaderCode = vertexCode.c_str();
-		const char* fShaderCode = fragmentCode.c_str();
-		// 2. compile shaders
-		unsigned int vertex, fragment;
-		// vertex shader
-		vertex = opengl->glCreateShader(GL_VERTEX_SHADER);
-		opengl->glShaderSource(vertex, 1, &vShaderCode, NULL);
-		opengl->glCompileShader(vertex);
-		checkCompileErrors(opengl, vertex, "VERTEX");
-		// fragment Shader
-		fragment = opengl->glCreateShader(GL_FRAGMENT_SHADER);
-		opengl->glShaderSource(fragment, 1, &fShaderCode, NULL);
-		opengl->glCompileShader(fragment);
-		checkCompileErrors(opengl, fragment, "FRAGMENT");
-		// shader Program
-		u32 ID = opengl->glCreateProgram();
-        shader->id = ID;
-		opengl->glAttachShader(ID, vertex);
-		opengl->glAttachShader(ID, fragment);
-		opengl->glLinkProgram(ID);
-		checkCompileErrors(opengl, ID, "PROGRAM");
-		// delete the shaders as they're linked into our program now and no longer necessary
-		opengl->glDeleteShader(vertex);
-		opengl->glDeleteShader(fragment);
+	OS_FileReadResult vertex_code = os_file_read(temp.arena, vShaderPath);
+	OS_FileReadResult fragment_code = os_file_read(temp.arena, fShaderPath);
+
+	const char* vShaderCode = (const char*)vertex_code.data;
+	const char* fShaderCode = (const char*)fragment_code.data;
+
+	// 2. compile shaders
+	unsigned int vertex, fragment;
+	// vertex shader
+	vertex = opengl->glCreateShader(GL_VERTEX_SHADER);
+	opengl->glShaderSource(vertex, 1, &vShaderCode, NULL);
+	opengl->glCompileShader(vertex);
+	checkCompileErrors(opengl, vertex, "VERTEX");
+	// fragment Shader
+	fragment = opengl->glCreateShader(GL_FRAGMENT_SHADER);
+	opengl->glShaderSource(fragment, 1, &fShaderCode, NULL);
+	opengl->glCompileShader(fragment);
+	checkCompileErrors(opengl, fragment, "FRAGMENT");
+	// shader Program
+	u32 ID = opengl->glCreateProgram();
+	shader->id = ID;
+	opengl->glAttachShader(ID, vertex);
+	opengl->glAttachShader(ID, fragment);
+	opengl->glLinkProgram(ID);
+	checkCompileErrors(opengl, ID, "PROGRAM");
+	// delete the shaders as they're linked into our program now and no longer necessary
+	opengl->glDeleteShader(vertex);
+	opengl->glDeleteShader(fragment);
+	temp_end(temp);
 }
 
-void checkCompileErrors(OpenGL *opengl, GLuint shader, std::string type)
+void checkCompileErrors(OpenGL *opengl, GLuint shader, const char *type)
 {
     GLint success;
     GLchar infoLog[1024];
@@ -99,7 +70,7 @@ void checkCompileErrors(OpenGL *opengl, GLuint shader, std::string type)
         if (!success)
         {
             opengl->glGetShaderInfoLog(shader, 1024, NULL, infoLog);
-            std::cout << "ERROR::SHADER_COMPILATION_ERROR of type: " << type << "\n" << infoLog << "\n -- --------------------------------------------------- -- " << std::endl;
+            printf("ERROR::PROGRAM_LINKING_ERROR of type: %s\n%s\n -- --------------------------------------------------- -- ", type, infoLog);
         }
     }
     else
@@ -108,7 +79,7 @@ void checkCompileErrors(OpenGL *opengl, GLuint shader, std::string type)
         if (!success)
         {
             opengl->glGetProgramInfoLog(shader, 1024, NULL, infoLog);
-            std::cout << "ERROR::PROGRAM_LINKING_ERROR of type: " << type << "\n" << infoLog << "\n -- --------------------------------------------------- -- " << std::endl;
+            printf("ERROR::PROGRAM_LINKING_ERROR of type: %s\n%s\n -- --------------------------------------------------- -- ", type, infoLog);
         }
     }
 }
@@ -127,6 +98,14 @@ void shader_set_int(Shader shader, const char *name, int value)
     shader.opengl->glUniform1i(shader.opengl->glGetUniformLocation(shader.id, name), value);
 }
 // ------------------------------------------------------------------------
+void shader_set_float(Shader shader, Str8 name, float value) 
+{
+	TempArena temp = temp_begin(&g_transient_arena);
+	const char *namem = str8_to_cstring(temp.arena, name);
+    shader.opengl->glUniform1f(shader.opengl->glGetUniformLocation(shader.id, namem), value);
+	temp_end(temp);
+}
+
 void shader_set_float(Shader shader, const char *name, float value) 
 {
     shader.opengl->glUniform1f(shader.opengl->glGetUniformLocation(shader.id, name), value);
@@ -141,6 +120,14 @@ void shader_set_vec2(Shader shader, const char *name, f32 x, f32 y)
     shader.opengl->glUniform2f(shader.opengl->glGetUniformLocation(shader.id, name), x, y);
 }
 // ------------------------------------------------------------------------
+void shader_set_vec3(Shader shader, Str8 name, const glm::vec3& value) 
+{
+	TempArena temp = temp_begin(&g_transient_arena);
+	const char *namem = str8_to_cstring(temp.arena, name);
+    shader.opengl->glUniform3fv(shader.opengl->glGetUniformLocation(shader.id, namem), 1, &value[0]);
+	temp_end(temp);
+}
+
 void shader_set_vec3(Shader shader, const char *name, const glm::vec3& value) 
 {
     shader.opengl->glUniform3fv(shader.opengl->glGetUniformLocation(shader.id, name), 1, &value[0]);

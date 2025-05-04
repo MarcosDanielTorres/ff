@@ -2,6 +2,7 @@
 #include <stdio.h>
 #include <vector>
 #include <string>
+// fileysystem, sstream, fstream breaks the macro 'internal'
 
 #include "samples/opengl_bindings.cpp"
 // thirdparty
@@ -12,12 +13,13 @@
 
     primero migrar glfw, despues shader, despues chequear el internal
 */
-#define internal_linkage static
-//#define internal static
+//#define internal_linkage static
+#define internal static
 #define global_variable static
 #define local_persist static
 #define RAW_INPUT 1
 
+// TODO get the core, i should only fix the assert macro! (just call it Assert)
 typedef uint8_t u8;
 typedef uint16_t u16;
 typedef uint32_t u32;
@@ -30,6 +32,10 @@ typedef float f32;
 typedef double f64;
 typedef uint32_t b32;
 typedef u32 b32;
+
+#define kb(value) (value * 1024)
+#define mb(value) (1024 * kb(value))
+#define gb(value) (1024 * mb(value))
 
 // glm
 #include <glm/glm.hpp>
@@ -99,11 +105,15 @@ typedef u32 b32;
 typedef Input GameInput;
 #include "camera.h"
 //TODO: get the timer
+
+#define AIM_PROFILER
 #include "aim_timer.h"
+#include "aim_profiler.h"
 
 
 #include "camera.cpp"
 #include "aim_timer.cpp"
+#include "aim_profiler.cpp"
 
 #include "components.h"
 using namespace aim::Components;
@@ -159,6 +169,8 @@ struct OpenGL
     OpenGLDeclareMemberFunction(glUniformMatrix4fv);
     OpenGLDeclareMemberFunction(glGetUniformLocation);
 };
+
+static Arena g_transient_arena;
 
 #include "shader.h"
 
@@ -571,7 +583,10 @@ LRESULT CALLBACK win32_main_callback(HWND Window, UINT Message, WPARAM wParam, L
 
 
 int main() {
+	aim_profiler_begin();
     global_w32_window = os_win32_open_window("opengl", SRC_WIDTH, SRC_HEIGHT, win32_main_callback, 1);
+	
+	arena_init(&g_transient_arena, 1024 * 1024 * 2);
 
     //os_win32_toggle_fullscreen(global_w32_window.handle, &global_w32_window.window_placement);
 
@@ -736,10 +751,9 @@ int main() {
     projection = glm::perspective(glm::radians(curr_camera.zoom), (float)SRC_WIDTH / (float)SRC_HEIGHT, 0.1f, 10000.0f);
 
     // shaders
-    //Shader skinning_shader("skel_shader-2.vs.glsl", "6.multiple_lights.fs.glsl", opengl);
-    Shader skinning_shader = {};
-    //shader_init(&skinning_shader, opengl, str8("skel_shader-2.vs.glsl"), str8("6.multiple_lights.fs.glsl"));
-    shader_init(&skinning_shader, opengl, "skel_shader-2.vs.glsl", "6.multiple_lights.fs.glsl");
+    Shader skinning_shader{};
+    shader_init(&skinning_shader, opengl, str8("skel_shader-2.vs.glsl"), str8("6.multiple_lights.fs.glsl"));
+
 	float vertices[] = {
 		// Back face
 		-0.5f, -0.5f, -0.5f,	0.0f,  0.0f, -1.0f,			0.0f, 0.0f, // Bottom-left
@@ -834,8 +848,6 @@ int main() {
 		MeshBox(Transform3D(glm::vec3(3.0f, 3.0f, -5.0f))),
 
 		///////
-
-
 		MeshBox(Transform3D(glm::vec3(0.0f,  13.0f,  0.0f))),
 		MeshBox(Transform3D(glm::vec3(5.0f,  6.0f, -10.0f))),
 		MeshBox(Transform3D(glm::vec3(-1.5f, 5.2f, -2.5f))),
@@ -951,6 +963,92 @@ int main() {
 		.outerCutOff = glm::cos(glm::radians(15.0f)),
 	};
 
+    shader_use(skinning_shader);
+    shader_set_mat4(skinning_shader, "nodeMatrix", glm::mat4(1.0f));
+    glm::vec3 model_color = glm::vec3(1.0f, 0.5f, 0.31f);
+    shader_set_vec3(skinning_shader, "objectColor", model_color.r, model_color.g, model_color.b);
+    shader_set_int(skinning_shader, "material.diffuse", 0);
+    shader_set_int(skinning_shader, "material.specular", 1);
+    shader_set_float(skinning_shader, "material.shininess", model_material_shininess);
+
+
+    // directional_light
+    shader_set_vec3(skinning_shader, "dirLight.direction", directional_light.direction);
+    shader_set_vec3(skinning_shader, "dirLight.ambient", directional_light.ambient);
+    shader_set_vec3(skinning_shader, "dirLight.diffuse", directional_light.diffuse);
+    shader_set_vec3(skinning_shader, "dirLight.specular", directional_light.specular);
+
+    // point_lights
+    int n = sizeof(point_lights) / sizeof(point_lights[0]);
+    TempArena per_frame = temp_begin(&g_transient_arena);
+    for (int i = 0; i < n; i++) {
+        aim_profiler_time_block("pointLights creation");
+        {
+            /*
+                3 alternativas:
+                - Hacerlo como raddbg y tener temp blocks en shader_set_* (mas lenta)
+                - Pasar la arena a shader_set_* y no tener que hacer el temp_begin y end todo el tiempo (intermedia)
+                - Usar cstrings y listo con sprintf (la mas rapida)
+
+                Aparte... pero ver si hay que hacer esto todos los frames y si se tiene que hacer es mejor guardar
+                el nombre en una variable y listo, antes de tener que andar haciendo estos calculos pelotudos todo el tiempo.
+            */
+            #if 1
+                Str8 prefix = str8_fmt(per_frame.arena, "pointLights[%d]", i);
+                shader_set_vec3(skinning_shader, str8_concat(per_frame.arena, prefix, str8(".position")), point_lights[i].transform.pos);
+                shader_set_vec3(skinning_shader, str8_concat(per_frame.arena, prefix, str8(".ambient")), point_lights[i].ambient);
+                shader_set_vec3(skinning_shader, str8_concat(per_frame.arena, prefix, str8(".diffuse")), point_lights[i].diffuse);
+                shader_set_vec3(skinning_shader, str8_concat(per_frame.arena, prefix, str8(".specular")), point_lights[i].specular);
+                shader_set_float(skinning_shader, str8_concat(per_frame.arena, prefix, str8(".constant")), point_lights[i].constant);
+                shader_set_float(skinning_shader, str8_concat(per_frame.arena, prefix, str8(".linear")), point_lights[i].linear);
+                shader_set_float(skinning_shader, str8_concat(per_frame.arena, prefix, str8(".quadratic")), point_lights[i].quadratic);
+            #else
+                // NOTE using _sprintf_s here works because it appends a '\0' after processing. If not I would have to advance at by 
+                // the total written, place a '\0' and come back
+                // 
+                // Remark: "The _snprintf_s function formats and stores count or fewer characters in buffer and appends a terminating NULL."
+                // Source: https://learn.microsoft.com/en-us/cpp/c-runtime-library/reference/snprintf-s-snprintf-s-l-snwprintf-s-snwprintf-s-l?view=msvc-170#remarks
+                char prefix[300];
+                char *end = prefix + sizeof(prefix);
+                char *at = prefix;
+                at += _snprintf_s(at, (size_t)(end - at), (size_t)(end - at), "pointLights[%d]", i);
+
+                _snprintf_s(at, (size_t)(end - at), (size_t)(end - at), ".position");
+                shader_set_vec3(skinning_shader, prefix, point_lights[i].transform.pos);
+
+                _snprintf_s(at, (size_t)(end - at), (size_t)(end - at), ".ambient");
+                shader_set_vec3(skinning_shader, prefix, point_lights[i].ambient);
+
+                _snprintf_s(at, (size_t)(end - at), (size_t)(end - at), ".diffuse");
+                shader_set_vec3(skinning_shader, prefix, point_lights[i].diffuse);
+
+                _snprintf_s(at, (size_t)(end - at), (size_t)(end - at), ".specular");
+                shader_set_vec3(skinning_shader, prefix, point_lights[i].specular);
+
+                _snprintf_s(at, (size_t)(end - at), (size_t)(end - at), ".constant");
+                shader_set_float(skinning_shader, prefix, point_lights[i].constant);
+
+                _snprintf_s(at, (size_t)(end - at), (size_t)(end - at), ".linear");
+                shader_set_float(skinning_shader, prefix, point_lights[i].linear);
+
+                _snprintf_s(at, (size_t)(end - at), (size_t)(end - at), ".quadratic");
+                shader_set_float(skinning_shader, prefix, point_lights[i].quadratic);
+            #endif
+        }
+    }
+    temp_end(per_frame);
+
+    // spot_light
+    shader_set_vec3(skinning_shader, "spotLight.ambient", spot_light.ambient);
+    shader_set_vec3(skinning_shader, "spotLight.diffuse", spot_light.diffuse);
+    shader_set_vec3(skinning_shader, "spotLight.specular", spot_light.specular);
+    shader_set_float(skinning_shader, "spotLight.constant", spot_light.constant);
+    shader_set_float(skinning_shader, "spotLight.linear", spot_light.linear);
+    shader_set_float(skinning_shader, "spotLight.quadratic", spot_light.quadratic);
+    shader_set_float(skinning_shader, "spotLight.cutOff", spot_light.cutOff);
+    shader_set_float(skinning_shader, "spotLight.outerCutOff", spot_light.outerCutOff);
+    shader_set_mat4(skinning_shader, "projection", projection);
+
     //while (!glfwWindowShouldClose(window)) 
     LONGLONG frequency = aim_timer_get_os_freq();
     LONGLONG last_frame = 0;
@@ -996,85 +1094,12 @@ int main() {
         glCullFace(GL_BACK);
 
         glm::mat4 view = curr_camera.GetViewMatrix();
-
         shader_use(skinning_shader);
-		shader_set_mat4(skinning_shader, "nodeMatrix", glm::mat4(1.0f));
-        glm::vec3 model_color = glm::vec3(1.0f, 0.5f, 0.31f);
-		shader_set_vec3(skinning_shader, "objectColor", model_color.r, model_color.g, model_color.b);
-		shader_set_int(skinning_shader, "material.diffuse", 0);
-		shader_set_int(skinning_shader, "material.specular", 1);
-		shader_set_float(skinning_shader, "material.shininess", model_material_shininess);
-
+		shader_set_mat4(skinning_shader, "view", view);
         shader_set_vec3(skinning_shader, "viewPos", curr_camera.position);
         shader_set_vec3(skinning_shader, "spotLight.position", curr_camera.position);
         shader_set_vec3(skinning_shader, "spotLight.direction", curr_camera.forward);
 
-		// directional_light
-		shader_set_vec3(skinning_shader, "dirLight.direction", directional_light.direction);
-		shader_set_vec3(skinning_shader, "dirLight.ambient", directional_light.ambient);
-		shader_set_vec3(skinning_shader, "dirLight.diffuse", directional_light.diffuse);
-		shader_set_vec3(skinning_shader, "dirLight.specular", directional_light.specular);
-
-		// point_lights
-		int n = sizeof(point_lights) / sizeof(point_lights[0]);
-		for (int i = 0; i < n; i++) {
-            //Str8 prefix = str8_fmt(&per_frame_arena, "pointLights[%d]", i);
-            
-			//shader_set_vec3(skinning_shader, str8_concat(prefix, str8(".position")), point_lights[i].transform.pos);
-			//shader_set_vec3(skinning_shader, str8_concat(prefix, str8(".ambient")), point_lights[i].ambient);
-			//shader_set_vec3(skinning_shader, str8_concat(prefix, str8(".diffuse")), point_lights[i].diffuse);
-			//shader_set_vec3(skinning_shader, str8_concat(prefix, str8(".specular")), point_lights[i].specular);
-			//shader_set_float(skinning_shader, str8_concat(prefix, str8(".constant")), point_lights[i].constant);
-			//shader_set_float(skinning_shader, str8_concat(prefix, str8(".linear")), point_lights[i].linear);
-			//shader_set_float(skinning_shader, str8_concat(prefix, str8(".quadratic")), point_lights[i].quadratic);
-            
-
-            #if 0
-            // NOTE using _sprintf_s here works because it appends a '\0' after processing. If not I would have to advance at by 
-            // the total written, place a '\0' and come back
-            // 
-            // Remark: "The _snprintf_s function formats and stores count or fewer characters in buffer and appends a terminating NULL."
-            // Source: https://learn.microsoft.com/en-us/cpp/c-runtime-library/reference/snprintf-s-snprintf-s-l-snwprintf-s-snwprintf-s-l?view=msvc-170#remarks
-            char prefix[300];
-            char *end = prefix + sizeof(prefix);
-            char *at = prefix;
-            at += _snprintf_s(at, (size_t)(end - at), (size_t)(end - at), "pointLights[%d]", i);
-
-            _snprintf_s(at, (size_t)(end - at), (size_t)(end - at), ".position");
-			shader_set_vec3(skinning_shader, prefix, point_lights[i].transform.pos);
-
-            _snprintf_s(at, (size_t)(end - at), (size_t)(end - at), ".ambient");
-			shader_set_vec3(skinning_shader, prefix, point_lights[i].ambient);
-
-            _snprintf_s(at, (size_t)(end - at), (size_t)(end - at), ".diffuse");
-			shader_set_vec3(skinning_shader, prefix, point_lights[i].diffuse);
-
-            _snprintf_s(at, (size_t)(end - at), (size_t)(end - at), ".specular");
-			shader_set_vec3(skinning_shader, prefix, point_lights[i].specular);
-
-            _snprintf_s(at, (size_t)(end - at), (size_t)(end - at), ".constant");
-			shader_set_float(skinning_shader, prefix, point_lights[i].constant);
-
-            _snprintf_s(at, (size_t)(end - at), (size_t)(end - at), ".linear");
-			shader_set_float(skinning_shader, prefix, point_lights[i].linear);
-
-            _snprintf_s(at, (size_t)(end - at), (size_t)(end - at), ".quadratic");
-			shader_set_float(skinning_shader, prefix, point_lights[i].quadratic);
-            #endif
-		}
-
-		// spot_light
-		shader_set_vec3(skinning_shader, "spotLight.ambient", spot_light.ambient);
-		shader_set_vec3(skinning_shader, "spotLight.diffuse", spot_light.diffuse);
-		shader_set_vec3(skinning_shader, "spotLight.specular", spot_light.specular);
-		shader_set_float(skinning_shader, "spotLight.constant", spot_light.constant);
-		shader_set_float(skinning_shader, "spotLight.linear", spot_light.linear);
-		shader_set_float(skinning_shader, "spotLight.quadratic", spot_light.quadratic);
-		shader_set_float(skinning_shader, "spotLight.cutOff", spot_light.cutOff);
-		shader_set_float(skinning_shader, "spotLight.outerCutOff", spot_light.outerCutOff);
-		shader_set_mat4(skinning_shader, "projection", projection);
-		shader_set_mat4(skinning_shader, "view", view);
-        
 		// bind diffuse map
         #if 0
 		glActiveTexture(GL_TEXTURE0);
@@ -1112,9 +1137,12 @@ int main() {
         }
 
         input_update(&global_input);
+        opengl->glUseProgram(0);
         //game_input->keyboard_state.prev_state = game_input->keyboard_state.curr_state;
         //glfwPollEvents();
         //glfwSwapBuffers(window);
         SwapBuffers(hdc);
     }
+	aim_profiler_end();
+	aim_profiler_print();
 }

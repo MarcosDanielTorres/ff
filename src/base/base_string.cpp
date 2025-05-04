@@ -94,6 +94,13 @@ Str8 str8_concat(Arena *arena, Str8 a, Str8 b)
     result.str = (u8*)arena_push_copy(arena, result.size, (u8*)buf);
     return result;
 }
+const char * 
+str8_to_cstring(Arena *arena, Str8 str)
+{
+    char *result = (char*) arena_push_copy(arena, str.size + 1, str.str);
+    result[str.size] = '\0';
+    return (const char*) result;
+}
 
 u64 cstring8_length(const char* str) {
     u64 result = {0};

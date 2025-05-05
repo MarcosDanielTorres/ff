@@ -64,7 +64,7 @@ void checkCompileErrors(OpenGL *opengl, GLuint shader, const char *type)
 {
     GLint success;
     GLchar infoLog[1024];
-    if (type != "PROGRAM")
+    if (strcmp(type, "PROGRAM") != 0)
     {
         opengl->glGetShaderiv(shader, GL_COMPILE_STATUS, &success);
         if (!success)

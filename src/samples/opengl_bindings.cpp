@@ -19,6 +19,7 @@
 #define GL_STATIC_DRAW                    0x88E4
 #define GL_COMPILE_STATUS                 0x8B81
 #define GL_LINK_STATUS                    0x8B82
+#define GL_ELEMENT_ARRAY_BUFFER           0x8893
 
 typedef ptrdiff_t GLsizeiptr;
 typedef char GLchar;
@@ -39,6 +40,7 @@ OpenGLDefineFunction(glGenBuffers, void, GLsizei n, GLuint *buffers);
 OpenGLDefineFunction(glBindBuffer, void, GLenum target, GLuint buffer);
 OpenGLDefineFunction(glBufferData, void, GLenum target, GLsizeiptr size, const void *data, GLenum usage);
 OpenGLDefineFunction(glVertexAttribPointer, void, GLuint index, GLint size, GLenum type, GLboolean normalized, GLsizei stride, const void *pointer);
+OpenGLDefineFunction(glVertexAttribIPointer, void, GLuint index, GLint size, GLenum type, GLsizei stride, const void *pointer);
 OpenGLDefineFunction(glEnableVertexAttribArray, void, GLuint index);
 
 OpenGLDefineFunction(glCreateShader, GLuint, GLenum type);

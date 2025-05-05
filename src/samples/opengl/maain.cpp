@@ -2,6 +2,7 @@
 #include <stdio.h>
 #include <vector>
 #include <string>
+#include <iostream>
 // fileysystem, sstream, fstream breaks the macro 'internal'
 
 #include "samples/opengl_bindings.cpp"
@@ -43,9 +44,9 @@ typedef u32 b32;
 #include <glm/gtc/type_ptr.hpp>
 #include <glm/gtc/quaternion.hpp>
 
-#if 0
 // assimp
 #include "AssimpLoader.h"
+#if 0
 
 // jolt
 #include <Jolt/Jolt.h>
@@ -94,6 +95,8 @@ typedef u32 b32;
     }                                                                         \
 } while (0)
 
+
+
 //#include "base/base_core.h"
 #include "base/base_arena.h"
 #include "base/base_string.h"
@@ -122,6 +125,21 @@ using namespace aim::Components;
 //#include "logger/logger.h"
 //#include "logger/logger.cpp"
 
+glm::mat4 m_globalInverseTransform;
+glm::mat4 todas_las_putas_transforms{};
+glm::mat4 assault_rifle_transform{};
+glm::mat4 all_mag_transforms;
+glm::mat4 skel_assault_rifle_transform;
+glm::mat4 mag_transform;
+glm::mat4 grip_transform;
+glm::mat4 armature_transform;
+glm::mat4 manny_armature;
+glm::mat4 mag_bone_transform;
+glm::mat4 ik_something;
+std::vector<glm::mat4> manny_transforms;
+std::vector<glm::mat4> mag_transforms;
+glm::mat4 manny_world_transform{};
+
 #define OpenGLSetFunction(name) (opengl->name) = OpenGLGetFunction(name);
 #define OpenGLDeclareMemberFunction(name) OpenGLType_##name name
 
@@ -141,6 +159,7 @@ struct OpenGL
 	OpenGLDeclareMemberFunction(glBindBuffer);
 	OpenGLDeclareMemberFunction(glBufferData);
 	OpenGLDeclareMemberFunction(glVertexAttribPointer);
+	OpenGLDeclareMemberFunction(glVertexAttribIPointer);
 	OpenGLDeclareMemberFunction(glEnableVertexAttribArray);
 
     OpenGLDeclareMemberFunction(glCreateShader);
@@ -185,10 +204,6 @@ global_variable u32 SRC_HEIGHT = 720;
 global_variable float lastX = SRC_WIDTH / 2.0f;
 global_variable float lastY = SRC_HEIGHT / 2.0f;
 global_variable bool firstMouse = true;
-
-// timing
-float deltaTime = 0.0f;
-float lastFrame = 0.0f;
 
 // lighting
 glm::vec3 light_pos(1.2f, 1.0f, 2.0f);
@@ -299,6 +314,793 @@ struct DirectionalLight {
 	glm::vec3 diffuse;
 	glm::vec3 specular;
 };
+
+std::vector<Skeleton> skeletons;
+
+
+struct SceneGraphNode {
+	std::vector<AssimpNode*> assimp_nodes;
+	//std::vector<AssimpAnimation> animations;
+	std::string scene_name;
+
+};
+
+struct LoadedCollider {
+	std::vector<AssimpVertex> vertices;
+	std::vector<uint32_t> indices;
+};
+
+void processAssimpNode(OpenGL* opengl, aiNode* node, AssimpNode* parent, const aiScene* scene, SceneGraphNode& scene_graph_node);
+
+struct SceneGraph {
+	std::vector<SceneGraphNode> nodes;
+	std::vector<LoadedCollider> collider_nodes;
+	std::unordered_map<std::string, int> name_to_node_index;
+	std::unordered_map<std::string, int> name_to_collider_node_index;
+
+	int loadAssimp(OpenGL *opengl, AssimpNode* assimp_model, std::string path) {
+		Assimp::Importer import;
+		const aiScene * scene = import.ReadFile(path, aiProcess_Triangulate | aiProcess_FlipUVs | aiProcess_GenSmoothNormals);
+
+		if (!scene || scene->mFlags & AI_SCENE_FLAGS_INCOMPLETE || !scene->mRootNode)
+		{
+			//AIM_FATAL("ERROR::ASSIMP::%s\n", import.GetErrorString());
+			printf("ERROR::ASSIMP::%s\n", import.GetErrorString());
+			abort();
+		}
+		SceneGraphNode scene_graph_node;
+		scene_graph_node.scene_name = scene->GetShortFilename(path.c_str());
+
+		m_globalInverseTransform = glm::inverse(AssimpGLMHelpers::ConvertMatrixToGLMFormat(scene->mRootNode->mTransformation));
+
+
+		processAssimpNode(opengl, scene->mRootNode, nullptr, scene, scene_graph_node);
+
+		this->nodes.push_back(scene_graph_node);
+		int node_index{};
+		if (this->name_to_node_index.find(scene_graph_node.scene_name) == this->name_to_node_index.end()) {
+			node_index = this->name_to_node_index.size() - 1;
+			this->name_to_node_index[scene_graph_node.scene_name] = node_index;
+		}
+		else {
+			abort();
+			node_index = this->name_to_node_index[scene_graph_node.scene_name];
+		}
+		return node_index;
+	}
+};
+
+
+#pragma region bones_container
+/* Container for bone data */
+
+struct KeyPosition
+{
+	glm::vec3 position;
+	float timeStamp;
+};
+
+struct KeyRotation
+{
+	glm::quat orientation;
+	float timeStamp;
+};
+
+struct KeyScale
+{
+	glm::vec3 scale;
+	float timeStamp;
+};
+
+class Bone
+{
+public:
+	Bone(const std::string& name, int ID, const aiNodeAnim* channel)
+		:
+		m_Name(name),
+		m_ID(ID),
+		m_LocalTransform(1.0f)
+	{
+		m_NumPositions = channel->mNumPositionKeys;
+
+		for (int positionIndex = 0; positionIndex < m_NumPositions; ++positionIndex)
+		{
+			aiVector3D aiPosition = channel->mPositionKeys[positionIndex].mValue;
+			float timeStamp = channel->mPositionKeys[positionIndex].mTime;
+			KeyPosition data;
+			data.position = AssimpGLMHelpers::GetGLMVec(aiPosition);
+			data.timeStamp = timeStamp;
+			m_Positions.push_back(data);
+		}
+
+		m_NumRotations = channel->mNumRotationKeys;
+		for (int rotationIndex = 0; rotationIndex < m_NumRotations; ++rotationIndex)
+		{
+			aiQuaternion aiOrientation = channel->mRotationKeys[rotationIndex].mValue;
+			float timeStamp = channel->mRotationKeys[rotationIndex].mTime;
+			KeyRotation data;
+			data.orientation = AssimpGLMHelpers::GetGLMQuat(aiOrientation);
+			data.timeStamp = timeStamp;
+			m_Rotations.push_back(data);
+		}
+
+		m_NumScalings = channel->mNumScalingKeys;
+		for (int keyIndex = 0; keyIndex < m_NumScalings; ++keyIndex)
+		{
+			aiVector3D scale = channel->mScalingKeys[keyIndex].mValue;
+			float timeStamp = channel->mScalingKeys[keyIndex].mTime;
+			KeyScale data;
+			data.scale = AssimpGLMHelpers::GetGLMVec(scale);
+			data.timeStamp = timeStamp;
+			m_Scales.push_back(data);
+		}
+	}
+
+	void Update(float animationTime)
+	{
+		glm::mat4 translation = InterpolatePosition(animationTime);
+		glm::mat4 rotation = InterpolateRotation(animationTime);
+		glm::mat4 scale = InterpolateScaling(animationTime);
+		m_LocalTransform = translation * rotation * scale;
+	}
+	glm::mat4 GetLocalTransform() { return m_LocalTransform; }
+	std::string GetBoneName() const { return m_Name; }
+	int GetBoneID() { return m_ID; }
+
+
+
+	int GetPositionIndex(float animationTime)
+	{
+		for (int index = 0; index < m_NumPositions - 1; ++index)
+		{
+			if (animationTime < m_Positions[index + 1].timeStamp)
+				return index;
+		}
+        return 1;
+		assert(0);
+	}
+
+	int GetRotationIndex(float animationTime)
+	{
+		for (int index = 0; index < m_NumRotations - 1; ++index)
+		{
+			if (animationTime < m_Rotations[index + 1].timeStamp)
+				return index;
+		}
+        return 1;
+		assert(0);
+	}
+
+	int GetScaleIndex(float animationTime)
+	{
+		for (int index = 0; index < m_NumScalings - 1; ++index)
+		{
+			if (animationTime < m_Scales[index + 1].timeStamp)
+				return index;
+		}
+        return 1;
+		assert(0);
+	}
+
+
+private:
+
+	float GetScaleFactor(float lastTimeStamp, float nextTimeStamp, float animationTime)
+	{
+		float scaleFactor = 0.0f;
+		float midWayLength = animationTime - lastTimeStamp;
+		float framesDiff = nextTimeStamp - lastTimeStamp;
+		scaleFactor = midWayLength / framesDiff;
+		return scaleFactor;
+	}
+
+	glm::mat4 InterpolatePosition(float animationTime)
+	{
+		if (1 == m_NumPositions)
+			return glm::translate(glm::mat4(1.0f), m_Positions[0].position);
+
+		int p0Index = GetPositionIndex(animationTime);
+		int p1Index = p0Index + 1;
+		float scaleFactor = GetScaleFactor(m_Positions[p0Index].timeStamp,
+			m_Positions[p1Index].timeStamp, animationTime);
+		glm::vec3 finalPosition = glm::mix(m_Positions[p0Index].position, m_Positions[p1Index].position
+			, scaleFactor);
+		return glm::translate(glm::mat4(1.0f), finalPosition);
+	}
+
+	glm::mat4 InterpolateRotation(float animationTime)
+	{
+		if (1 == m_NumRotations)
+		{
+			auto rotation = glm::normalize(m_Rotations[0].orientation);
+			return glm::toMat4(rotation);
+		}
+
+		int p0Index = GetRotationIndex(animationTime);
+		int p1Index = p0Index + 1;
+		float scaleFactor = GetScaleFactor(m_Rotations[p0Index].timeStamp,
+			m_Rotations[p1Index].timeStamp, animationTime);
+		glm::quat finalRotation = glm::slerp(m_Rotations[p0Index].orientation, m_Rotations[p1Index].orientation
+			, scaleFactor);
+		finalRotation = glm::normalize(finalRotation);
+		return glm::toMat4(finalRotation);
+
+	}
+
+	glm::mat4 InterpolateScaling(float animationTime)
+	{
+		if (1 == m_NumScalings)
+			return glm::scale(glm::mat4(1.0f), m_Scales[0].scale);
+
+		int p0Index = GetScaleIndex(animationTime);
+		int p1Index = p0Index + 1;
+		float scaleFactor = GetScaleFactor(m_Scales[p0Index].timeStamp,
+			m_Scales[p1Index].timeStamp, animationTime);
+		glm::vec3 finalScale = glm::mix(m_Scales[p0Index].scale, m_Scales[p1Index].scale
+			, scaleFactor);
+		return glm::scale(glm::mat4(1.0f), finalScale);
+	}
+
+	std::vector<KeyPosition> m_Positions;
+	std::vector<KeyRotation> m_Rotations;
+	std::vector<KeyScale> m_Scales;
+	int m_NumPositions;
+	int m_NumRotations;
+	int m_NumScalings;
+
+	glm::mat4 m_LocalTransform;
+	std::string m_Name;
+	int m_ID;
+};
+
+internal b32 animationActive = true;
+Bone* root_node_bone = nullptr;
+Bone* root = nullptr;
+Bone* ik_hand_root = nullptr;
+Bone* ik_hand_gun_bone = nullptr;
+
+struct Entity {
+	Transform3D transform;
+
+	// TODO: Check this because I've seen enums used...
+	bool has_animations;
+
+	// TODO: Check this because I've seen enums used...
+	bool has_model;
+	uint32_t models_count;
+	AssimpNode** models;
+};
+
+
+#pragma endregion bones_container
+
+#pragma region assimp_animation
+
+struct AssimpNodeData
+{
+	glm::mat4 transformation;
+	std::string name;
+	int childrenCount;
+	std::vector<AssimpNodeData> children;
+};
+
+class Animation
+{
+public:
+	Animation() = default;
+
+	Animation(const std::string& animationPath, int skeleton_index)
+	{
+		Assimp::Importer importer;
+		m_skeleton_index = skeleton_index;
+		const aiScene* scene = importer.ReadFile(animationPath, aiProcess_Triangulate);
+		assert(scene && scene->mRootNode);
+		auto animation = scene->mAnimations[0];
+		m_Duration = animation->mDuration;
+		m_TicksPerSecond = animation->mTicksPerSecond;
+		//m_TicksPerSecond = 1000;
+
+		// esto podria apuntar al nodo en la lista de nodes. Esto va a pasar por
+		// RootNode -> Armature -> ...
+		ReadHeirarchyData(m_RootNode, scene->mRootNode);
+
+		//m_globalInverseTransform = glm::inverse(AssimpGLMHelpers::ConvertMatrixToGLMFormat(scene->mRootNode->mTransformation));
+		// esto se puede quedar
+		ReadMissingBones(animation);
+
+		std::cout << "Animation name is: " << scene->mAnimations[0]->mName.C_Str() << std::endl;
+	}
+
+	~Animation()
+	{
+	}
+
+	// this is my version
+	Bone* FindBone(const std::string& name)
+	{
+		auto iter = std::find_if(m_Bones.begin(), m_Bones.end(),
+			[&](const Bone& Bone)
+			{
+				return Bone.GetBoneName() == name;
+			}
+		);
+		if (iter == m_Bones.end()) return nullptr;
+		else return &(*iter);
+	}
+
+	//Bone* FindBone(const std::string& name)
+	//{
+	//	auto iter = std::find_if(m_Bones.begin(), m_Bones.end(),
+	//		[&](const Bone& Bone)
+	//		{
+	//			return Bone.GetBoneName() == name;
+	//		}
+	//	);
+	//	if (iter == m_Bones.end()) return nullptr;
+	//	else return &(*iter);
+	//}
+
+
+	inline float GetTicksPerSecond() { return m_TicksPerSecond; }
+
+	inline float GetDuration() { return m_Duration; }
+
+	inline const AssimpNodeData& GetRootNode() { return m_RootNode; }
+
+	//inline const std::map<std::string, AssimpBoneInfo>& GetBoneIDMap()
+	//{
+	//	return m_BoneInfoMap;
+	//}
+
+private:
+	void ReadMissingBones(const aiAnimation* animation)
+	{
+		int size = animation->mNumChannels;
+		//reading channels(bones engaged in an animation and their keyframes)
+		for (int i = 0; i < size; i++)
+		{
+			auto channel = animation->mChannels[i];
+			std::string boneName = channel->mNodeName.data;
+
+			if (skeletons[m_skeleton_index].m_BoneInfoMap.find(boneName) == skeletons[m_skeleton_index].m_BoneInfoMap.end())
+			{
+				skeletons[m_skeleton_index].m_BoneInfoMap[boneName].id = skeletons[m_skeleton_index].m_BoneCounter;
+				skeletons[m_skeleton_index].m_BoneCounter++;
+			}
+			m_Bones.push_back(Bone(channel->mNodeName.data,
+				skeletons[m_skeleton_index].m_BoneInfoMap[channel->mNodeName.data].id, channel));
+		}
+	}
+
+	// esto lee toda la jerarquia de la animacion, no solo el skeleton
+	void ReadHeirarchyData(AssimpNodeData& dest, const aiNode* src)
+	{
+		assert(src);
+
+		dest.name = src->mName.data;
+		dest.transformation = AssimpGLMHelpers::ConvertMatrixToGLMFormat(src->mTransformation);
+		dest.childrenCount = src->mNumChildren;
+
+		//if (m_BoneInfoMap.find(dest.name) != m_BoneInfoMap.end()) {
+		//	std::cout << dest.name << std::endl;
+		//	std::cout << m_BoneInfoMap[dest.name].id << std::endl;
+		//}
+		for (int i = 0; i < src->mNumChildren; i++)
+		{
+			AssimpNodeData newData;
+			ReadHeirarchyData(newData, src->mChildren[i]);
+			dest.children.push_back(newData);
+		}
+	}
+
+	float m_Duration;
+	int m_TicksPerSecond;
+public:
+	// todo deal with this. Prolly erase it
+	std::vector<Bone> m_Bones;
+	AssimpNodeData m_RootNode;
+public:
+	int m_skeleton_index;
+};
+#pragma endregion assimp_animation
+
+#pragma region assimp_animator
+
+class Animator
+{
+public:
+	Animator(Animation* animation)
+	{
+		m_CurrentTime = 0.0;
+		m_CurrentAnimation = animation;
+
+		m_FinalBoneMatrices.reserve(200);
+
+		for (int i = 0; i < 200; i++)
+			m_FinalBoneMatrices.push_back(glm::mat4(1.0f));
+	}
+
+	void UpdateAnimation(float dt)
+	{
+		m_DeltaTime = dt;
+		if (m_CurrentAnimation)
+		{
+			m_CurrentTime += m_CurrentAnimation->GetTicksPerSecond() * dt;
+			m_CurrentTime = fmod(m_CurrentTime, m_CurrentAnimation->GetDuration());
+			CalculateBoneTransform(&m_CurrentAnimation->GetRootNode(), glm::mat4(1.0f));
+		}
+	}
+
+	void PlayAnimation(Animation* pAnimation)
+	{
+		m_CurrentAnimation = pAnimation;
+		m_CurrentTime = 0.0f;
+	}
+
+	void CalculateBoneTransform(const AssimpNodeData* node, glm::mat4 parentTransform)
+	{
+		std::string nodeName = node->name;
+		// todo check this throughly
+		// it could matter that node->transformation is useful if i have something like this:
+		/*
+			Node
+			  MeshNode
+			  MeshNode
+				Meshnode
+				  Bone
+					Bone1
+					Bone2
+					Bone3
+					  BoneChild1...
+		*/
+
+		glm::mat4 nodeTransform;
+		glm::mat4 globalTransformation;
+
+		Bone* Bone = m_CurrentAnimation->FindBone(nodeName);
+
+		// armature has a transform
+		// me parece que es el que mueve la armature de lugar inicialmente. probar comentando esto si es el Bone->GetBoneName() == "Armature" 
+		// entonces identity// Si era eso. 
+
+		if (Bone) {
+			Bone->Update(m_CurrentTime);
+			nodeTransform = Bone->GetLocalTransform();
+			globalTransformation = parentTransform * nodeTransform;
+
+			int index = skeletons[m_CurrentAnimation->m_skeleton_index].m_BoneInfoMap[nodeName].id;
+			glm::mat4 offset = skeletons[m_CurrentAnimation->m_skeleton_index].m_BoneInfoMap[nodeName].offset;
+			m_FinalBoneMatrices[index] = m_globalInverseTransform * globalTransformation * offset;
+		}
+		else {
+			nodeTransform = node->transformation;
+			globalTransformation = parentTransform * nodeTransform;
+		}
+
+
+		//std::cout << "Parent transform: " << std::endl;
+		//print_matrix(parentTransform);
+		//std::cout << "Node transform: " << std::endl;
+		//print_matrix(nodeTransform);
+		//std::cout << "Global transformation: " << std::endl;
+		//print_matrix(globalTransformation);
+
+		//auto boneInfoMap = m_CurrentAnimation->GetBoneIDMap(); // it looks like this takes the map as the animation have it, which means its a copy and not a reference
+		// should investigate
+
+
+		for (int i = 0; i < node->childrenCount; i++)
+			CalculateBoneTransform(&node->children[i], globalTransformation);
+	}
+
+	std::vector<glm::mat4> GetFinalBoneMatrices()
+	{
+		return m_FinalBoneMatrices;
+	}
+
+private:
+	float m_CurrentTime;
+	float m_DeltaTime;
+public:
+	std::vector<glm::mat4> m_FinalBoneMatrices;
+	Animation* m_CurrentAnimation;
+
+};
+#pragma endregion assimp_animator
+void processAssimpNode(OpenGL* opengl, aiNode* node, AssimpNode* parent, const aiScene* scene, SceneGraphNode& scene_graph_node) {
+	AssimpNode* new_node = new AssimpNode{};
+	new_node->parent = parent;
+	new_node->name = std::string(node->mName.C_Str());
+	if (new_node->name == "RootNode") {
+		new_node->name = scene_graph_node.scene_name;
+	}
+	new_node->transform = AssimpGLMHelpers::ConvertMatrixToGLMFormat(node->mTransformation);
+
+	for (int i = 0; i < node->mNumChildren; i++) {
+		processAssimpNode(opengl, node->mChildren[i], new_node, scene, scene_graph_node);
+	}
+
+	std::cout << "Node name: " << new_node->name << std::endl;
+
+	if (node->mNumMeshes > 0) {
+		AssimpMesh* new_mesh = new AssimpMesh{};
+		for (int i = 0; i < node->mNumMeshes; i++) {
+			// Si o si tienen que estar los dos meshes.
+			// El problema de esto es que se repite el skeleton por algun motivo. Como puedo saber si el skeleton ya existe?
+			aiMesh* mesh = scene->mMeshes[node->mMeshes[i]];
+
+			AssimpPrimitive* new_primitive = new AssimpPrimitive{};
+			bool has_skin = mesh->HasBones();
+
+			std::cout << "Mesh name: " << std::string(mesh->mName.C_Str()) << std::endl;
+			BoneData* vertex_id_to_bone_id = nullptr;
+			if (has_skin) {
+				Skeleton new_skeleton = Skeleton{};
+				vertex_id_to_bone_id = new BoneData[mesh->mNumVertices]{};
+				//AIM_DEBUG("Processing Bones:\n");
+				printf("Processing Bones:\n");
+				for (size_t i = 0; i < mesh->mNumBones; i++) {
+					std::string boneName = mesh->mBones[i]->mName.C_Str();
+					int boneId = -1;
+					if (new_skeleton.m_BoneInfoMap.find(boneName) == new_skeleton.m_BoneInfoMap.end()) {
+						AssimpBoneInfo boneInfo;
+						boneInfo.id = new_skeleton.m_BoneCounter;
+						boneInfo.offset = AssimpGLMHelpers::ConvertMatrixToGLMFormat(mesh->mBones[i]->mOffsetMatrix);
+						new_skeleton.m_BoneInfoMap[boneName] = boneInfo;
+						boneId = new_skeleton.m_BoneCounter;
+						new_skeleton.m_BoneCounter++;
+					}
+					else {
+						boneId = new_skeleton.m_BoneInfoMap[boneName].id;
+						//abort();
+						std::cout << "hola";
+					}
+					assert(boneId != -1);
+					for (size_t j = 0; j < mesh->mBones[i]->mNumWeights; j++) {
+						uint32_t vertex_id = mesh->mBones[i]->mWeights[j].mVertexId;
+						float weight_value = mesh->mBones[i]->mWeights[j].mWeight;
+
+						if (vertex_id_to_bone_id[vertex_id].count < MAX_NUM_BONES_PER_VERTEX) {
+							vertex_id_to_bone_id[vertex_id].joints[vertex_id_to_bone_id[vertex_id].count] = boneId;
+							vertex_id_to_bone_id[vertex_id].weights[vertex_id_to_bone_id[vertex_id].count] = weight_value;
+							vertex_id_to_bone_id[vertex_id].count++;
+						}
+					}
+				}
+				skeletons.push_back(new_skeleton);
+			}
+			printf("Processing Mesh: %s", mesh->mName.C_Str());
+
+			printf("Processing Vertices:");
+			printf("\tVertices count: % d", mesh->mNumVertices);
+			//AIM_DEBUG("Processing Mesh: %s", mesh->mName.C_Str());
+
+			//AIM_DEBUG("Processing Vertices:");
+			//AIM_DEBUG("\tVertices count: % d", mesh->mNumVertices);
+
+			std::vector<AssimpVertex> assimp_vertices;
+			assimp_vertices.reserve(mesh->mNumVertices);
+			for (unsigned int i = 0; i < mesh->mNumVertices; i++)
+			{
+				AssimpVertex vertex;
+				glm::vec3 vector; // we declare a placeholder vector since assimp uses its own vector class that doesn't directly convert to glm's vec3 class so we transfer the data to this placeholder glm::vec3 first.
+				// positions
+				vector.x = mesh->mVertices[i].x;
+				vector.y = mesh->mVertices[i].y;
+				vector.z = mesh->mVertices[i].z;
+				vertex.position = vector;
+				// normals
+				if (mesh->HasNormals())
+				{
+					vector.x = mesh->mNormals[i].x;
+					vector.y = mesh->mNormals[i].y;
+					vector.z = mesh->mNormals[i].z;
+					vertex.normal = vector;
+				}
+				vertex.aTexCoords = glm::vec2(0.0f, 0.0f);
+				if (has_skin) {
+					//vertex.joints = glm::make_vec4(vertex_id_to_bone_id[i].joints.data());
+					//vertex.weights = glm::make_vec4(vertex_id_to_bone_id[i].weights.data());
+					vertex.joints[0] = vertex_id_to_bone_id[i].joints[0];
+					vertex.joints[1] = vertex_id_to_bone_id[i].joints[1];
+					vertex.joints[2] = vertex_id_to_bone_id[i].joints[2];
+					vertex.joints[3] = vertex_id_to_bone_id[i].joints[3];
+
+					vertex.weights[0] = vertex_id_to_bone_id[i].weights[0];
+					vertex.weights[1] = vertex_id_to_bone_id[i].weights[1];
+					vertex.weights[2] = vertex_id_to_bone_id[i].weights[2];
+					vertex.weights[3] = vertex_id_to_bone_id[i].weights[3];
+				}
+				else {
+					//vertex.joints = glm::vec4(0.0f);
+
+					vertex.joints[0] = 0;
+					vertex.joints[1] = 0;
+					vertex.joints[2] = 0;
+					vertex.joints[3] = 0;
+
+					//vertex.weights = glm::vec4(1.0f, 0.0f, 0.0f, 0.0f);
+					vertex.weights[0] = 1.0f;
+					vertex.weights[1] = 0.0f;
+					vertex.weights[2] = 0.0f;
+					vertex.weights[3] = 0.0f;
+
+				}
+				// this is probably not needed
+
+				assimp_vertices.push_back(vertex);
+			}
+
+
+			//AIM_DEBUG("Processing Indices...\n");
+			printf("Processing Indices...\n");
+			std::vector<uint32_t> assimp_indices;
+			for (unsigned int i = 0; i < mesh->mNumFaces; i++)
+			{
+				aiFace face = mesh->mFaces[i];
+				for (unsigned int j = 0; j < face.mNumIndices; j++) {
+					if (face.mNumIndices != 3) abort();
+					assimp_indices.push_back(face.mIndices[j]);
+				}
+			}
+
+			new_primitive->index_count = assimp_indices.size();
+			//AIM_DEBUG("There are %d indices\n", new_primitive->index_count);
+			printf("There are %d indices\n", new_primitive->index_count);
+
+
+			opengl->glGenVertexArrays(1, &new_primitive->vao);
+			opengl->glBindVertexArray(new_primitive->vao);
+
+			opengl->glGenBuffers(1, &new_primitive->vbo);
+			opengl->glBindBuffer(GL_ARRAY_BUFFER, new_primitive->vbo);
+			opengl->glBufferData(GL_ARRAY_BUFFER, assimp_vertices.size() * sizeof(AssimpVertex), assimp_vertices.data(), GL_STATIC_DRAW);
+
+			opengl->glGenBuffers(1, &new_primitive->ebo);
+			opengl->glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, new_primitive->ebo);
+			opengl->glBufferData(GL_ELEMENT_ARRAY_BUFFER, assimp_indices.size() * sizeof(uint32_t), assimp_indices.data(), GL_STATIC_DRAW);
+
+			opengl->glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(AssimpVertex), (void*)offsetof(AssimpVertex, position));
+			opengl->glEnableVertexAttribArray(0);
+			opengl->glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, sizeof(AssimpVertex), (void*)offsetof(AssimpVertex, normal));
+			opengl->glEnableVertexAttribArray(1);
+			opengl->glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, sizeof(AssimpVertex), (void*)offsetof(AssimpVertex, aTexCoords));
+			opengl->glEnableVertexAttribArray(2);
+
+			if (has_skin) {
+				opengl->glVertexAttribIPointer(3, 4, GL_UNSIGNED_INT, sizeof(AssimpVertex), (void*)offsetof(AssimpVertex, joints));
+				//glVertexAttribPointer(3, 4, GL_INT, GL_FALSE, sizeof(AssimpVertex), (void*)offsetof(AssimpVertex, joints));
+				opengl->glEnableVertexAttribArray(3);
+				opengl->glVertexAttribPointer(4, 4, GL_FLOAT, GL_FALSE, sizeof(AssimpVertex), (void*)offsetof(AssimpVertex, weights));
+				opengl->glEnableVertexAttribArray(4);
+
+				delete[] vertex_id_to_bone_id;
+			}
+			opengl->glBindVertexArray(0);
+
+			//for (size_t i = 0; i < assimp_vertices.size(); i++) {
+				//std::cout << "Vertex: " << i << std::endl;
+				//std::cout << "\t joints: [" << assimp_vertices[i].joints[0] << ", " << assimp_vertices[i].joints[1] << ", " << assimp_vertices[i].joints[2] << ", " << assimp_vertices[i].joints[3] << "]";
+				//std::cout << "\t weights: [" << assimp_vertices[i].weights[0] << ", " << assimp_vertices[i].weights[1] << ", " << assimp_vertices[i].weights[2] << ", " << assimp_vertices[i].weights[3] << "]";
+			//}
+
+			new_mesh->meshes.push_back(new_primitive);
+		}
+		new_node->mesh = new_mesh;
+	}
+	if (parent) {
+		parent->children.push_back(new_node);
+		std::string parent_name = new_node->parent ? new_node->parent->name : std::string("NULL");
+		std::cout << "NODE NAME: " << new_node->name << "  NODE PARENT: " << parent_name << std::endl;
+	}
+	else {
+		scene_graph_node.assimp_nodes.push_back(new_node);
+	}
+	if (new_node->name == "ROOT") {
+		std::cout << "IM ROOT" << std::endl;
+		for (size_t i = 0; i < new_node->children.size(); i++) {
+			std::cout << "CHILDREN " << i << "  CHILDREN NAME: " << new_node->children[i]->name << std::endl;
+
+		}
+	}
+}
+
+
+void render_player(OpenGL *opengl, Entity* player, Shader shader) {
+	for (uint32_t idx = 0; idx < player->models_count; idx++) {
+		AssimpNode* player_model = player->models[idx];
+		std::vector<AssimpPrimitive*> meshes = player_model->mesh->meshes;
+		std::string name = player_model->name;
+		auto node_transform = player_model->transform;
+		for (const auto& mesh : meshes) {
+			opengl->glBindVertexArray(mesh->vao);
+
+			shader_use(shader);
+			shader_set_mat4(shader, "model", glm::mat4(1.0f));
+
+			if (name == "SM_AssaultRifle_Magazine") {
+				opengl->glUniform1i(opengl->glGetUniformLocation(shader.id, "jointCount"), 0);
+				// skel_assault_rifle_transform este creo que no hace falta en el calculo porque representaba la posicion en el mundo y eso ya esta dado por `assault_rifle_transform`
+				// el grip no es necesario porque justo es la identity
+				opengl->glUniformMatrix4fv(opengl->glGetUniformLocation(shader.id, "nodeMatrix"), 1, GL_FALSE, &(assault_rifle_transform * mag_bone_transform)[0][0]);
+			}
+
+			if (name == "SM_AssaultRifle_Casing") {
+				glm::mat4 base_model_mat =
+					glm::translate(glm::mat4(1.0f), glm::vec3(30.0f, 3.0f, 0.0f)) *
+					glm::scale(glm::mat4(1.0f), glm::vec3(0.0125f));
+
+			    shader_set_mat4(shader, "model", base_model_mat);
+			}
+
+			if (name == "SK_AssaultRifle") {
+				opengl->glUniform1i(opengl->glGetUniformLocation(shader.id, "jointCount"), 0);
+				AssimpBoneInfo _grip = skeletons[2].m_BoneInfoMap["Grip"];
+				// TODO ahora yo estoy modificando el transform del nodo SK_AssaultRifle pero lo que deberia modificar es el root bone si es que es skinned. En este caso
+				// el grip bone. Esto necesita mas planning.  Unreal engine parece que lo mappea asi no mas, no al grip pero al nodo. aunque seguro se pueda las dos
+				assault_rifle_transform = manny_world_transform * todas_las_putas_transforms;
+				opengl->glUniformMatrix4fv(opengl->glGetUniformLocation(shader.id, "nodeMatrix"), 1, GL_FALSE, &assault_rifle_transform[0][0]);
+			}
+
+			if (name == "SK_Manny_Arms") {
+				// TODO: this should be embeded inside node->transform. So:
+				// if (node->name == "SK_Manny_Arms") node->transform = glm::mat4_cast(correction_rot) * node->transform;
+				glm::quat qx = glm::angleAxis(glm::radians(90.0f), glm::vec3(1.0f, 0.0f, 0.0f));
+				glm::quat qy = glm::angleAxis(glm::radians(90.0f), glm::vec3(0.0f, 1.0f, 0.0f));
+				glm::quat qz = glm::angleAxis(glm::radians(90.0f), glm::vec3(0.0f, 0.0f, 1.0f));
+				glm::quat correction_rot = qy * qx * qz; // Specify order of rotations here
+
+				glm::quat qx1 = glm::angleAxis(glm::radians(manny_rot.x), glm::vec3(1.0f, 0.0f, 0.0f));
+				glm::quat qy1 = glm::angleAxis(glm::radians(manny_rot.y), glm::vec3(0.0f, 1.0f, 0.0f));
+				glm::quat qz1 = glm::angleAxis(glm::radians(manny_rot.z), glm::vec3(0.0f, 0.0f, 1.0f));
+				glm::quat rot1 = qy1 * qx1 * qz1; // Specify order of rotations here
+
+				glm::mat4 model = glm::translate(glm::mat4(1.0f), manny_pos)
+					* glm::mat4_cast(rot1)
+					* glm::scale(glm::mat4(1.0f), glm::vec3(manny_scale));
+
+				//skinning_shader->setMat4("model", model);
+				shader_set_mat4(shader, "model", model);
+				manny_world_transform = model * glm::mat4_cast(correction_rot) * node_transform;
+				for (int i = 0; i < manny_transforms.size(); ++i)
+				{
+					//skinning_shader->setMat4("jointMatrices[" + std::to_string(i) + "]", manny_transforms[i]);
+                    std::string mat_name = "jointMatrices[" + std::to_string(i) + "]";
+					shader_set_mat4(shader, mat_name.c_str(), manny_transforms[i]);
+				}
+				opengl->glUniform1i(opengl->glGetUniformLocation(shader.id, "jointCount"), 1);
+				opengl->glUniformMatrix4fv(opengl->glGetUniformLocation(shader.id, "nodeMatrix"), 1, GL_FALSE, glm::value_ptr(glm::mat4_cast(correction_rot) * node_transform));
+			}
+
+
+			// TODO ESTO DE CAMBIAR EL TRANSFORM DE ACA NO SIRVE, TIENE QUE EDITARSE A NIVEL PADRE DEL OBJETO. PORQUE PASA QUE PARA OBJETOS
+			// COMO EL PORSCHE, NO SE COMO SE LLAMA EL PADRE
+
+			glDrawElements(GL_TRIANGLES, mesh->index_count, GL_UNSIGNED_INT, 0);
+			opengl->glUniform1i(opengl->glGetUniformLocation(shader.id, "jointCount"), 0);
+			opengl->glBindVertexArray(0);
+			//break;
+			// NOTE: by brekaing here i can see that the SK_Manny_Arms is composed of effectively two meshes and
+			// this is not just two meshes duplicated as i initially thought. This theory only applied to SK_MannyArms as
+			// the other models only have one mesh
+
+			// INVESTIGATE:
+			// But... do i really need the two meshes for the skinning? Or I only need one of these meshes?
+			// In other words: the skinning information is present of both meshes or in only one? Or maybe I need both
+			// meshes's skinning information
+
+			// TODO: What I should do is: I can use ONLY the skinning info of the first mesh, but render both
+		}
+
+		// IMPORTANT los huesos que se cargan en las animaciones no estan en el scene graph. eso es importante
+
+
+		// Armature == SKEL_AssaultRifle == SK_AssaultRifle (Mesh)
+		// tengo que ver como es que se updatea el hueso con el mesh. esto funciona en las animaciones si
+		// Si muevo el grip todo se tiene que mover, entonces si aplico... TODO: mover el mesh y el grip lo mismo, el grip moverlo con un glm::translate etc
+	}
+}
+
 
 
 #if 0
@@ -581,6 +1383,60 @@ LRESULT CALLBACK win32_main_callback(HWND Window, UINT Message, WPARAM wParam, L
     return result;
 }
 
+int manny_count = 0;
+int first_manny_index = 0;
+void find_player_model_aux(AssimpNode* node, AssimpNode** player_models, uint32_t** player_models_cnt) {
+	if (node->mesh) {
+		std::string name = node->name;
+		if (name == "SM_AssaultRifle_Magazine" ||
+			name == "SM_AssaultRifle_Casing" ||
+			name == "SK_AssaultRifle" || (name == "SK_Manny_Arms"))
+		{
+
+			player_models[(**player_models_cnt)++] = node;
+		}
+
+
+#if 0
+		for (const auto& mesh : node->mesh->meshes) {
+			if (name == "SM_AssaultRifle_Magazine" ||
+				name == "SM_AssaultRifle_Casing" ||
+				name == "SK_AssaultRifle" || (name == "SK_Manny_Arms"))
+			{
+				if (name == "SK_Manny_Arms" && manny_count != 0) {
+					player_models[first_manny_index] = node;
+				}
+				else {
+					player_models[(**player_models_cnt)++] = node;
+				}
+			}
+
+			if (name == "SK_Manny_Arms") {
+				if (manny_count == 0) {
+					int copy = (**player_models_cnt);
+					first_manny_index = --copy;
+				}
+				manny_count++;
+			}
+		}
+#endif
+	}
+	for (auto& child : node->children) {
+		find_player_model_aux(child, player_models, player_models_cnt);
+	}
+}
+
+
+AssimpNode** find_player_models(SceneGraph scene_graph, uint32_t* player_models_cnt) {
+	AssimpNode** player_models = new AssimpNode * [10];
+	for (auto& scene : scene_graph.nodes) {
+		for (auto node : scene.assimp_nodes) {
+			find_player_model_aux(node, player_models, &player_models_cnt);
+		}
+	}
+	return player_models;
+}
+
 
 int main() {
 	aim_profiler_begin();
@@ -608,8 +1464,7 @@ int main() {
 
     ShowCursor(0);
 
-    OpenGL _opengl = {0};
-    OpenGL *opengl = &_opengl;
+    OpenGL* opengl = new OpenGL();
     opengl->vsynch = -1;
 
     HDC hdc = GetDC(global_w32_window.handle);
@@ -695,6 +1550,7 @@ int main() {
 	OpenGLSetFunction(glBindBuffer);
 	OpenGLSetFunction(glBufferData);
 	OpenGLSetFunction(glVertexAttribPointer);
+	OpenGLSetFunction(glVertexAttribIPointer);
 	OpenGLSetFunction(glEnableVertexAttribArray);
 
     OpenGLSetFunction(glCreateShader);
@@ -964,7 +1820,6 @@ int main() {
 	};
 
     shader_use(skinning_shader);
-    shader_set_mat4(skinning_shader, "nodeMatrix", glm::mat4(1.0f));
     glm::vec3 model_color = glm::vec3(1.0f, 0.5f, 0.31f);
     shader_set_vec3(skinning_shader, "objectColor", model_color.r, model_color.g, model_color.b);
     shader_set_int(skinning_shader, "material.diffuse", 0);
@@ -1054,6 +1909,31 @@ int main() {
     LONGLONG last_frame = 0;
     global_w32_window.is_running = true;
     glViewport(0, 0, SRC_WIDTH, SRC_HEIGHT);
+
+
+	AssimpNode assault_rifle, assault_rifle_magazine, assault_rifle_casing;
+    SceneGraph scene_graph{};
+
+	////////////////////// NEW /////////////////////////
+	scene_graph.loadAssimp(opengl, &assault_rifle, "D:/c-c++ projects/aim/aim-v5/engine/assets/models/Unreal/SK_FP_Manny_Simple.fbx");
+	std::cout << "Finished loading Manny" << std::endl;
+	scene_graph.loadAssimp(opengl, &assault_rifle, "D:/c-c++ projects/aim/aim-v5/engine/assets/models/Unreal/SK_AssaultRifle.fbx");
+	scene_graph.loadAssimp(opengl, &assault_rifle, "D:/c-c++ projects/aim/aim-v5/engine/assets/models/Unreal/SM_AssaultRifle_Magazine.fbx");
+	scene_graph.loadAssimp(opengl, &assault_rifle, "D:/c-c++ projects/aim/aim-v5/engine/assets/models/Unreal/SM_AssaultRifle_Casing.fbx");
+
+
+	Animation danceAnimation("D:/c-c++ projects/aim/aim-v5/engine/assets/models/Unreal/Animations/A_FP_AssaultRifle_Reload.fbx", 0);
+	Animation mag_anim("D:/c-c++ projects/aim/aim-v5/engine/assets/models/Unreal/Animations/A_FP_WEP_AssaultRifle_Reload.fbx", 2);
+    Animator animator(&danceAnimation);
+	Animator mag_animator(&mag_anim);
+
+    Entity player{};
+	// find all AssimpNodes corresponding to the player model
+	player.has_animations = true;
+	player.has_model = true;
+	player.transform = Transform3D();
+	player.models = find_player_models(scene_graph, &player.models_count);
+
     while (global_w32_window.is_running)
 	{
         LONGLONG now = aim_timer_get_os_time();
@@ -1088,13 +1968,17 @@ int main() {
 
         glEnable(GL_DEPTH_TEST);
         glDepthFunc(GL_LESS);
-        glClearColor(1.1f, 0.1f, 0.1f, 1.0f);
+        glClearColor(0.1f, 0.1f, 0.1f, 1.0f);
 		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
         glEnable(GL_CULL_FACE);
         glCullFace(GL_BACK);
 
         glm::mat4 view = curr_camera.GetViewMatrix();
+
+	    opengl->glBindVertexArray(cubeVAO);
         shader_use(skinning_shader);
+
+         shader_set_mat4(skinning_shader, "nodeMatrix", glm::mat4(1.0f));
 		shader_set_mat4(skinning_shader, "view", view);
         shader_set_vec3(skinning_shader, "viewPos", curr_camera.position);
         shader_set_vec3(skinning_shader, "spotLight.position", curr_camera.position);
@@ -1135,6 +2019,42 @@ int main() {
 
             glDrawArrays(GL_TRIANGLES, 0, 36);
         }
+
+        // Esto es atroz porque se usan igual estas mierdas
+        if (animationActive) 
+        {
+            animator.UpdateAnimation(dt);
+            mag_animator.UpdateAnimation(dt);
+            for (auto& bone : animator.m_CurrentAnimation->m_Bones) 
+            {
+                if (bone.GetBoneName() == "Armature") {
+                    manny_armature = bone.GetLocalTransform();
+                }
+                if (bone.GetBoneName() == "root") {
+                    root = &bone;
+                }
+                if (bone.GetBoneName() == "ik_hand_root") {
+                    ik_hand_root = &bone;
+                }
+                if (bone.GetBoneName() == "ik_hand_gun") {
+                    ik_hand_gun_bone = &bone;
+                }
+            }
+            for (auto& bone : mag_animator.m_CurrentAnimation->m_Bones) 
+            {
+                if (bone.GetBoneName() == "Magazine") {
+                    mag_bone_transform = bone.GetLocalTransform();
+                }
+            }
+        }
+		int index = skeletons[animator.m_CurrentAnimation->m_skeleton_index].m_BoneInfoMap["ik_hand_gun"].id;
+		ik_something = animator.m_FinalBoneMatrices[index];
+		todas_las_putas_transforms = manny_armature * root->GetLocalTransform() * ik_hand_root->GetLocalTransform() * ik_hand_gun_bone->GetLocalTransform();
+		
+		manny_transforms = animator.GetFinalBoneMatrices();
+		mag_transforms = mag_animator.GetFinalBoneMatrices();
+
+        render_player(opengl, &player, skinning_shader);
 
         input_update(&global_input);
         opengl->glUseProgram(0);

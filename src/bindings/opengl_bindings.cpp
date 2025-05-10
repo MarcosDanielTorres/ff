@@ -17,11 +17,19 @@
 #define GL_VERTEX_SHADER                  0x8B31
 #define GL_ARRAY_BUFFER                   0x8892
 #define GL_STATIC_DRAW                    0x88E4
+#define GL_DYNAMIC_DRAW                   0x88E8
+#define GL_DYNAMIC_COPY                   0x88EA
 #define GL_COMPILE_STATUS                 0x8B81
+#define GL_SHADER_STORAGE_BUFFER          0x90D2
 #define GL_LINK_STATUS                    0x8B82
 #define GL_ELEMENT_ARRAY_BUFFER           0x8893
+#define GL_UNSIGNED_SHORT                 0x1403
+#define GL_UNSIGNED_INT                   0x1405
+#define GL_CLAMP_TO_EDGE                  0x812F
+#define GL_TEXTURE0                       0x84C0
 
 typedef ptrdiff_t GLsizeiptr;
+typedef ptrdiff_t GLintptr;
 typedef char GLchar;
 
 #define OpenGLDefineFunction(name, ret, ...) \
@@ -39,6 +47,7 @@ OpenGLDefineFunction(glDeleteVertexArrays, void, GLsizei n, const GLuint *arrays
 OpenGLDefineFunction(glGenBuffers, void, GLsizei n, GLuint *buffers);
 OpenGLDefineFunction(glBindBuffer, void, GLenum target, GLuint buffer);
 OpenGLDefineFunction(glBufferData, void, GLenum target, GLsizeiptr size, const void *data, GLenum usage);
+OpenGLDefineFunction(glDeleteBuffers, void, GLsizei n, const GLuint *buffers);
 OpenGLDefineFunction(glVertexAttribPointer, void, GLuint index, GLint size, GLenum type, GLboolean normalized, GLsizei stride, const void *pointer);
 OpenGLDefineFunction(glVertexAttribIPointer, void, GLuint index, GLint size, GLenum type, GLsizei stride, const void *pointer);
 OpenGLDefineFunction(glEnableVertexAttribArray, void, GLuint index);
@@ -68,5 +77,12 @@ OpenGLDefineFunction(glUniformMatrix2fv, void, GLint location, GLsizei count, GL
 OpenGLDefineFunction(glUniformMatrix3fv, void, GLint location, GLsizei count, GLboolean transpose, const GLfloat *value);
 OpenGLDefineFunction(glUniformMatrix4fv, void, GLint location, GLsizei count, GLboolean transpose, const GLfloat *value);
 OpenGLDefineFunction(glGetUniformLocation, GLint, GLuint program, const GLchar *name);
+
+OpenGLDefineFunction(glActiveTexture, void, GLenum texture);
+
+
+OpenGLDefineFunction(glDrawElementsInstanced, void, GLenum mode, GLsizei count, GLenum type, const void *indices, GLsizei instancecount);
+OpenGLDefineFunction(glBufferSubData, void, GLenum target, GLintptr offset, GLsizeiptr size, const void *data);
+OpenGLDefineFunction(glBindBufferRange, void, GLenum target, GLuint index, GLuint buffer, GLintptr offset, GLsizeiptr size);
 
 #define OpenGLGetFunction(name) (OpenGLType_##name) wglGetProcAddress(#name)

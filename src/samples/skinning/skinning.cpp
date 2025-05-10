@@ -5,7 +5,7 @@
 #include <iostream>
 // fileysystem, sstream, fstream breaks the macro 'internal'
 
-#include "samples/opengl_bindings.cpp"
+#include "bindings/opengl_bindings.cpp"
 // thirdparty
 
 /* TODO primero ver de sacar lo que esta en shader, capaz es el causante del internal
@@ -46,37 +46,6 @@ typedef u32 b32;
 
 // assimp
 #include "AssimpLoader.h"
-#if 0
-
-// jolt
-#include <Jolt/Jolt.h>
-#include <Jolt/RegisterTypes.h>
-#include <Jolt/Core/Factory.h>
-#include <Jolt/Core/TempAllocator.h>
-#include <Jolt/Core/JobSystemThreadPool.h>
-#include <Jolt/Physics/PhysicsSettings.h>
-#include <Jolt/Physics/PhysicsSystem.h>
-#include <Jolt/Physics/Collision/Shape/BoxShape.h>
-#include <Jolt/Physics/Collision/Shape/SphereShape.h>
-#include <Jolt/Physics/Body/BodyCreationSettings.h>
-#include <Jolt/Physics/Body/BodyActivationListener.h>
-#include <Jolt/Physics/Collision/Shape/CapsuleShape.h>
-#include <Jolt/Physics/Collision/Shape/RotatedTranslatedShape.h>
-#include <Jolt/Physics/Character/CharacterVirtual.h>
-#include <Jolt/Physics/Collision/Shape/MeshShape.h>
-// vehicle physics
-#include <Jolt/Physics/Vehicle/VehicleConstraint.h>
-#include <Jolt/Physics/Vehicle/VehicleCollisionTester.h>
-#include <Jolt/Physics/Vehicle/WheeledVehicleController.h>
-// debug renderer
-#include <Jolt/Renderer/DebugRenderer.h>
-#include "physics/jolt_debug_renderer.h"
-#include "physics/physics_system.h"
-
-#include "physics/jolt_debug_renderer.cpp"
-#include "physics/physics_system.cpp"
-#endif
-
 
 // TODO fix assert collision with windows.h or something else!
 
@@ -107,7 +76,6 @@ typedef u32 b32;
 #include "input/input.h"
 typedef Input GameInput;
 #include "camera.h"
-//TODO: get the timer
 
 #define AIM_PROFILER
 #include "aim_timer.h"
@@ -128,16 +96,12 @@ using namespace aim::Components;
 glm::mat4 m_globalInverseTransform;
 glm::mat4 todas_las_putas_transforms{};
 glm::mat4 assault_rifle_transform{};
-//glm::mat4 mag_transform;
-//glm::mat4 grip_transform;
-//glm::mat4 armature_transform;
-//glm::mat4 ik_something;
-//std::vector<glm::mat4> mag_transforms;
 
 // should be local to the model
 glm::mat4 manny_armature;
 glm::mat4 mag_bone_transform;
 std::vector<glm::mat4> manny_transforms;
+
 // this `manny_world_transform` is the position of the manny in the world
 glm::mat4 manny_world_transform{};
 
@@ -147,7 +111,6 @@ glm::mat4 manny_world_transform{};
 struct OpenGL
 {
     i32 vsynch;
-    // OpenGLType__wglCreateContextAttribsARB wglCreateContextAttribsARB
     OpenGLDeclareMemberFunction(wglCreateContextAttribsARB);
     OpenGLDeclareMemberFunction(wglGetExtensionsStringEXT);
     OpenGLDeclareMemberFunction(wglSwapIntervalEXT);
@@ -247,36 +210,9 @@ Camera& curr_camera = free_camera;
 
 struct MeshBox {
 	Transform3D transform;
-	//PhysicsBody body;
-
 	MeshBox(Transform3D transform) {
 		this->transform = transform;
 	}
-
-	// this is not the best api, its only used once when there is no body. Only done in creation
-	// This api is more like a builder style api, its probably better to have it inside the constructor and that's it or use a builder for this shapes. which could be good.
-	//void set_shape(JPH::Ref<JPH::Shape> shape) {
-	//	this->body.shape = shape;
-	//}
-
-	//void update_body_shape(PhysicsSystem& physics_system) {
-	//	JPH::BoxShapeSettings floor_shape_settings(JPH::Vec3(this->transform.scale.x / 2.0, this->transform.scale.y / 2.0, this->transform.scale.z / 2.0));
-	//	floor_shape_settings.SetEmbedded(); // A ref counted object on the stack (base class RefTarget) should be marked as such to prevent it from being freed when its reference count goes to 0.
-	//	JPH::ShapeSettings::ShapeResult floor_shape_result = floor_shape_settings.Create();
-	//	JPH::Ref<JPH::Shape> floor_shape = floor_shape_result.Get(); // We don't expect an error here, but you can check floor_shape_result for HasError() / GetError()
-	//	this->body.shape = floor_shape;
-	//	physics_system.get_body_interface().SetShape(this->body.physics_body_id, this->body.shape, false, JPH::EActivation::DontActivate);
-
-	//	glm::vec3 my_pos = this->transform.pos;
-	//	JPH::Vec3 new_pos = JPH::Vec3(my_pos.x, my_pos.y, my_pos.z);
-	//	physics_system.get_body_interface().SetPosition(this->body.physics_body_id, new_pos, JPH::EActivation::DontActivate);
-
-	//	physics_system.get_body_interface().SetRotation(
-	//		this->body.physics_body_id,
-	//		JPH::Quat(this->transform.rot.x, this->transform.rot.y, this->transform.rot.z, this->transform.rot.w),
-	//		JPH::EActivation::DontActivate
-	//	);
-	//}
 };
 
 

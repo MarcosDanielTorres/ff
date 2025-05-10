@@ -24,5 +24,5 @@ struct Str16
 };
 
 
-u64 cstring8_length(const char* str);
-b32 str8_equals(Str8 str_a, Str8 str_b);
+internal u64 cstring8_length(const char* str);
+internal b32 str8_equals(Str8 str_a, Str8 str_b);

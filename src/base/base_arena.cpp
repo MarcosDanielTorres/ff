@@ -3,7 +3,7 @@
 #define arena_push_size(arena, value, count, ...) (value*) _push_size(arena, sizeof(value) * count, ##__VA_ARGS__);
 #define arena_push_copy(arena, size, source, ...) memcpy((void*) _push_size(arena, size, ##__VA_ARGS__), source, size);
 
-void arena_init(Arena* arena, size_t size, u8* base) 
+internal void arena_init(Arena* arena, size_t size, u8* base) 
 {
     if (base)
     {
@@ -18,7 +18,7 @@ void arena_init(Arena* arena, size_t size, u8* base)
     arena->temp_count = 0;
 }
 
-void* _push_size(Arena* arena, size_t size, u64 alignment)
+internal void* _push_size(Arena* arena, size_t size, u64 alignment)
 {
     /*
         000000 
@@ -41,7 +41,7 @@ void* _push_size(Arena* arena, size_t size, u64 alignment)
 }
 
 
-TempArena temp_begin(Arena* arena) 
+internal TempArena temp_begin(Arena* arena) 
 {
     TempArena result = {0};
     result.arena = arena;
@@ -50,7 +50,7 @@ TempArena temp_begin(Arena* arena)
     return result;
 }
 
-void temp_end(TempArena temp_arena) 
+internal void temp_end(TempArena temp_arena) 
 {
     assert(temp_arena.arena->temp_count > 0);
     //memset(temp_arena.arena->base, 0, temp_arena.arena->len);

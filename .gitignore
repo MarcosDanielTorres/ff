@@ -1,3 +1,5 @@
 build
 asan*
 src/samples/opengl/thirdpartya
+thirdparty/assimp
+thirdparty/glm

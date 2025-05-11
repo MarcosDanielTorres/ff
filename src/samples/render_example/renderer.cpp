@@ -21,8 +21,8 @@ struct RenderGroup
 
 void check_bounds(u32 vertex_count, u32 index_count)
 {
-    gui_assert(vertex_count < max_vertex_per_batch, "max vertex count per batch exceeded! %d\n", vertex_count);
-    gui_assert(index_count < max_index_per_batch, "max index count per batch exceeded! %d\n", index_count);
+    AssertGui(vertex_count < max_vertex_per_batch, "max vertex count per batch exceeded! %d\n", vertex_count);
+    AssertGui(index_count < max_index_per_batch, "max index count per batch exceeded! %d\n", index_count);
 }
 
 void push_triangle(RenderGroup *render_group, glm::vec3 tri_points[3], u16 tri_indices[3])

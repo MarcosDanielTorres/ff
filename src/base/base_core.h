@@ -22,20 +22,20 @@ typedef u32 b32;
 #define mb(value) (kb(value) * 1024LL)
 #define gb(value) (mb(value) * 1024LL)
 
-#define min(a, b) ((a) > (b) ? (b) : (a))
-#define max(a, b) ((a) > (b) ? (a) : (b))
+#define Min(a, b) ((a) > (b) ? (b) : (a))
+#define Max(a, b) ((a) > (b) ? (a) : (b))
 #define array_count(a) (sizeof(a) / sizeof(*a))
 
 #define align_pow2(x,b) (((x) + (b) - 1)&(~((b) - 1)))
 
 
-#define assert(expr) do{                                    \
+#define Assert(expr) do{                                    \
     if(!(expr)) {                                       \
         __debugbreak();\
     }\
 }while(0)
 
-#define assert_msg(expr, ...) do{                                    \
+#define AssertMsg(expr, ...) do{                                    \
     if(!(expr)) {                                       \
         char _msg_buf[1024];                                                  \
                 snprintf(_msg_buf, sizeof(_msg_buf),                                        \
@@ -48,8 +48,8 @@ typedef u32 b32;
     }\
 }while(0)
 
-//#define gui_assert(expr, msg) do{if(!(expr)) {MessageBox(0, msg, 0, MB_OK | MB_ICONERROR); __debugbreak();}}while(0)
-#define gui_assert(expr, fmt, ...) do {                                       \
+//#define AssertGui(expr, msg) do{if(!(expr)) {MessageBox(0, msg, 0, MB_OK | MB_ICONERROR); __debugbreak();}}while(0)
+#define AssertGui(expr, fmt, ...) do {                                       \
     if (!(expr)) {                                                            \
         char _msg_buf[1024];                                                  \
                 snprintf(_msg_buf, sizeof(_msg_buf),                                        \

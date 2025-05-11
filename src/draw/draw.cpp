@@ -125,7 +125,7 @@ draw_line(OS_PixelBuffer* buffer, i32 x0, i32 y0, i32 x1, i32 y1, u32 color, Dra
         else
         {
             printf("x0: %d y1: %d,  x1: %d y1: %d\n", x0, y0, x1, y1);
-            assert(1 == 2);
+            Assert(1 == 2);
         }
     }
 }

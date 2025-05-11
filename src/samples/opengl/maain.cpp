@@ -5,7 +5,7 @@
 #include <iostream>
 // fileysystem, sstream, fstream breaks the macro 'internal'
 
-#include "samples/opengl_bindings.cpp"
+#include "bindings/opengl_bindings.cpp"
 // thirdparty
 
 /* TODO primero ver de sacar lo que esta en shader, capaz es el causante del internal
@@ -15,29 +15,10 @@
     primero migrar glfw, despues shader, despues chequear el internal
 */
 //#define internal_linkage static
-#define internal static
-#define global_variable static
-#define local_persist static
 #define RAW_INPUT 1
 
 // TODO get the core, i should only fix the assert macro! (just call it Assert)
-typedef uint8_t u8;
-typedef uint16_t u16;
-typedef uint32_t u32;
-typedef uint64_t u64;
-typedef int8_t i8;
-typedef int16_t i16;
-typedef int32_t i32;
-typedef int64_t i64;
-typedef float f32;
-typedef double f64;
-typedef uint32_t b32;
-typedef u32 b32;
-
-#define kb(value) (value * 1024)
-#define mb(value) (1024 * kb(value))
-#define gb(value) (1024 * mb(value))
-
+#include "base/base_core.h"
 // glm
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>

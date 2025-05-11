@@ -21,9 +21,9 @@ set inc_files=%inc_files% -I%root%\src
 set inc_files=%inc_files% -I%some_path%
 
 set main=0
-set ui=1
+set ui=0
 set opengl=0
-set vulkan=1
+set vulkan=0
 set cmdline=0
 set meta=0
 set game=0

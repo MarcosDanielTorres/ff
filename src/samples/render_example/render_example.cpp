@@ -196,8 +196,8 @@ global_variable ShaderStorageBuffer mShaderBoneMatrixBuffer{};
 
 // mAssimpShader.use();
 
-global_variable u32 SRC_WIDTH = 1280;
-global_variable u32 SRC_HEIGHT = 720;
+global_variable u32 SRC_WIDTH = 1600;
+global_variable u32 SRC_HEIGHT = 900;
 
 // TODO: Removed these
 // used during mouse callback
@@ -456,16 +456,16 @@ LRESULT CALLBACK win32_main_callback(HWND Window, UINT Message, WPARAM wParam, L
         case WM_SIZE:
         {
             // os get window dimensions
-        RECT r;
-        GetClientRect(global_w32_window.handle, &r);
-        u32 width = r.right - r.left;
-        u32 height = r.bottom - r.top;
-        if (width != SRC_WIDTH || height != SRC_HEIGHT)
-        {
-            //SRC_WIDTH = width;
-            //SRC_HEIGHT = height;
-            glViewport(0, 0, width, height);
-        }
+            RECT r;
+            GetClientRect(global_w32_window.handle, &r);
+            u32 width = r.right - r.left;
+            u32 height = r.bottom - r.top;
+            if (width != SRC_WIDTH || height != SRC_HEIGHT)
+            {
+                //SRC_WIDTH = width;
+                //SRC_HEIGHT = height;
+                glViewport(0, 0, width, height);
+            }
         }break;
         #if RAW_INPUT
         case WM_KILLFOCUS:
@@ -986,7 +986,16 @@ drawInstanced(Model *model, OpenGL *opengl, u32 instanceCount)
     //  }
     //}
 
-    model->mVertexBuffers.at(i).bindAndDrawIndirectInstanced(opengl, GL_TRIANGLES, mesh.indices.size(), instanceCount);
+    //model->mVertexBuffers.at(i).bindAndDrawIndirectInstanced(opengl, GL_TRIANGLES, mesh.indices.size(), instanceCount);
+
+    VertexIndexBuffer model_buffer = model->mVertexBuffers.at(i);
+    model_buffer.bind(opengl);
+    #if 0
+        glDrawElements(GL_TRIANGLES, mesh.indices.size(), GL_UNSIGNED_INT, 0);
+    #else
+        opengl->glDrawElementsInstanced(GL_TRIANGLES, mesh.indices.size(), GL_UNSIGNED_INT, 0, 1);
+    #endif
+    model_buffer.unbind(opengl);
 
     //if (diffuseTex) {
     //  diffuseTex->unbind();

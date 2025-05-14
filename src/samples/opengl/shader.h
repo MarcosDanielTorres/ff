@@ -21,8 +21,8 @@ void shader_init(Shader *shader, OpenGL *opengl, Str8 vertex_path, Str8 fragment
 	}
 
 
-	Str8 vertexFullPath = str8_concat(temp.arena, str8("build/"), vertex_path);
-	Str8 fragmentFullPath =  str8_concat(temp.arena, str8("build/"), fragment_path);
+	Str8 vertexFullPath = str8_concat(temp.arena, str8("src/samples/render_example/shader/"), vertex_path);
+	Str8 fragmentFullPath =  str8_concat(temp.arena, str8("src/samples/render_example/shader/"), fragment_path);
 	printf("Looking for vert shader at: %.*s\n", (u32)vertexFullPath.size, vertexFullPath.str);
 	printf("Looking for frag shader at: %.*s\n", (u32)fragmentFullPath.size, fragmentFullPath.str);
 
@@ -186,8 +186,8 @@ public:
 		//std::string fragmentFullPath = std::string(AIM_ENGINE_ASSETS_PATH)  + fragmentPath;
 		//AIM_DEBUG("Looking for vert shader at: %s", vertexFullPath.c_str());
 		//AIM_DEBUG("Looking for frag shader at: %s", fragmentFullPath.c_str());
-		std::string vertexFullPath = std::string("build/") + vertexPath;
-		std::string fragmentFullPath =  std::string("build/") + fragmentPath;
+		std::string vertexFullPath = std::string("src/samples/render_example/") + vertexPath;
+		std::string fragmentFullPath =  std::string("src/samples/render_example/") + fragmentPath;
 		printf("Looking for vert shader at: %s\n", vertexFullPath.c_str());
 		printf("Looking for frag shader at: %s\n", fragmentFullPath.c_str());
 

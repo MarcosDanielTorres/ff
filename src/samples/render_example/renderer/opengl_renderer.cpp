@@ -7,7 +7,6 @@ struct OpenGL
     i32 vsynch;
     
     UIRenderGroup* ui_render_group;
-    //GLuint glyph_tex;
 
     OpenGLDeclareMemberFunction(wglCreateContextAttribsARB);
     OpenGLDeclareMemberFunction(wglGetExtensionsStringEXT);
@@ -114,8 +113,8 @@ create_shader(OpenGL *opengl, Str8 shader_filename, GLenum shader_type)
 {
     TempArena temp = temp_begin(&g_transient_arena);
     u32 shader_id = 0;
-	Str8 shader_full_path = str8_concat(temp.arena, str8("build/"), shader_filename);
-	printf("Looking for vert shader at: %.*s\n", (u32)shader_full_path.size, shader_full_path.str);
+	Str8 shader_full_path = str8_concat(temp.arena, str8("src/samples/render_example/shader/"), shader_filename);
+	printf("Looking for shader at: %.*s\n", (u32)shader_full_path.size, shader_full_path.str);
 	const char *c_shader_path = str8_to_cstring(temp.arena, shader_full_path);
 	OS_FileReadResult shader_file = os_file_read(temp.arena, c_shader_path);
     if(shader_file.data)

@@ -20,10 +20,6 @@
 #include <assimp/postprocess.h>
 #include <assimp/matrix4x4.h>
 
-// TODO fix assert collision with windows.h or something else!
-
-
-
 #include "base/base_core.h"
 #include "base/base_arena.h"
 #include "base/base_string.h"
@@ -47,8 +43,6 @@ typedef Input GameInput;
 
 #include "components.h"
 using namespace aim::Components;
-
-
 
 static Arena g_arena;
 static Arena g_transient_arena;
@@ -1047,6 +1041,21 @@ void opengl_init(OpenGL *opengl)
     init_ui(opengl, opengl->ui_render_group);
 }
 
+struct PlaceholderState
+{
+    // TODO probably should have its own memory. After I remove std first!
+    glm::mat4 persp_proj;
+    Model *model;
+    u32 nonskinned_pid;
+    u32 skinned_pid;
+};
+
+internal
+void update_and_render(PlaceholderState *state)
+{
+
+}
+
 
 /*
 
@@ -1066,10 +1075,10 @@ for each entry:
 */
 
 
+
 // NOTE before pulling them out I have to sort out the globals being used here!
 void opengl_render (OpenGL *opengl, Camera *curr_camera, u32 cubeVAO,
-    Shader skinning_shader, MeshBox floor_meshbox, glm::mat4 projection,
-    std::vector<MeshBox> boxes, UIRenderGroup* render_group, Model* woman)
+    Shader skinning_shader, MeshBox floor_meshbox, std::vector<MeshBox> boxes, UIRenderGroup* render_group, PlaceholderState *placeholder_state)
 {
         glEnable(GL_DEPTH_TEST);
         glDepthFunc(GL_LESS);
@@ -1106,6 +1115,7 @@ void opengl_render (OpenGL *opengl, Camera *curr_camera, u32 cubeVAO,
         }
 
         {
+            Model *woman = placeholder_state->model;
             // render model
             /* non-animated models */
             mWorldPosMatrices.clear();
@@ -1117,11 +1127,14 @@ void opengl_render (OpenGL *opengl, Camera *curr_camera, u32 cubeVAO,
         }
 
         {
-            glm::mat4 orthog = glm::ortho(0.0f, f32(SRC_WIDTH), f32(SRC_HEIGHT), 0.0f, -1.0f, 1.0f);
             // render ui
+            // TODO this should only be done at resizes
+            glm::mat4 orthog = glm::ortho(0.0f, f32(SRC_WIDTH), f32(SRC_HEIGHT), 0.0f, -1.0f, 1.0f);
             opengl_shader_ui_begin(opengl, render_group);
             opengl->glUniformMatrix4fv(opengl->ui_render_group->ortho_proj, 1, GL_FALSE, &orthog[0][0]);
+            // TODO see wtf is a 0 there? Why is the texture sampler for?
             opengl->glUniform1i(opengl->ui_render_group->texture_sampler, 0);
+            // TODO investigate if i have to set this value for the uniforms again or not!. 
 
             glDrawElements(GL_TRIANGLES, render_group->index_count, GL_UNSIGNED_SHORT, 0); //era 18
             opengl_shader_ui_end(opengl);
@@ -1129,6 +1142,7 @@ void opengl_render (OpenGL *opengl, Camera *curr_camera, u32 cubeVAO,
 
         opengl->glUseProgram(0);
 }
+
 
 int main() {
     aim_profiler_begin();
@@ -1196,8 +1210,17 @@ int main() {
     opengl->glBufferData(GL_SHADER_STORAGE_BUFFER, mWorldPosBuffer.mBufferSize, nullptr, GL_DYNAMIC_COPY);
     opengl->glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
 
-    Model *model = new Model(); 
+    // TODO see todos
+    Shader skinning_shader{};
+    shader_init(&skinning_shader, opengl, str8("skel_shader-2.vs.glsl"), str8("6.multiple_lights.fs.glsl"));
+    
+    PlaceholderState *placeholder_state = arena_push_size(&g_arena, PlaceholderState, 1);
+    placeholder_state->nonskinned_pid = create_program(opengl, str8("assimp.vert"), str8("assimp.frag"));
+    placeholder_state->skinned_pid = create_program(opengl, str8("assimp_skinning.vert"), str8("assimp_skinning.frag"));
+    placeholder_state->persp_proj = glm::perspective(glm::radians(curr_camera->zoom), (float)SRC_WIDTH / (float)SRC_HEIGHT, 0.1f, 10000.0f);
+    placeholder_state->model = new Model();
     {
+        Model *model = placeholder_state->model;
         // w1 models
         Assimp::Importer importer;
         std::string model_filename = "E:/Mastering-Cpp-Game-Animation-Programming/chapter01/01_opengl_assimp/assets/woman/Woman.gltf";
@@ -1285,16 +1308,7 @@ int main() {
     // add model to model list here?
 
 
-
-
-
-    glm::mat4 projection;
-    projection = glm::perspective(glm::radians(curr_camera->zoom), (float)SRC_WIDTH / (float)SRC_HEIGHT, 0.1f, 10000.0f);
-
     // shader
-    Shader skinning_shader{};
-    shader_init(&skinning_shader, opengl, str8("skel_shader-2.vs.glsl"), str8("6.multiple_lights.fs.glsl"));
-
 
     f32 pre_transformed_quad[] = 
     {
@@ -1597,7 +1611,7 @@ int main() {
     shader_set_float(skinning_shader, "spotLight.quadratic", spot_light.quadratic);
     shader_set_float(skinning_shader, "spotLight.cutOff", spot_light.cutOff);
     shader_set_float(skinning_shader, "spotLight.outerCutOff", spot_light.outerCutOff);
-    shader_set_mat4(skinning_shader, "projection", projection);
+    shader_set_mat4(skinning_shader, "projection", placeholder_state->persp_proj);
 
     //while (!glfwWindowShouldClose(window)) 
     LONGLONG frequency = aim_timer_get_os_freq();
@@ -1633,7 +1647,9 @@ int main() {
             f32 yy = global_input.dy;
             curr_camera->process_mouse_movement(xx, yy);
         }
-        opengl_render(opengl, curr_camera, cubeVAO, skinning_shader, floor_meshbox, projection, boxes, ui_render_group, model);
+        update_and_render(placeholder_state);
+
+        opengl_render(opengl, curr_camera, cubeVAO, skinning_shader, floor_meshbox, boxes, ui_render_group, placeholder_state);
 
         input_update(&global_input);
         // TODO see when hdc needs to be get again?

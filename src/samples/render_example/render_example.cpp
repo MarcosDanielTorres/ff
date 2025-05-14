@@ -48,76 +48,13 @@ typedef Input GameInput;
 #include "components.h"
 using namespace aim::Components;
 
-#include "renderer.cpp"
 
-#define OpenGLSetFunction(name) (opengl->name) = OpenGLGetFunction(name);
-#define OpenGLDeclareMemberFunction(name) OpenGLType_##name name
-
-struct OpenGL
-{
-    i32 vsynch;
-
-    f32 *vertex_array;
-    u32 vertex_count;
-    f32 *index_array;
-    u32 index_count;
-
-    
-    u32 quad_vbo, quad_vao, quad_ebo;
-    GLuint glyph_tex;
-
-    OpenGLDeclareMemberFunction(wglCreateContextAttribsARB);
-    OpenGLDeclareMemberFunction(wglGetExtensionsStringEXT);
-    OpenGLDeclareMemberFunction(wglSwapIntervalEXT);
-    OpenGLDeclareMemberFunction(wglGetSwapIntervalEXT);
-    OpenGLDeclareMemberFunction(glGenVertexArrays);
-    OpenGLDeclareMemberFunction(glBindVertexArray);
-    OpenGLDeclareMemberFunction(glDeleteVertexArrays);
-
-	OpenGLDeclareMemberFunction(glGenBuffers);
-	OpenGLDeclareMemberFunction(glBindBuffer);
-	OpenGLDeclareMemberFunction(glBufferData);
-    OpenGLDeclareMemberFunction(glDeleteBuffers);
-	OpenGLDeclareMemberFunction(glVertexAttribPointer);
-	OpenGLDeclareMemberFunction(glVertexAttribIPointer);
-	OpenGLDeclareMemberFunction(glEnableVertexAttribArray);
-
-    OpenGLDeclareMemberFunction(glCreateShader);
-    OpenGLDeclareMemberFunction(glCompileShader);
-    OpenGLDeclareMemberFunction(glShaderSource);
-    OpenGLDeclareMemberFunction(glCreateProgram);
-    OpenGLDeclareMemberFunction(glAttachShader);
-    OpenGLDeclareMemberFunction(glLinkProgram);
-    OpenGLDeclareMemberFunction(glDeleteShader);
-    OpenGLDeclareMemberFunction(glUseProgram);
-    OpenGLDeclareMemberFunction(glGetShaderiv);
-    OpenGLDeclareMemberFunction(glGetShaderInfoLog);
-    OpenGLDeclareMemberFunction(glGetProgramiv);
-    OpenGLDeclareMemberFunction(glGetProgramInfoLog);
-
-    OpenGLDeclareMemberFunction(glUniform1i);
-    OpenGLDeclareMemberFunction(glUniform1f);
-    OpenGLDeclareMemberFunction(glUniform2fv);
-    OpenGLDeclareMemberFunction(glUniform2f);
-    OpenGLDeclareMemberFunction(glUniform3fv);
-    OpenGLDeclareMemberFunction(glUniform3f);
-    OpenGLDeclareMemberFunction(glUniform4fv);
-    OpenGLDeclareMemberFunction(glUniform4f);
-    OpenGLDeclareMemberFunction(glUniformMatrix2fv);
-    OpenGLDeclareMemberFunction(glUniformMatrix3fv);
-    OpenGLDeclareMemberFunction(glUniformMatrix4fv);
-    OpenGLDeclareMemberFunction(glGetUniformLocation);
-
-    OpenGLDeclareMemberFunction(glActiveTexture);
-
-
-    OpenGLDeclareMemberFunction(glDrawElementsInstanced);
-    OpenGLDeclareMemberFunction(glBufferSubData);
-    OpenGLDeclareMemberFunction(glBindBufferRange);
-};
 
 static Arena g_arena;
 static Arena g_transient_arena;
+
+#include "renderer.cpp"
+#include "renderer/opengl_renderer.cpp"
 
 #include "shader.h"
 
@@ -162,8 +99,8 @@ global_variable ShaderStorageBuffer mShaderBoneMatrixBuffer{};
 
 // mAssimpShader.use();
 
-global_variable u32 SRC_WIDTH = 1600;
-global_variable u32 SRC_HEIGHT = 900;
+global_variable u32 SRC_WIDTH = 1680;
+global_variable u32 SRC_HEIGHT = 945;
 
 // TODO: Removed these
 // used during mouse callback
@@ -207,7 +144,7 @@ static bool fps_mode = false;
 Camera free_camera(FREE_CAMERA, glm::vec3(0.0f, 5.0f, 19.0f));
 Camera fps_camera(FPS_CAMERA, glm::vec3(0.0f, 8.0f, 3.0f));
 
-Camera& curr_camera = free_camera;
+Camera* curr_camera = &free_camera;
 ///////// TODO cleanup ////////////
 
 struct MeshBox {
@@ -975,34 +912,8 @@ drawInstanced(Model *model, OpenGL *opengl, u32 instanceCount)
     }
 }
 
-int main() {
-    aim_profiler_begin();
-    global_w32_window = os_win32_open_window("opengl", SRC_WIDTH, SRC_HEIGHT, win32_main_callback, 1);
-	
-	arena_init(&g_arena, 1024 * 1024 * 2);
-	arena_init(&g_transient_arena, 1024 * 1024 * 2);
-
-    //os_win32_toggle_fullscreen(global_w32_window.handle, &global_w32_window.window_placement);
-
-    #if RAW_INPUT
-    RAWINPUTDEVICE rid = {
-        .usUsagePage = 0x01,                   // generic desktop controls
-        .usUsage     = 0x02,                   // mouse
-        //.dwFlags     = RIDEV_INPUTSINK       // receive even when not focused
-        //            | RIDEV_NOLEGACY,      // no WM_MOUSEMOVE fallback
-        .dwFlags = 0,
-        .hwndTarget  = global_w32_window.handle,
-    };
-
-    if (!RegisterRawInputDevices(&rid, 1, sizeof(rid))) {
-        // failure!
-    }
-    // clamp the cursor to your client rect if you want absolute confinement:
-    #endif                        
-
-    ShowCursor(0);
-
-    OpenGL* opengl = new OpenGL();
+void opengl_init(OpenGL *opengl)
+{
     opengl->vsynch = -1;
 
     HDC hdc = GetDC(global_w32_window.handle);
@@ -1099,6 +1010,7 @@ int main() {
     OpenGLSetFunction(glAttachShader);
     OpenGLSetFunction(glLinkProgram);
     OpenGLSetFunction(glDeleteShader);
+    OpenGLSetFunction(glDeleteProgram);
     OpenGLSetFunction(glUseProgram);
     OpenGLSetFunction(glGetShaderiv);
     OpenGLSetFunction(glGetShaderInfoLog);
@@ -1120,24 +1032,134 @@ int main() {
 
     OpenGLSetFunction(glActiveTexture);
 
-
-
     OpenGLSetFunction(glDrawElementsInstanced);
     OpenGLSetFunction(glBufferSubData);
     OpenGLSetFunction(glBindBufferRange);
 
+    // ui rendering
+    UIRenderGroup *ui_render_group = arena_push_size(&g_arena, UIRenderGroup, 1);
+    opengl->ui_render_group = ui_render_group;
+    ui_render_group->vertex_array = arena_push_size(&g_arena, UIVertex, max_vertex_per_batch);
+    ui_render_group->index_array = arena_push_size(&g_arena, u16, max_index_per_batch);
+    ui_render_group->vertex_count = 0;
+    ui_render_group->index_count  = 0;
+
+    init_ui(opengl, opengl->ui_render_group);
+}
 
 
+/*
 
-    // rendering
+render_entry_quads -> shader
+render_entry_models -> shader
 
-    RenderGroup *render_group = new RenderGroup();
-    render_group->vertex_array = new BasicVertex[max_vertex_per_batch];
-    render_group->index_array = new u16[max_index_per_batch];
-    render_group->vertex_count = 0;
-    render_group->index_count  = 0;
+I don't know what happens if entries are interleaved i guess i should maximize not context switching the shaders!
+this is a fucking to do!
+
+this is for rendering only and its only useful to know which shader and config you need, nothing else
+for each entry:
+    switch entry->type
+        render_entry_quads:
+        render_entry_models:
+        render_entry_static:
+        ...
+*/
 
 
+// NOTE before pulling them out I have to sort out the globals being used here!
+void opengl_render (OpenGL *opengl, Camera *curr_camera, u32 cubeVAO,
+    Shader skinning_shader, MeshBox floor_meshbox, glm::mat4 projection,
+    std::vector<MeshBox> boxes, UIRenderGroup* render_group, Model* woman)
+{
+        glEnable(GL_DEPTH_TEST);
+        glDepthFunc(GL_LESS);
+        glClearColor(0.1f, 0.1f, 0.1f, 1.0f);
+		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
+        glEnable(GL_CULL_FACE);
+        glCullFace(GL_BACK);
+
+        glm::mat4 view = curr_camera->GetViewMatrix();
+
+	    opengl->glBindVertexArray(cubeVAO);
+        shader_use(skinning_shader);
+
+        shader_set_mat4(skinning_shader, "nodeMatrix", glm::mat4(1.0f));
+		shader_set_mat4(skinning_shader, "view", view);
+        shader_set_vec3(skinning_shader, "viewPos", curr_camera->position);
+        shader_set_vec3(skinning_shader, "spotLight.position", curr_camera->position);
+        shader_set_vec3(skinning_shader, "spotLight.direction", curr_camera->forward);
+
+		glm::mat4 model_mat = glm::translate(glm::mat4(1.0f), floor_meshbox.transform.pos) *
+			glm::mat4_cast(floor_meshbox.transform.rot) *
+			glm::scale(glm::mat4(1.0f), floor_meshbox.transform.scale);
+
+		shader_set_mat4(skinning_shader, "model", model_mat);
+        // NOTE glDrawArrays takes the amount of vertices, not points (vertex is pos, norm, tex, ... so on, a combination of things!!)
+        glDrawArrays(GL_TRIANGLES, 0, 36);
+        for (u32 i = 3; i < boxes.size(); i++)
+        {
+            glm::mat4 model = glm::translate(glm::mat4(1.0f), boxes[i].transform.pos) *
+                glm::mat4_cast(boxes[i].transform.rot) *
+                glm::scale(glm::mat4(1.0f), boxes[i].transform.scale);
+            shader_set_mat4(skinning_shader, "model", model);
+            glDrawArrays(GL_TRIANGLES, 0, 36);
+        }
+
+        {
+            // render model
+            /* non-animated models */
+            mWorldPosMatrices.clear();
+            mWorldPosMatrices.emplace_back(glm::mat4(1.0f));
+
+            //mAssimpShader.use();
+            mWorldPosBuffer.uploadSsboData(opengl, mWorldPosMatrices, 1);
+            drawInstanced(woman, opengl, 1);
+        }
+
+        {
+            glm::mat4 orthog = glm::ortho(0.0f, f32(SRC_WIDTH), f32(SRC_HEIGHT), 0.0f, -1.0f, 1.0f);
+            // render ui
+            opengl_shader_ui_begin(opengl, render_group);
+            opengl->glUniformMatrix4fv(opengl->ui_render_group->ortho_proj, 1, GL_FALSE, &orthog[0][0]);
+            opengl->glUniform1i(opengl->ui_render_group->texture_sampler, 0);
+
+            glDrawElements(GL_TRIANGLES, render_group->index_count, GL_UNSIGNED_SHORT, 0); //era 18
+            opengl_shader_ui_end(opengl);
+        }
+
+        opengl->glUseProgram(0);
+}
+
+int main() {
+    aim_profiler_begin();
+    global_w32_window = os_win32_open_window("opengl", SRC_WIDTH, SRC_HEIGHT, win32_main_callback, 1);
+	
+	arena_init(&g_arena, mb(2));
+	arena_init(&g_transient_arena, mb(2));
+
+    //os_win32_toggle_fullscreen(global_w32_window.handle, &global_w32_window.window_placement);
+
+    #if RAW_INPUT
+    RAWINPUTDEVICE rid = {
+        .usUsagePage = 0x01,                   // generic desktop controls
+        .usUsage     = 0x02,                   // mouse
+        //.dwFlags     = RIDEV_INPUTSINK       // receive even when not focused
+        //            | RIDEV_NOLEGACY,      // no WM_MOUSEMOVE fallback
+        .dwFlags = 0,
+        .hwndTarget  = global_w32_window.handle,
+    };
+
+    if (!RegisterRawInputDevices(&rid, 1, sizeof(rid))) {
+        // failure!
+    }
+    // clamp the cursor to your client rect if you want absolute confinement:
+    #endif                        
+
+    ShowCursor(0);
+
+    OpenGL* opengl = arena_push_size(&g_arena, OpenGL, 1);
+    opengl_init(opengl);
+    UIRenderGroup *ui_render_group = opengl->ui_render_group;
     {
         /* TODO The biggest problem here is do I recreate the render group every frame or not
             Because why would I do this if I can instead save the points in each model? Which is why they do
@@ -1147,15 +1169,24 @@ int main() {
 
             But... for persistent objects? I don't think so
         */
+        /*
         const glm::vec3 T0v = { -3.0f, 1.0f, -4.5f};
         const glm::vec3 T1v = {-2.0f,  1.0f, -4.5f};
         const glm::vec3 T2v = {-1.0f,  1.0f, -4.5f};
         push_quad(render_group, T0v, glm::vec3(0.5f), glm::vec4(1.0f, 0.0f, 0.0f, 1.0f));
         push_quad(render_group, T1v, glm::vec3(0.5f), glm::vec4(0.0f, 1.0f, 0.0f, 1.0f));
         push_quad(render_group, T2v, glm::vec3(0.5f), glm::vec4(0.0f, 0.0f, 1.0f, 1.0f));
-        glm::vec3 tri_points[3] = {glm::vec3(7.0f, 5.0f, -10.0f), glm::vec3(10.0f, 5.0f, -10.0f), glm::vec3(10.0f, 7.0f, -15.0f)};
+        */
+        const glm::vec3 T0v = {100.0f,  500.0f, 0.0f};
+        const glm::vec3 T1v = {300.0f,  500.0f, 0.0f};
+        const glm::vec3 T2v = {300.0f,  300.0f, 0.0f};
+        const glm::vec3 T3v = {100.0f,  300.0f, 0.0f};
+
+        const glm::vec3 rect_points[4] = {T0v, T1v, T2v, T3v};
+        push_rect(ui_render_group, rect_points);
+        glm::vec3 tri_points[3] = {glm::vec3(500.0f, 500.0f, 0.0f), glm::vec3(600.0f, 500.0f, 0.0f), glm::vec3(450.0f, 300.0f, 0.0f)};
         u16 tri_indices[3] = {0, 1, 2};
-        push_triangle(render_group, tri_points, tri_indices);
+        push_triangle(ui_render_group, tri_points, tri_indices);
     }
 
     // ssbo init!
@@ -1254,50 +1285,16 @@ int main() {
     // add model to model list here?
 
 
-	opengl->glGenVertexArrays(1, &opengl->quad_vao);
-	opengl->glGenBuffers(1, &opengl->quad_vbo);
-	opengl->glGenBuffers(1, &opengl->quad_ebo);
-	glGenTextures(1, &opengl->glyph_tex);
-    glBindTexture(GL_TEXTURE_2D, opengl->glyph_tex);
 
-    constexpr int W = 2, H = 2;
-    u8 dummy[W*H*4] = 
-    {
-        255, 0, 0, 255,
-        0, 255, 0, 255, 
-        0, 0, 255, 255,
-        255, 255, 0, 255,
-    };
-
-    // upload into the texture
-    glTexImage2D(GL_TEXTURE_2D,
-                0,                // mip level
-                GL_RGBA8,         // internal format
-                W, H,
-                0,                // border
-                GL_RGBA,          // data format
-                GL_UNSIGNED_BYTE, // data type
-                dummy);
-
-    // set filtering & wrap modes
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S,     GL_CLAMP_TO_EDGE);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T,     GL_CLAMP_TO_EDGE);
-
-    // now the texture is bound to unit 0 by default
-    glBindTexture(GL_TEXTURE_2D, 0);
 
 
     glm::mat4 projection;
-    projection = glm::perspective(glm::radians(curr_camera.zoom), (float)SRC_WIDTH / (float)SRC_HEIGHT, 0.1f, 10000.0f);
+    projection = glm::perspective(glm::radians(curr_camera->zoom), (float)SRC_WIDTH / (float)SRC_HEIGHT, 0.1f, 10000.0f);
 
     // shader
     Shader skinning_shader{};
     shader_init(&skinning_shader, opengl, str8("skel_shader-2.vs.glsl"), str8("6.multiple_lights.fs.glsl"));
 
-    Shader quad_shader{};
-    shader_init(&quad_shader, opengl, str8("quad.vs.glsl"), str8("quad.fs.glsl"));
 
     f32 pre_transformed_quad[] = 
     {
@@ -1349,25 +1346,6 @@ int main() {
 //	opengl->glGenVertexArrays(1, &quad_vao);
 //	opengl->glGenBuffers(1, &quad_vbo);
 
-	opengl->glBindVertexArray(opengl->quad_vao);
-
-	opengl->glBindBuffer(GL_ARRAY_BUFFER, opengl->quad_vbo);
-	opengl->glBufferData(GL_ARRAY_BUFFER, render_group->vertex_count * sizeof(BasicVertex), render_group->vertex_array, GL_STATIC_DRAW);
-
-    opengl->glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, opengl->quad_ebo);
-    opengl->glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(u16) * render_group->index_count, render_group->index_array, GL_STATIC_DRAW);
-
-
-	// position attribute
-	opengl->glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 9 * sizeof(f32), (void*)0);
-	opengl->glEnableVertexAttribArray(0);
-
-	opengl->glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 9 * sizeof(f32), (void*)(3 * sizeof(f32)));
-	opengl->glEnableVertexAttribArray(1);
-
-	// color attribute
-	opengl->glVertexAttribPointer(2, 4, GL_FLOAT, GL_FALSE, 9 * sizeof(f32), (void*) (5 * sizeof(f32)));
-	opengl->glEnableVertexAttribArray(2);
 
 	float vertices[] = {
 		// Back face
@@ -1637,97 +1615,32 @@ int main() {
 
         win32_process_pending_msgs();
         if (input_is_key_pressed(&global_input, Keys_W))
-            curr_camera.process_keyboard(FORWARD, dt);
+            curr_camera->process_keyboard(FORWARD, dt);
         if (input_is_key_pressed(&global_input, Keys_S))
-            curr_camera.process_keyboard(BACKWARD, dt);
+            curr_camera->process_keyboard(BACKWARD, dt);
         if (input_is_key_pressed(&global_input, Keys_A))
-            curr_camera.process_keyboard(LEFT, dt);
+            curr_camera->process_keyboard(LEFT, dt);
         if (input_is_key_pressed(&global_input, Keys_D))
-            curr_camera.process_keyboard(RIGHT, dt);
+            curr_camera->process_keyboard(RIGHT, dt);
         if (input_is_key_pressed(&global_input, Keys_Space))
-			curr_camera.process_keyboard(UP, dt);
+			curr_camera->process_keyboard(UP, dt);
         if (input_is_key_pressed(&global_input, Keys_Control))
-            curr_camera.process_keyboard(DOWN, dt);
+            curr_camera->process_keyboard(DOWN, dt);
 
         
         {
-
             f32 xx = global_input.dx;
             f32 yy = global_input.dy;
-            curr_camera.process_mouse_movement(xx, yy);
+            curr_camera->process_mouse_movement(xx, yy);
         }
+        opengl_render(opengl, curr_camera, cubeVAO, skinning_shader, floor_meshbox, projection, boxes, ui_render_group, model);
 
-        glEnable(GL_DEPTH_TEST);
-        glDepthFunc(GL_LESS);
-        glClearColor(0.1f, 0.1f, 0.1f, 1.0f);
-		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
-        glEnable(GL_CULL_FACE);
-        glCullFace(GL_BACK);
-
-        glm::mat4 view = curr_camera.GetViewMatrix();
-
-	    opengl->glBindVertexArray(cubeVAO);
-        shader_use(skinning_shader);
-
-        shader_set_mat4(skinning_shader, "nodeMatrix", glm::mat4(1.0f));
-		shader_set_mat4(skinning_shader, "view", view);
-        shader_set_vec3(skinning_shader, "viewPos", curr_camera.position);
-        shader_set_vec3(skinning_shader, "spotLight.position", curr_camera.position);
-        shader_set_vec3(skinning_shader, "spotLight.direction", curr_camera.forward);
-
-		glm::mat4 model_mat = glm::translate(glm::mat4(1.0f), floor_meshbox.transform.pos) *
-			glm::mat4_cast(floor_meshbox.transform.rot) *
-			glm::scale(glm::mat4(1.0f), floor_meshbox.transform.scale);
-
-		shader_set_mat4(skinning_shader, "model", model_mat);
-        // NOTE glDrawArrays takes the amount of vertices!!
-        glDrawArrays(GL_TRIANGLES, 0, 36);
-        for (u32 i = 3; i < boxes.size(); i++)
-        {
-            glm::mat4 model = glm::translate(glm::mat4(1.0f), boxes[i].transform.pos) *
-                glm::mat4_cast(boxes[i].transform.rot) *
-                glm::scale(glm::mat4(1.0f), boxes[i].transform.scale);
-            shader_set_mat4(skinning_shader, "model", model);
-            glDrawArrays(GL_TRIANGLES, 0, 36);
-        }
-
-        // render model
-        {
-            /* non-animated models */
-            mWorldPosMatrices.clear();
-            mWorldPosMatrices.emplace_back(glm::mat4(1.0f));
-
-            //mAssimpShader.use();
-            mWorldPosBuffer.uploadSsboData(opengl, mWorldPosMatrices, 1);
-            drawInstanced(model, opengl, 1);
-        }
-
-
-        // TODo i could turn this into a begin end call so
-        //begin_shader(quad_shader)
-        //    program->id = quad_shader.id;
-
-        //shader_set_mat4("view", view);
-        //shader_set_mat4("projection", projection);
-        //end_shader()
-        opengl->glActiveTexture(GL_TEXTURE0);
-        glBindTexture(GL_TEXTURE_2D, opengl->glyph_tex);
-
-	    opengl->glBindVertexArray(opengl->quad_vao);
-        shader_use(quad_shader);
-		shader_set_mat4(quad_shader, "view", view);
-        shader_set_mat4(quad_shader, "projection", projection);
-        opengl->glUniform1i(opengl->glGetUniformLocation(quad_shader.id, "uTexture"), 0);
-        //glDrawArrays(GL_TRIANGLES, 0, render_group->vertex_count); //era 18
-        glDrawElements(GL_TRIANGLES, render_group->index_count, GL_UNSIGNED_SHORT, 0); //era 18
-
-
-
-
-
-        opengl->glUseProgram(0);
         input_update(&global_input);
+        // TODO see when hdc needs to be get again?
+        // Probably it doesnt, and not releasing casued a huge memory leak wich was not showing in task manager!
+        HDC hdc = GetDC(global_w32_window.handle);
         SwapBuffers(hdc);
+        ReleaseDC(global_w32_window.handle, hdc);
     }
 	aim_profiler_end();
 	aim_profiler_print();

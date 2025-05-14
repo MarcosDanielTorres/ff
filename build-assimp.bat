@@ -42,13 +42,14 @@ TODO Add textures and materials
 TODO Add bones and animations
 TODO Add instancing. Make the SSBO works, right now all these things are ignored because im using the identity matrix for everything, and because there are no animations it doesnt matter.
     Because I dont have animations im using the non-animated model ssbo, there are 2. And because there is no instancing im just using my regular shader which doesnt use a SSBO!!!
-
+TODO just try to render a ui
 
 Some ambitious things:
 DONE Maybe I should just do assimp as a DLL and build only the gltf and fbx loader
     - So I managed to create the DLL and sped up quite a lot, although wasn't able to only let the importers for gltf and fbx
-    (This I did the same time I wrote this todo list haha)
+    (I did this the same time I wrote this todo list haha (it was not ambitious at all, it didn't take me much!))
 TODO Use my own math library for everything but quaternions
 TODO Move away from Assimp, create my own format
 TODO Create a DLL for the game. Maybe this must be done faster than I think. The compilation times are really bad!
+TODO implement my own imgui
 

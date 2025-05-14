@@ -15,6 +15,8 @@
 
 #define GL_FRAGMENT_SHADER                0x8B30
 #define GL_VERTEX_SHADER                  0x8B31
+#define GL_COMPUTE_SHADER                 0x91B9
+#define GL_PROGRAM                        0x82E2
 #define GL_ARRAY_BUFFER                   0x8892
 #define GL_STATIC_DRAW                    0x88E4
 #define GL_DYNAMIC_DRAW                   0x88E8
@@ -59,6 +61,7 @@ OpenGLDefineFunction(glCreateProgram, GLuint, void);
 OpenGLDefineFunction(glAttachShader, void, GLuint program, GLuint shader);
 OpenGLDefineFunction(glLinkProgram, void, GLuint program);
 OpenGLDefineFunction(glDeleteShader, void, GLuint shader);
+OpenGLDefineFunction(glDeleteProgram, void, GLuint program);
 OpenGLDefineFunction(glUseProgram, void, GLuint program);
 OpenGLDefineFunction(glGetShaderiv, void, GLuint shader, GLenum pname, GLint *params);
 OpenGLDefineFunction(glGetShaderInfoLog, void, GLuint shader, GLsizei bufSize, GLsizei *length, GLchar *infoLog);

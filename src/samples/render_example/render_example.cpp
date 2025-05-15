@@ -6,6 +6,8 @@
 #include <unordered_map>
 
 #define RAW_INPUT 1
+#define STB_IMAGE_IMPLEMENTATION
+#include "stb_image.h"
 
 // glm
 #include <glm/glm.hpp>
@@ -56,6 +58,42 @@ static Arena g_transient_arena;
 // global state
 // window size
 
+struct UniformBuffer
+{
+    size_t mBufferSize = 0;
+    GLuint mUboBuffer = 0;
+    void init(OpenGL *opengl, size_t bufferSize)
+    {
+          mBufferSize = bufferSize;
+
+  opengl->glGenBuffers(1, &mUboBuffer);
+
+  opengl->glBindBuffer(GL_UNIFORM_BUFFER, mUboBuffer);
+  opengl->glBufferData(GL_UNIFORM_BUFFER, mBufferSize, nullptr, GL_STATIC_DRAW);
+  opengl->glBindBuffer(GL_UNIFORM_BUFFER, 0);
+
+    }
+
+    void uploadUboData(OpenGL *opengl, std::vector<glm::mat4> bufferData, int bindingPoint)
+    {  if (bufferData.empty()) {
+    return;
+  }
+  size_t bufferSize = bufferData.size() * sizeof(glm::mat4);
+  opengl->glBindBuffer(GL_UNIFORM_BUFFER, mUboBuffer);
+  opengl->glBufferSubData(GL_UNIFORM_BUFFER, 0, bufferSize, bufferData.data());
+  opengl->glBindBufferRange(GL_UNIFORM_BUFFER, bindingPoint, mUboBuffer, 0, bufferSize);
+  opengl->glBindBuffer(GL_UNIFORM_BUFFER, 0);
+
+
+    }
+
+    void cleanup(OpenGL *opengl)
+    {
+  opengl->glDeleteBuffers(1, &mUboBuffer);
+
+    }
+};
+
 struct ShaderStorageBuffer
 {
     size_t mBufferSize = 0;
@@ -83,6 +121,11 @@ struct ShaderStorageBuffer
     }
 };
 
+global_variable OS_Window global_w32_window;
+global_variable u32 os_modifiers;
+global_variable GameInput global_input;
+
+global_variable UniformBuffer mUniformBuffer{};
 /* for non-animated models */
 global_variable std::vector<glm::mat4> mWorldPosMatrices{};
 global_variable ShaderStorageBuffer mWorldPosBuffer{};
@@ -186,9 +229,6 @@ struct DirectionalLight {
 };
 
 
-global_variable OS_Window global_w32_window;
-global_variable u32 os_modifiers;
-global_variable GameInput global_input;
 void win32_process_pending_msgs() {
     MSG Message;
     while(PeekMessage(&Message, 0, 0, 0, PM_REMOVE))
@@ -453,6 +493,98 @@ struct OGLMesh {
   bool usesPBRColors = false;
 };
 
+struct Texture
+{
+    GLuint mTexture = 0;
+    int mTexWidth = 0;
+    int mTexHeight = 0;
+    int mNumberOfChannels = 0;
+    std::string mTextureName;
+
+    bool loadTexture(OpenGL* opengl, std::string textureFilename, bool flipImage = 1) 
+    {
+        mTextureName = textureFilename;
+
+        stbi_set_flip_vertically_on_load(flipImage);
+        /* always load as RGBA */
+        unsigned char *textureData = stbi_load(textureFilename.c_str(), &mTexWidth, &mTexHeight, &mNumberOfChannels, STBI_rgb_alpha);
+
+        if (!textureData) {
+            // Logger::log(1, "%s error: could not load file '%s'\n", __FUNCTION__, mTextureName.c_str());
+            stbi_image_free(textureData);
+            return false;
+        }
+
+        glGenTextures(1, &mTexture);
+        glBindTexture(GL_TEXTURE_2D, mTexture);
+
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_SRGB8_ALPHA8, mTexWidth, mTexHeight, 0, GL_RGBA, GL_UNSIGNED_BYTE, textureData);
+
+        opengl->glGenerateMipmap(GL_TEXTURE_2D);
+        glBindTexture(GL_TEXTURE_2D, 0);
+
+        stbi_image_free(textureData);
+
+        //Logger::log(1, "%s: texture '%s' loaded (%dx%d, %d channels)\n", __FUNCTION__, mTextureName.c_str(), mTexWidth, mTexHeight, mNumberOfChannels);
+        return true;
+    }
+
+    bool loadTexture(OpenGL *opengl, std::string textureName, aiTexel* textureData, int width, int height, bool flipImage = true)
+    {
+        if (!textureData) {
+            // Logger::log(1, "%s error: could not load texture '%s'\n", __FUNCTION__, textureName.c_str());
+            return false;
+        }
+
+        // Logger::log(1, "%s: texture file '%s' has width %i and height %i\n", __FUNCTION__, textureName.c_str(), width, height);
+
+        glGenTextures(1, &mTexture);
+        glBindTexture(GL_TEXTURE_2D, mTexture);
+
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+
+        /* allow to flip the image, similar to file loaded from disk */
+        stbi_set_flip_vertically_on_load(flipImage);
+
+        /* we use stbi to detect the in-memory format, but always request RGBA */
+        unsigned char *data = nullptr;
+        if (height == 0)   {
+            data = stbi_load_from_memory(reinterpret_cast<unsigned char*>(textureData), width, &mTexWidth, &mTexHeight, &mNumberOfChannels, STBI_rgb_alpha);
+        }
+        else   {
+            data = stbi_load_from_memory(reinterpret_cast<unsigned char*>(textureData), width * height, &mTexWidth, &mTexHeight, &mNumberOfChannels, STBI_rgb_alpha);
+        }
+
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_SRGB8_ALPHA8, mTexWidth, mTexHeight, 0, GL_RGBA, GL_UNSIGNED_BYTE, data);
+
+        stbi_image_free(data);
+
+        opengl->glGenerateMipmap(GL_TEXTURE_2D);
+        glBindTexture(GL_TEXTURE_2D, 0);
+
+        // Logger::log(1, "%s: texture '%s' loaded (%dx%d, %d channels)\n", __FUNCTION__, textureName.c_str(), mTexWidth, mTexHeight, mNumberOfChannels);
+        return true;
+    }
+
+    void bind() 
+    {
+        glBindTexture(GL_TEXTURE_2D, mTexture);
+    }
+
+    void unbind() 
+    {
+        glBindTexture(GL_TEXTURE_2D, 0);
+    }
+};
+
 struct Mesh
 {
     std::string mMeshName;
@@ -463,7 +595,11 @@ struct Mesh
 
     OGLMesh mMesh{};
     //std::unordered_map<std::string, std::shared_ptr<Texture>> mTextures{};
-    std::vector<Bone*> mBoneList{};
+    std::unordered_map<std::string, Texture*> mTextures{};
+
+    //std::vector<Bone*> mBoneList{};
+
+
 };
 
 struct Node
@@ -611,6 +747,7 @@ glm::mat4 convertAiToGLM(aiMatrix4x4 inMat) {
   };
 }
 
+
 struct Model
 {
     u32 vertex_count;
@@ -624,6 +761,13 @@ struct Model
     std::vector<VertexIndexBuffer> mVertexBuffers{};
 
     glm::mat4 mRootTransformMatrix = glm::mat4(1.0f);
+
+    // map textures to external or internal texture names
+    std::unordered_map<std::string, Texture *> mTextures{};
+    Texture *mPlaceholderTexture = nullptr;
+    Texture *mWhiteTexture = nullptr;
+
+
 };
 
 Node *createNode(std::string nodeName)
@@ -650,7 +794,7 @@ Node *createNode(std::string nodeName)
     return node;
 }
 
-bool processMesh(Mesh *myMesh, aiMesh* mesh, const aiScene* scene, std::string assetDirectory)
+bool processMesh(OpenGL *opengl, Mesh *myMesh, aiMesh* mesh, const aiScene* scene, std::string assetDirectory)
 {
     myMesh->mMeshName = mesh->mName.C_Str();
 
@@ -673,7 +817,6 @@ bool processMesh(Mesh *myMesh, aiMesh* mesh, const aiScene* scene, std::string a
   }
 
   aiMaterial* material = scene->mMaterials[mesh->mMaterialIndex];
-   #if 0
   if (material) {
     aiString materialName = material->GetName();
     //Logger::log(1, "%s: - material found, name '%s'\n", __FUNCTION__, materialName.C_Str());
@@ -684,25 +827,25 @@ bool processMesh(Mesh *myMesh, aiMesh* mesh, const aiScene* scene, std::string a
       for (const auto& texType : supportedTexTypes) {
         unsigned int textureCount = material->GetTextureCount(texType);
         if (textureCount > 0) {
-          Logger::log(1, "%s: -- material '%s' has %i images of type %i\n", __FUNCTION__, materialName.C_Str(), textureCount, texType);
+          //Logger::log(1, "%s: -- material '%s' has %i images of type %i\n", __FUNCTION__, materialName.C_Str(), textureCount, texType);
           for (unsigned int i = 0; i < textureCount; ++i) {
             aiString textureName;
             material->GetTexture(texType, i, &textureName);
-            Logger::log(1, "%s: --- image %i has name '%s'\n", __FUNCTION__, i, textureName.C_Str());
+            //Logger::log(1, "%s: --- image %i has name '%s'\n", __FUNCTION__, i, textureName.C_Str());
 
             std::string texName = textureName.C_Str();
-            mMesh.textures.insert({texType, texName});
+            myMesh->mMesh.textures.insert({texType, texName});
 
             // do not try to load internal textures
             if (!texName.empty() && texName.find("*") != 0) {
-              std::shared_ptr<Texture> newTex = std::make_shared<Texture>();
+              Texture *newTex = new Texture();
               std::string texNameWithPath = assetDirectory + '/' + texName;
-              if (!newTex->loadTexture(texNameWithPath)) {
-                Logger::log(1, "%s error: could not load texture file '%s', skipping\n", __FUNCTION__, texNameWithPath.c_str());
+              if (!newTex->loadTexture(opengl, texNameWithPath)) {
+                // Logger::log(1, "%s error: could not load texture file '%s', skipping\n", __FUNCTION__, texNameWithPath.c_str());
                 continue;
               }
 
-              mTextures.insert({texName, newTex});
+              myMesh->mTextures.insert({texName, newTex});
             }
           }
         }
@@ -710,12 +853,11 @@ bool processMesh(Mesh *myMesh, aiMesh* mesh, const aiScene* scene, std::string a
     }
 
     aiColor4D baseColor(0.0f, 0.0f, 0.0f, 1.0f);
-    //if (material->Get(AI_MATKEY_COLOR_DIFFUSE, baseColor) == aiReturn_SUCCESS && mTextures.empty()) {
-    //  mBaseColor = glm::vec4(baseColor.r, baseColor.g, baseColor.b, baseColor.a);
-    //  mMesh.usesPBRColors = true;
-    //}
+    if (material->Get(AI_MATKEY_COLOR_DIFFUSE, baseColor) == aiReturn_SUCCESS && myMesh->mTextures.empty()) {
+        myMesh->mBaseColor = glm::vec4(baseColor.r, baseColor.g, baseColor.b, baseColor.a);
+        myMesh->mMesh.usesPBRColors = true;
+    }
   }
-#endif
 
   for (unsigned int i = 0; i < myMesh->mVertexCount; ++i) {
     OGLVertex vertex;
@@ -766,11 +908,11 @@ bool processMesh(Mesh *myMesh, aiMesh* mesh, const aiScene* scene, std::string a
   #if 0
   if (mesh->HasBones()) {
     unsigned int numBones = mesh->mNumBones;
-    Logger::log(1, "%s: -- mesh has information about %i bones\n", __FUNCTION__, numBones);
+    //Logger::log(1, "%s: -- mesh has information about %i bones\n", __FUNCTION__, numBones);
     for (unsigned int boneId = 0; boneId < numBones; ++boneId) {
       std::string boneName = mesh->mBones[boneId]->mName.C_Str();
       unsigned int numWeights = mesh->mBones[boneId]->mNumWeights;
-      Logger::log(1, "%s: --- bone nr. %i has name %s, contains %i weights\n", __FUNCTION__, boneId, boneName.c_str(), numWeights);
+      //Logger::log(1, "%s: --- bone nr. %i has name %s, contains %i weights\n", __FUNCTION__, boneId, boneName.c_str(), numWeights);
 
       std::shared_ptr<AssimpBone> newBone = std::make_shared<AssimpBone>(boneId, boneName, convertAiToGLM(mesh->mBones[boneId]->mOffsetMatrix));
       mBoneList.push_back(newBone);
@@ -802,11 +944,10 @@ bool processMesh(Mesh *myMesh, aiMesh* mesh, const aiScene* scene, std::string a
   #endif
 
   return true;
-
 }
 
 
-void processNode(Model *model, Node* node, aiNode* aNode, const aiScene* scene, std::string assetDirectory) {
+void processNode(OpenGL *opengl, Model *model, Node* node, aiNode* aNode, const aiScene* scene, std::string assetDirectory) {
   std::string nodeName = aNode->mName.C_Str();
   //Logger::log(1, "%s: node name: '%s'\n", __FUNCTION__, nodeName.c_str());
 
@@ -817,10 +958,10 @@ void processNode(Model *model, Node* node, aiNode* aNode, const aiScene* scene, 
       aiMesh* modelMesh = scene->mMeshes[aNode->mMeshes[i]];
 
       Mesh mesh;
-      processMesh(&mesh, modelMesh, scene, assetDirectory);
+      processMesh(opengl, &mesh, modelMesh, scene, assetDirectory);
 
       model->mModelMeshes.emplace_back(mesh.mMesh);
-      //mTextures.merge(mesh.getTextures());
+      model->mTextures.merge(mesh.mTextures);
 
       /* avoid inserting duplicate bone Ids - meshes can reference the same bones */
       //std::vector<std::shared_ptr<AssimpBone>> flatBones = mesh.getBoneList();
@@ -851,195 +992,66 @@ void processNode(Model *model, Node* node, aiNode* aNode, const aiScene* scene, 
     node->last = node->last->next;
     */
 
-    processNode(model, childNode, aNode->mChildren[i], scene, assetDirectory);
+    processNode(opengl, model, childNode, aNode->mChildren[i], scene, assetDirectory);
   }
 }
 
 internal void
 drawInstanced(Model *model, OpenGL *opengl, u32 instanceCount)
 {
+    // TODO por que cuando tenia comentadas las texturas defaulteaba a las otras texturas? en algun lado se cargaron, donde?
+    // This was happening because I forgot to unbind the texture I use for UI and also I got confused because the woman and the ui
+    // was using similar colors, or the same, but not quite so I thought it was using the woman's texture but it was not, it was using the cube.
+    // So the fix was to unbind the texture in end_ui_frame
     for (u32 i = 0; i < model->mModelMeshes.size(); ++i) 
     {
-    OGLMesh& mesh = model->mModelMeshes.at(i);
-    // find diffuse texture by name
+        OGLMesh& mesh = model->mModelMeshes.at(i);
+        // find diffuse texture by name
 
-    //std::shared_ptr<Texture> diffuseTex = nullptr;
-    //auto diffuseTexName = mesh.textures.find(aiTextureType_DIFFUSE);
-    //if (diffuseTexName != mesh.textures.end()) {
-    //  auto diffuseTexture = mTextures.find(diffuseTexName->second);
-    //  if (diffuseTexture != mTextures.end()) {
-    //    diffuseTex = diffuseTexture->second;
-    //  }
-    //}
+        Texture *diffuseTex = nullptr;
+        auto diffuseTexName = mesh.textures.find(aiTextureType_DIFFUSE);
+        if (diffuseTexName != mesh.textures.end()) {
+        auto diffuseTexture = model->mTextures.find(diffuseTexName->second);
+        if (diffuseTexture != model->mTextures.end()) {
+            diffuseTex = diffuseTexture->second;
+        }
+        }
 
-    //glActiveTexture(GL_TEXTURE0);
-    //if (diffuseTex) {
-    //  diffuseTex->bind();
-    //} else {
-    //  if (mesh.usesPBRColors) {
-    //    mWhiteTexture->bind();
-    //  } else {
-    //    mPlaceholderTexture->bind();
-    //  }
-    //}
+        opengl->glActiveTexture(GL_TEXTURE0);
 
-    //model->mVertexBuffers.at(i).bindAndDrawIndirectInstanced(opengl, GL_TRIANGLES, mesh.indices.size(), instanceCount);
+        if (diffuseTex) {
+          diffuseTex->bind();
+        } else {
+          if (mesh.usesPBRColors) {
+            model->mWhiteTexture->bind();
+          } else {
+            model->mPlaceholderTexture->bind();
+          }
+        }
 
-    VertexIndexBuffer model_buffer = model->mVertexBuffers.at(i);
-    model_buffer.bind(opengl);
-    #if 0
-        glDrawElements(GL_TRIANGLES, mesh.indices.size(), GL_UNSIGNED_INT, 0);
-    #else
-        opengl->glDrawElementsInstanced(GL_TRIANGLES, mesh.indices.size(), GL_UNSIGNED_INT, 0, 1);
-    #endif
-    model_buffer.unbind(opengl);
+        //model->mVertexBuffers.at(i).bindAndDrawIndirectInstanced(opengl, GL_TRIANGLES, mesh.indices.size(), instanceCount);
 
-    //if (diffuseTex) {
-    //  diffuseTex->unbind();
-    //} else {
-    //  if (mesh.usesPBRColors) {
-    //    mWhiteTexture->unbind();
-    //  } else {
-    //    mPlaceholderTexture->unbind();
-    //  }
-    //}
+        VertexIndexBuffer model_buffer = model->mVertexBuffers.at(i);
+        model_buffer.bind(opengl);
+        #if 0
+            glDrawElements(GL_TRIANGLES, mesh.indices.size(), GL_UNSIGNED_INT, 0);
+        #else
+            opengl->glDrawElementsInstanced(GL_TRIANGLES, mesh.indices.size(), GL_UNSIGNED_INT, 0, 1);
+        #endif
+        model_buffer.unbind(opengl);
+
+        if (diffuseTex) {
+          diffuseTex->unbind();
+        } else {
+          if (mesh.usesPBRColors) {
+            model->mWhiteTexture->unbind();
+          } else {
+            model->mPlaceholderTexture->unbind();
+          }
+        }
     }
 }
 
-void opengl_init(OpenGL *opengl)
-{
-    opengl->vsynch = -1;
-
-    HDC hdc = GetDC(global_w32_window.handle);
-    PIXELFORMATDESCRIPTOR pfd = {0};
-    pfd.nSize = sizeof(PIXELFORMATDESCRIPTOR);
-    pfd.nVersion = 1;
-    pfd.dwFlags = PFD_DRAW_TO_WINDOW | PFD_SUPPORT_OPENGL | PFD_DOUBLEBUFFER;
-    pfd.iPixelType = PFD_TYPE_RGBA;
-    pfd.cColorBits = 24;
-    pfd.cAlphaBits = 8;
-    pfd.cDepthBits = 32;
-    pfd.iLayerType = PFD_MAIN_PLANE;
-
-    int pixel_format = ChoosePixelFormat(hdc, &pfd);
-    if(pixel_format) {
-        SetPixelFormat(hdc, pixel_format, &pfd);
-    }else{
-        __debugbreak();
-    }
-
-    HGLRC tempRC = wglCreateContext(hdc);
-    if(wglMakeCurrent(hdc, tempRC))
-    {
-        // NOTE It seems that in order to get anything from `wglGetProcAddress`, `wglMakeCurrent` must have been called!
-        //wglCreateContextAttribsARB = OpenGLGetFunction(wglCreateContextAttribsARB);
-        OpenGLSetFunction(wglCreateContextAttribsARB)
-
-        i32 attrib_list[] = {
-            WGL_CONTEXT_MAJOR_VERSION_ARB, 3,
-            WGL_CONTEXT_MINOR_VERSION_ARB, 3,
-            WGL_CONTEXT_FLAGS_ARB, 0,
-            WGL_CONTEXT_PROFILE_MASK_ARB,
-            WGL_CONTEXT_CORE_PROFILE_BIT_ARB, 0
-        };
-        HGLRC hglrc = opengl->wglCreateContextAttribsARB(hdc, 0, attrib_list);
-        wglMakeCurrent(0, 0);
-        wglDeleteContext(tempRC);
-        wglMakeCurrent(hdc, hglrc);
-    }
-    OpenGLSetFunction(wglGetExtensionsStringEXT);
-    {
-        const char* extensions = opengl->wglGetExtensionsStringEXT();
-        b32 swap_control_supported = false;
-		const char* at = extensions;
-        while(*at) 
-        {
-            while(*at == ' ') {
-                at++;
-            }
-
-            const char* start = at;
-            while(*at && *at != ' ') {
-                at++; 
-            }
-            if (!*at) {
-                break;
-            }
-            size_t count = at - start;
-            Str8 extension = str8((char*)start, count);
-            b32 res1 = str8_equals(extension, str8_lit("WGL_EXT_framebuffer_sRGB"));
-            b32 res2 = str8_equals(extension, str8_lit("WGL_ARB_framebuffer_sRGB"));
-            if(str8_equals(extension, str8_lit("WGL_EXT_swap_control")))
-            {
-                swap_control_supported = true;
-            }
-
-        }
-        if(swap_control_supported) {
-            OpenGLSetFunction(wglSwapIntervalEXT);
-            OpenGLSetFunction(wglGetSwapIntervalEXT);
-            if(opengl->wglSwapIntervalEXT(1)) 
-            {
-                opengl->vsynch = opengl->wglGetSwapIntervalEXT();
-            }
-        }
-    }
-
-    OpenGLSetFunction(glGenVertexArrays);
-    OpenGLSetFunction(glBindVertexArray);
-    OpenGLSetFunction(glDeleteVertexArrays);
-
-	OpenGLSetFunction(glGenBuffers);
-	OpenGLSetFunction(glBindBuffer);
-	OpenGLSetFunction(glBufferData);
-    OpenGLSetFunction(glDeleteBuffers);
-	OpenGLSetFunction(glVertexAttribPointer);
-	OpenGLSetFunction(glVertexAttribIPointer);
-	OpenGLSetFunction(glEnableVertexAttribArray);
-
-    OpenGLSetFunction(glCreateShader);
-    OpenGLSetFunction(glCompileShader);
-    OpenGLSetFunction(glShaderSource);
-    OpenGLSetFunction(glCreateProgram);
-    OpenGLSetFunction(glAttachShader);
-    OpenGLSetFunction(glLinkProgram);
-    OpenGLSetFunction(glDeleteShader);
-    OpenGLSetFunction(glDeleteProgram);
-    OpenGLSetFunction(glUseProgram);
-    OpenGLSetFunction(glGetShaderiv);
-    OpenGLSetFunction(glGetShaderInfoLog);
-    OpenGLSetFunction(glGetProgramiv);
-    OpenGLSetFunction(glGetProgramInfoLog);
-
-    OpenGLSetFunction(glUniform1i);
-    OpenGLSetFunction(glUniform1f);
-    OpenGLSetFunction(glUniform2fv);
-    OpenGLSetFunction(glUniform2f);
-    OpenGLSetFunction(glUniform3fv);
-    OpenGLSetFunction(glUniform3f);
-    OpenGLSetFunction(glUniform4fv);
-    OpenGLSetFunction(glUniform4f);
-    OpenGLSetFunction(glUniformMatrix2fv);
-    OpenGLSetFunction(glUniformMatrix3fv);
-    OpenGLSetFunction(glUniformMatrix4fv);
-    OpenGLSetFunction(glGetUniformLocation);
-
-    OpenGLSetFunction(glActiveTexture);
-
-    OpenGLSetFunction(glDrawElementsInstanced);
-    OpenGLSetFunction(glBufferSubData);
-    OpenGLSetFunction(glBindBufferRange);
-
-    // ui rendering
-    UIRenderGroup *ui_render_group = arena_push_size(&g_arena, UIRenderGroup, 1);
-    opengl->ui_render_group = ui_render_group;
-    ui_render_group->vertex_array = arena_push_size(&g_arena, UIVertex, max_vertex_per_batch);
-    ui_render_group->index_array = arena_push_size(&g_arena, u16, max_index_per_batch);
-    ui_render_group->vertex_count = 0;
-    ui_render_group->index_count  = 0;
-
-    init_ui(opengl, opengl->ui_render_group);
-}
 
 struct PlaceholderState
 {
@@ -1114,30 +1126,49 @@ void opengl_render (OpenGL *opengl, Camera *curr_camera, u32 cubeVAO,
             glDrawArrays(GL_TRIANGLES, 0, 36);
         }
 
+        // render model
         {
             Model *woman = placeholder_state->model;
-            // render model
+
+            opengl->glUseProgram(placeholder_state->nonskinned_pid);
+            // generic data for all models!
+            std::vector<glm::mat4> matrixData;
+            matrixData.emplace_back(view);
+            matrixData.emplace_back(placeholder_state->persp_proj);
+
+            mUniformBuffer.uploadUboData(opengl, matrixData, 0);
+
             /* non-animated models */
             mWorldPosMatrices.clear();
+            glm::mat4 experiment = 
+            {
+                1.0f, 0.0f, 0.0f, 0.0f, 
+                0.0f, 1.0f, 0.0f, 0.0f, 
+                0.0f, 0.0f, 1.0f, 0.0f, 
+                10.0f, 10.0f, -3.0f, 1.0f, 
+            };
+            mWorldPosMatrices.emplace_back(experiment);
             mWorldPosMatrices.emplace_back(glm::mat4(1.0f));
+
 
             //mAssimpShader.use();
             mWorldPosBuffer.uploadSsboData(opengl, mWorldPosMatrices, 1);
             drawInstanced(woman, opengl, 1);
+            opengl->glUseProgram(0);
         }
 
         {
             // render ui
             // TODO this should only be done at resizes
             glm::mat4 orthog = glm::ortho(0.0f, f32(SRC_WIDTH), f32(SRC_HEIGHT), 0.0f, -1.0f, 1.0f);
-            opengl_shader_ui_begin(opengl, render_group);
+            begin_ui_frame(opengl, render_group);
             opengl->glUniformMatrix4fv(opengl->ui_render_group->ortho_proj, 1, GL_FALSE, &orthog[0][0]);
             // TODO see wtf is a 0 there? Why is the texture sampler for?
             opengl->glUniform1i(opengl->ui_render_group->texture_sampler, 0);
             // TODO investigate if i have to set this value for the uniforms again or not!. 
 
             glDrawElements(GL_TRIANGLES, render_group->index_count, GL_UNSIGNED_SHORT, 0); //era 18
-            opengl_shader_ui_end(opengl);
+            end_ui_frame(opengl);
         }
 
         opengl->glUseProgram(0);
@@ -1172,7 +1203,7 @@ int main() {
     ShowCursor(0);
 
     OpenGL* opengl = arena_push_size(&g_arena, OpenGL, 1);
-    opengl_init(opengl);
+    opengl_init(opengl, global_w32_window);
     UIRenderGroup *ui_render_group = opengl->ui_render_group;
     {
         /* TODO The biggest problem here is do I recreate the render group every frame or not
@@ -1203,6 +1234,10 @@ int main() {
         push_triangle(ui_render_group, tri_points, tri_indices);
     }
 
+    // uniform init
+    size_t uniform_matrix_buffer_size = 3 * sizeof(glm::mat4);
+    mUniformBuffer.init(opengl, uniform_matrix_buffer_size);
+
     // ssbo init!
     mWorldPosBuffer.mBufferSize = 256;
     opengl->glGenBuffers(1, &mWorldPosBuffer.mShaderStorageBuffer);
@@ -1224,6 +1259,7 @@ int main() {
         // w1 models
         Assimp::Importer importer;
         std::string model_filename = "E:/Mastering-Cpp-Game-Animation-Programming/chapter01/01_opengl_assimp/assets/woman/Woman.gltf";
+
         const aiScene *scene = importer.ReadFile(model_filename, aiProcess_Triangulate | aiProcess_GenNormals | aiProcess_ValidateDataStructure);
         AssertGui(scene && scene->mRootNode, "Error loading model, probably not found!");
 
@@ -1243,18 +1279,52 @@ int main() {
 
         if(scene->HasTextures())
         {
+            u32 num_textures = scene->mNumTextures;
+            for(u32 t = 0; t < num_textures; t++)
+            {
+                std::string texName = scene->mTextures[t]->mFilename.C_Str();
+                i32 height = scene->mTextures[t]->mHeight;
+                i32 width = scene->mTextures[t]->mWidth;
+                aiTexel *data = scene->mTextures[t]->pcData;
 
+                Texture *newTex = new Texture();
+                if(!newTex->loadTexture(opengl, texName, data, width, height))
+                {
+                    return false;
+                }
+
+                std::string internalTexName = "*" + std::to_string(t);
+                model->mTextures.insert({internalTexName, newTex});
+            }
         }
         // ... yunk
         // ... yunk
-        // ... yunk
+        /* add a white texture in case there is no diffuse tex but colors */
+        model->mWhiteTexture = new Texture();
+        std::string whiteTexName = "src/samples/render_example/textures/white.png";
+        if (!model->mWhiteTexture->loadTexture(opengl, whiteTexName)) {
+            //Logger::log(1, "%s error: could not load white default texture '%s'\n", __FUNCTION__, whiteTexName.c_str());
+            // Por que tendria que retornar? zii
+            //return false;
+        }
+
+        /* add a placeholder texture in case there is no diffuse tex */
+        model->mPlaceholderTexture = new Texture();
+        std::string placeholderTexName = "src/samples/render_example/textures/missing_tex.png";
+        if (!model->mPlaceholderTexture->loadTexture(opengl, placeholderTexName)) {
+            //Logger::log(1, "%s error: could not load placeholder texture '%s'\n", __FUNCTION__, placeholderTexName.c_str());
+            // Por que tendria que retornar? zii
+            //return false;
+        }
 
         aiNode* rootNode = scene->mRootNode;
         std::string rootNodeName = rootNode->mName.C_Str();
         model->mRootNode = createNode(rootNodeName);
         //Logger::log(1, "%s: root node name: '%s'\n", __FUNCTION__, rootNodeName.c_str());
-        std::string assetDirectory = "ja";
-        processNode(model, model->mRootNode, rootNode, scene, assetDirectory);
+
+        // TODO is this the texture directory?
+        std::string assetDirectory = "E:/Mastering-Cpp-Game-Animation-Programming/chapter01/01_opengl_assimp/assets/woman";
+        processNode(opengl, model, model->mRootNode, rootNode, scene, assetDirectory);
 
         //Logger::log(1, "%s: ... processing nodes finished...\n", __FUNCTION__);
 
@@ -1649,7 +1719,9 @@ int main() {
         }
         update_and_render(placeholder_state);
 
+        //glPolygonMode( GL_FRONT_AND_BACK, GL_LINE);
         opengl_render(opengl, curr_camera, cubeVAO, skinning_shader, floor_meshbox, boxes, ui_render_group, placeholder_state);
+        //glPolygonMode( GL_FRONT_AND_BACK, GL_FILL);
 
         input_update(&global_input);
         // TODO see when hdc needs to be get again?

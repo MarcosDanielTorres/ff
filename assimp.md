@@ -37,15 +37,16 @@ DONE When instance count is 1 use the regular draw, maybe its not useful though,
     This is just negligible, it doesn't matter but yes I should just go with draw!
 DONE just try to render a ui
 DONE Clean up ui path
-TODO Take extensive notes of skinning, sadly! 
-TODO Add textures and materials
+DONE Add textures and materials
     - First use the book shader
     - Change model position to center of the plane
+TODO Take extensive notes of skinning, sadly! 
 TODO Add bones and animations
 TODO Add instancing. Make the SSBO works, right now all these things are ignored because im using the identity matrix for everything, and because there are no animations it doesnt matter.
     Because I dont have animations im using the non-animated model ssbo, there are 2. And because there is no instancing im just using my regular shader which doesnt use a SSBO!!!
 TODO Replace STD
 TODO Replace old 'skinning_shader' im using. Beware of lighting, take it away from it!
+TODO change ui ortho matrix for 2D alternative (my own)
 
 Some ambitious things:
 DONE Maybe I should just do assimp as a DLL and build only the gltf and fbx loader

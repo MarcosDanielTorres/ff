@@ -52,11 +52,78 @@ struct OpenGL
     OpenGLDeclareMemberFunction(glGetUniformLocation);
 
     OpenGLDeclareMemberFunction(glActiveTexture);
+    OpenGLDeclareMemberFunction(glGenerateMipmap);
 
     OpenGLDeclareMemberFunction(glDrawElementsInstanced);
     OpenGLDeclareMemberFunction(glBufferSubData);
     OpenGLDeclareMemberFunction(glBindBufferRange);
+
+    OpenGLDeclareMemberFunction(glDebugMessageCallback);
+    OpenGLDeclareMemberFunction(glDebugMessageControl);
 };
+
+
+
+internal
+void WINAPI opengl_debug_callback(GLenum source,
+                                           GLenum type,
+                                           GLuint id,
+                                           GLenum severity,
+                                           GLsizei length,
+                                           const GLchar* message,
+                                           const void* userParam)
+{
+    // Ignore notifications, only show warnings/errors
+    if (severity == GL_DEBUG_SEVERITY_NOTIFICATION) return;
+
+    const char* _source = "";
+    switch (source) {
+        case GL_DEBUG_SOURCE_API:             _source = "API";            break;
+        case GL_DEBUG_SOURCE_WINDOW_SYSTEM:   _source = "Window System";  break;
+        case GL_DEBUG_SOURCE_SHADER_COMPILER: _source = "Shader Compiler";break;
+        case GL_DEBUG_SOURCE_THIRD_PARTY:     _source = "Third Party";    break;
+        case GL_DEBUG_SOURCE_APPLICATION:     _source = "Application";    break;
+        case GL_DEBUG_SOURCE_OTHER:           _source = "Other";          break;
+    }
+
+    const char* _type = "";
+    switch (type) {
+        case GL_DEBUG_TYPE_ERROR:               _type = "Error";             break;
+        case GL_DEBUG_TYPE_DEPRECATED_BEHAVIOR: _type = "Deprecated";        break;
+        case GL_DEBUG_TYPE_UNDEFINED_BEHAVIOR:  _type = "Undefined Behavior";break;
+        case GL_DEBUG_TYPE_PORTABILITY:         _type = "Portability";       break;
+        case GL_DEBUG_TYPE_PERFORMANCE:         _type = "Performance";       break;
+        case GL_DEBUG_TYPE_MARKER:              _type = "Marker";            break;
+        case GL_DEBUG_TYPE_PUSH_GROUP:          _type = "Push Group";        break;
+        case GL_DEBUG_TYPE_POP_GROUP:           _type = "Pop Group";         break;
+        case GL_DEBUG_TYPE_OTHER:               _type = "Other";             break;
+    }
+
+    const char* _severity = "";
+    switch (severity) {
+        case GL_DEBUG_SEVERITY_HIGH:         _severity = "High";       break;
+        case GL_DEBUG_SEVERITY_MEDIUM:       _severity = "Medium";     break;
+        case GL_DEBUG_SEVERITY_LOW:          _severity = "Low";        break;
+        case GL_DEBUG_SEVERITY_NOTIFICATION: _severity = "Notification";break;
+    }
+
+    fprintf(stderr,
+            "GL DEBUG [%s] Type=%s, Severity=%s, ID=%u:\n%s\n\n",
+            _source, _type, _severity, id, message);
+}
+
+internal
+void opengl_enable_debug(OpenGL *opengl)
+{
+    glEnable(GL_DEBUG_OUTPUT);
+    glEnable(GL_DEBUG_OUTPUT_SYNCHRONOUS);
+    opengl->glDebugMessageCallback(opengl_debug_callback, NULL);
+
+    // Optionally filter out notifications:
+    opengl->glDebugMessageControl(
+        GL_DONT_CARE, GL_DONT_CARE, GL_DEBUG_SEVERITY_NOTIFICATION,
+        0, NULL, GL_FALSE);
+}
 
 internal GLint
 opengl_shader_check_compile_errors(OpenGL *opengl, GLuint shader, GLenum type)
@@ -134,8 +201,6 @@ create_shader(OpenGL *opengl, Str8 shader_filename, GLenum shader_type)
 
 }
 
-    
-// TODO wtf are these functions names
 internal u32
 create_program(OpenGL* opengl, Str8 vertex_shader_filename, Str8 fragment_shader_filename, Str8 compute_shader_filename = str8(0, 0))
 {
@@ -150,12 +215,13 @@ create_program(OpenGL* opengl, Str8 vertex_shader_filename, Str8 fragment_shader
     opengl->glAttachShader(ID, vertex);
     opengl->glAttachShader(ID, fragment);
     opengl->glLinkProgram(ID);
-    if(!opengl_shader_check_compile_errors(opengl, ID, GL_PROGRAM)){
-        opengl->glDeleteShader(vertex);
-        opengl->glDeleteShader(fragment);
-        opengl->glDeleteShader(compute);
+    if(!opengl_shader_check_compile_errors(opengl, ID, GL_PROGRAM))
+    {
         program_id = 0;
     }
+    opengl->glDeleteShader(vertex);
+    opengl->glDeleteShader(fragment);
+    opengl->glDeleteShader(compute);
 
     return program_id;
 }
@@ -226,7 +292,7 @@ init_ui(OpenGL *opengl, UIRenderGroup* render_group)
 }
 
 internal void
-opengl_shader_ui_begin(OpenGL *opengl, UIRenderGroup *render_group)
+begin_ui_frame(OpenGL *opengl, UIRenderGroup *render_group)
 {
     glDisable(GL_DEPTH_TEST);
     opengl->glUseProgram(render_group->program_id);
@@ -245,9 +311,10 @@ opengl_shader_ui_begin(OpenGL *opengl, UIRenderGroup *render_group)
 }
 
 internal void
-opengl_shader_ui_end(OpenGL* opengl)
+end_ui_frame(OpenGL* opengl)
 {
     glEnable(GL_DEPTH_TEST);
+    glBindTexture(GL_TEXTURE_2D, 0);
     opengl->glBindVertexArray(0);
     opengl->glUseProgram(0);
 }
@@ -263,6 +330,149 @@ opengl_free_resources(OpenGL *opengl)
     opengl->glDeleteBuffers(1, &ui_rg->ebo);
 
     glDeleteTextures(1, &ui_rg->tex);
+}
+
+internal
+void opengl_init(OpenGL *opengl, OS_Window window)
+{
+    
+    opengl->vsynch = -1;
+
+    HDC hdc = GetDC(window.handle);
+    PIXELFORMATDESCRIPTOR pfd = {0};
+    pfd.nSize = sizeof(PIXELFORMATDESCRIPTOR);
+    pfd.nVersion = 1;
+    pfd.dwFlags = PFD_DRAW_TO_WINDOW | PFD_SUPPORT_OPENGL | PFD_DOUBLEBUFFER;
+    pfd.iPixelType = PFD_TYPE_RGBA;
+    pfd.cColorBits = 24;
+    pfd.cAlphaBits = 8;
+    pfd.cDepthBits = 32;
+    pfd.iLayerType = PFD_MAIN_PLANE;
+
+    int pixel_format = ChoosePixelFormat(hdc, &pfd);
+    if(pixel_format) {
+        SetPixelFormat(hdc, pixel_format, &pfd);
+    }else{
+        __debugbreak();
+    }
+
+    HGLRC tempRC = wglCreateContext(hdc);
+    if(wglMakeCurrent(hdc, tempRC))
+    {
+        // NOTE It seems that in order to get anything from `wglGetProcAddress`, `wglMakeCurrent` must have been called!
+        //wglCreateContextAttribsARB = OpenGLGetFunction(wglCreateContextAttribsARB);
+        OpenGLSetFunction(wglCreateContextAttribsARB)
+
+        i32 attrib_list[] = {
+            WGL_CONTEXT_MAJOR_VERSION_ARB, 4,
+            WGL_CONTEXT_MINOR_VERSION_ARB, 6,
+            WGL_CONTEXT_FLAGS_ARB, WGL_CONTEXT_DEBUG_BIT_ARB,
+            WGL_CONTEXT_PROFILE_MASK_ARB,
+            WGL_CONTEXT_CORE_PROFILE_BIT_ARB, 0
+        };
+        HGLRC hglrc = opengl->wglCreateContextAttribsARB(hdc, 0, attrib_list);
+        wglMakeCurrent(0, 0);
+        wglDeleteContext(tempRC);
+        wglMakeCurrent(hdc, hglrc);
+    }
+    OpenGLSetFunction(wglGetExtensionsStringEXT);
+    {
+        const char* extensions = opengl->wglGetExtensionsStringEXT();
+        b32 swap_control_supported = false;
+		const char* at = extensions;
+        while(*at) 
+        {
+            while(*at == ' ') {
+                at++;
+            }
+
+            const char* start = at;
+            while(*at && *at != ' ') {
+                at++; 
+            }
+            if (!*at) {
+                break;
+            }
+            size_t count = at - start;
+            Str8 extension = str8((char*)start, count);
+            b32 res1 = str8_equals(extension, str8_lit("WGL_EXT_framebuffer_sRGB"));
+            b32 res2 = str8_equals(extension, str8_lit("WGL_ARB_framebuffer_sRGB"));
+            if(str8_equals(extension, str8_lit("WGL_EXT_swap_control")))
+            {
+                swap_control_supported = true;
+            }
+
+        }
+        if(swap_control_supported) {
+            OpenGLSetFunction(wglSwapIntervalEXT);
+            OpenGLSetFunction(wglGetSwapIntervalEXT);
+            if(opengl->wglSwapIntervalEXT(1)) 
+            {
+                opengl->vsynch = opengl->wglGetSwapIntervalEXT();
+            }
+        }
+    }
+
+    OpenGLSetFunction(glGenVertexArrays);
+    OpenGLSetFunction(glBindVertexArray);
+    OpenGLSetFunction(glDeleteVertexArrays);
+
+	OpenGLSetFunction(glGenBuffers);
+	OpenGLSetFunction(glBindBuffer);
+	OpenGLSetFunction(glBufferData);
+    OpenGLSetFunction(glDeleteBuffers);
+	OpenGLSetFunction(glVertexAttribPointer);
+	OpenGLSetFunction(glVertexAttribIPointer);
+	OpenGLSetFunction(glEnableVertexAttribArray);
+
+    OpenGLSetFunction(glCreateShader);
+    OpenGLSetFunction(glCompileShader);
+    OpenGLSetFunction(glShaderSource);
+    OpenGLSetFunction(glCreateProgram);
+    OpenGLSetFunction(glAttachShader);
+    OpenGLSetFunction(glLinkProgram);
+    OpenGLSetFunction(glDeleteShader);
+    OpenGLSetFunction(glDeleteProgram);
+    OpenGLSetFunction(glUseProgram);
+    OpenGLSetFunction(glGetShaderiv);
+    OpenGLSetFunction(glGetShaderInfoLog);
+    OpenGLSetFunction(glGetProgramiv);
+    OpenGLSetFunction(glGetProgramInfoLog);
+
+    OpenGLSetFunction(glUniform1i);
+    OpenGLSetFunction(glUniform1f);
+    OpenGLSetFunction(glUniform2fv);
+    OpenGLSetFunction(glUniform2f);
+    OpenGLSetFunction(glUniform3fv);
+    OpenGLSetFunction(glUniform3f);
+    OpenGLSetFunction(glUniform4fv);
+    OpenGLSetFunction(glUniform4f);
+    OpenGLSetFunction(glUniformMatrix2fv);
+    OpenGLSetFunction(glUniformMatrix3fv);
+    OpenGLSetFunction(glUniformMatrix4fv);
+    OpenGLSetFunction(glGetUniformLocation);
+
+    OpenGLSetFunction(glActiveTexture);
+    OpenGLSetFunction(glGenerateMipmap);
+
+    OpenGLSetFunction(glDrawElementsInstanced);
+    OpenGLSetFunction(glBufferSubData);
+    OpenGLSetFunction(glBindBufferRange);
+
+    OpenGLSetFunction(glDebugMessageCallback);
+    OpenGLSetFunction(glDebugMessageControl);
+
+    opengl_enable_debug(opengl);
+
+    // ui rendering
+    UIRenderGroup *ui_render_group = arena_push_size(&g_arena, UIRenderGroup, 1);
+    opengl->ui_render_group = ui_render_group;
+    ui_render_group->vertex_array = arena_push_size(&g_arena, UIVertex, max_vertex_per_batch);
+    ui_render_group->index_array = arena_push_size(&g_arena, u16, max_index_per_batch);
+    ui_render_group->vertex_count = 0;
+    ui_render_group->index_count  = 0;
+
+    init_ui(opengl, opengl->ui_render_group);
 }
 
 // TODO

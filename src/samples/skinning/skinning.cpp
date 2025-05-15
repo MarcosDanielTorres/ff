@@ -8,36 +8,6 @@
 #include "bindings/opengl_bindings.cpp"
 // thirdparty
 
-/* TODO primero ver de sacar lo que esta en shader, capaz es el causante del internal
-    y no glm. Seria ideal asi no tengo que renombrar todo ahora, y de paso tengo
-    que dejar de usar la poronga de string igual asi que...
-
-    primero migrar glfw, despues shader, despues chequear el internal
-*/
-//#define internal_linkage static
-#define internal static
-#define global_variable static
-#define local_persist static
-#define RAW_INPUT 1
-
-// TODO get the core, i should only fix the assert macro! (just call it Assert)
-typedef uint8_t u8;
-typedef uint16_t u16;
-typedef uint32_t u32;
-typedef uint64_t u64;
-typedef int8_t i8;
-typedef int16_t i16;
-typedef int32_t i32;
-typedef int64_t i64;
-typedef float f32;
-typedef double f64;
-typedef uint32_t b32;
-typedef u32 b32;
-
-#define kb(value) (value * 1024)
-#define mb(value) (1024 * kb(value))
-#define gb(value) (1024 * mb(value))
-
 // glm
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
@@ -47,26 +17,8 @@ typedef u32 b32;
 // assimp
 #include "AssimpLoader.h"
 
-// TODO fix assert collision with windows.h or something else!
 
-#define AssertGui(expr, fmt, ...) do {                                       \
-    if (!(expr)) {                                                            \
-        char _msg_buf[1024];                                                  \
-                snprintf(_msg_buf, sizeof(_msg_buf),                                        \
-            "Assertion failed!\n\n"                                                 \
-            "File: %s\n"                                                            \
-            "Line: %d\n"                                                            \
-            "Condition: %s\n\n"                                                     \
-            fmt,                                                                    \
-            __FILE__, __LINE__, #expr, __VA_ARGS__);                                \
-        MessageBoxA(0, _msg_buf, "Assertion Failed", MB_OK | MB_ICONERROR);   \
-        __debugbreak();                                                       \
-    }                                                                         \
-} while (0)
-
-
-
-//#include "base/base_core.h"
+#include "base/base_core.h"
 #include "base/base_arena.h"
 #include "base/base_string.h"
 #include "os/os_core.h"

@@ -40,7 +40,8 @@ DONE Clean up ui path
 DONE Add textures and materials
     - First use the book shader
     - Change model position to center of the plane
-TODO Take extensive notes of skinning, sadly! 
+DONE Take extensive notes of skinning, sadly! 
+TODO Refactor the model systme a bit, like I did with the ui. Having everything in main is becoming mess!
 TODO Add bones and animations
 TODO Add instancing. Make the SSBO works, right now all these things are ignored because im using the identity matrix for everything, and because there are no animations it doesnt matter.
     Because I dont have animations im using the non-animated model ssbo, there are 2. And because there is no instancing im just using my regular shader which doesnt use a SSBO!!!

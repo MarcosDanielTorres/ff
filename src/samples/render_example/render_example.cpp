@@ -1052,6 +1052,13 @@ drawInstanced(Model *model, OpenGL *opengl, u32 instanceCount)
     }
 }
 
+struct UIState
+{
+    // TODO probably should have its own memory. After I remove std first!
+    glm::mat4 ortho_proj;
+    UIRenderGroup *render_group;
+};
+
 
 struct PlaceholderState
 {
@@ -1090,7 +1097,7 @@ for each entry:
 
 // NOTE before pulling them out I have to sort out the globals being used here!
 void opengl_render (OpenGL *opengl, Camera *curr_camera, u32 cubeVAO,
-    Shader skinning_shader, MeshBox floor_meshbox, std::vector<MeshBox> boxes, UIRenderGroup* render_group, PlaceholderState *placeholder_state)
+    Shader skinning_shader, MeshBox floor_meshbox, std::vector<MeshBox> boxes, PlaceholderState *placeholder_state, UIState *ui_state)
 {
         glEnable(GL_DEPTH_TEST);
         glDepthFunc(GL_LESS);
@@ -1158,16 +1165,16 @@ void opengl_render (OpenGL *opengl, Camera *curr_camera, u32 cubeVAO,
         }
 
         {
+            UIRenderGroup *ui_render_group = ui_state->render_group;
             // render ui
             // TODO this should only be done at resizes
-            glm::mat4 orthog = glm::ortho(0.0f, f32(SRC_WIDTH), f32(SRC_HEIGHT), 0.0f, -1.0f, 1.0f);
-            begin_ui_frame(opengl, render_group);
-            opengl->glUniformMatrix4fv(opengl->ui_render_group->ortho_proj, 1, GL_FALSE, &orthog[0][0]);
+            begin_ui_frame(opengl, ui_render_group);
+            opengl->glUniformMatrix4fv(ui_render_group->ortho_proj, 1, GL_FALSE, &ui_state->ortho_proj[0][0]);
             // TODO see wtf is a 0 there? Why is the texture sampler for?
-            opengl->glUniform1i(opengl->ui_render_group->texture_sampler, 0);
+            opengl->glUniform1i(ui_render_group->texture_sampler, 0);
             // TODO investigate if i have to set this value for the uniforms again or not!. 
 
-            glDrawElements(GL_TRIANGLES, render_group->index_count, GL_UNSIGNED_SHORT, 0); //era 18
+            glDrawElements(GL_TRIANGLES, ui_render_group->index_count, GL_UNSIGNED_SHORT, 0); //era 18
             end_ui_frame(opengl);
         }
 
@@ -1204,7 +1211,19 @@ int main() {
 
     OpenGL* opengl = arena_push_size(&g_arena, OpenGL, 1);
     opengl_init(opengl, global_w32_window);
-    UIRenderGroup *ui_render_group = opengl->ui_render_group;
+
+    // ui state init
+    UIState *ui_state = arena_push_size(&g_arena, UIState, 1);
+    ui_state->ortho_proj = glm::ortho(0.0f, f32(SRC_WIDTH), f32(SRC_HEIGHT), 0.0f, -1.0f, 1.0f);
+
+    UIRenderGroup *ui_render_group = arena_push_size(&g_arena, UIRenderGroup, 1);
+    ui_state->render_group = ui_render_group;
+    ui_render_group->vertex_array = arena_push_size(&g_arena, UIVertex, max_vertex_per_batch);
+    ui_render_group->index_array = arena_push_size(&g_arena, u16, max_index_per_batch);
+    ui_render_group->vertex_count = 0;
+    ui_render_group->index_count  = 0;
+
+    init_ui(opengl, ui_render_group);
     {
         /* TODO The biggest problem here is do I recreate the render group every frame or not
             Because why would I do this if I can instead save the points in each model? Which is why they do
@@ -1248,7 +1267,9 @@ int main() {
     // TODO see todos
     Shader skinning_shader{};
     shader_init(&skinning_shader, opengl, str8("skel_shader-2.vs.glsl"), str8("6.multiple_lights.fs.glsl"));
+
     
+    // placeholder state init
     PlaceholderState *placeholder_state = arena_push_size(&g_arena, PlaceholderState, 1);
     placeholder_state->nonskinned_pid = create_program(opengl, str8("assimp.vert"), str8("assimp.frag"));
     placeholder_state->skinned_pid = create_program(opengl, str8("assimp_skinning.vert"), str8("assimp_skinning.frag"));
@@ -1720,7 +1741,7 @@ int main() {
         update_and_render(placeholder_state);
 
         //glPolygonMode( GL_FRONT_AND_BACK, GL_LINE);
-        opengl_render(opengl, curr_camera, cubeVAO, skinning_shader, floor_meshbox, boxes, ui_render_group, placeholder_state);
+        opengl_render(opengl, curr_camera, cubeVAO, skinning_shader, floor_meshbox, boxes, placeholder_state, ui_state);
         //glPolygonMode( GL_FRONT_AND_BACK, GL_FILL);
 
         input_update(&global_input);

@@ -42,7 +42,7 @@ Bones:
         interaction         (0)
         center_of_mass      (0)
 
-(NOTE: its has the exact same bones as the arms)
+(NOTE: its has the exact same bones as the arms model SK_FP_Manny_Simple)
 From this animation the transform of the bones corresponding the arms are taken from.
 
 
@@ -53,12 +53,12 @@ Bones:
         Bolt
         Magazine
 
-(NOTE: its has the exact same bones as the gun)
+(NOTE: its has the exact same bones as the rifle AssaultRifle)
 From this animation the transform of the bones corresponding the parts of the gun are taken from.
 
 
 So for reloading we have the rifle, the magazine and the arms.
-The arms are the ones that move the rifle, which the nmove the magazine. So the initial root tranform should be that of the arms.
+The arms are the ones that move the rifle, which then move the magazine. So the initial root tranform should be that of the arms.
 The rifle, on the other hand, must have the transform of ik_hand_gun (NOT ik_hand_r, although it may seem it should be this its not, I've tested it). 
 For the magazine, should be: rifle transform * grip * mag (although grip here is not neccesary as it always the identity, at least with what I tested)
 
@@ -69,3 +69,26 @@ After one step in the animation:
 (The matrix containing this things is called the node matrix in my code, but it doesn't really matter)
 
 NOTE The global inverse matrix here is always the identity
+
+Example in Code:
+TODO
+
+
+# Shader for animations:
+
+Optionals:
+gl_InstanceID
+aModelStride
+
+Required:
+boneMat (uniform or SSBO)
+aBoneNum (or bone indices) (uvec4)
+aBoneWeight(or weights) (vec4)
+
+```C
+mat4 skinMat =
+    aBoneWeight.x * boneMat[aBoneNum.x + gl_InstanceID * aModelStride] +
+    aBoneWeight.y * boneMat[aBoneNum.y + gl_InstanceID * aModelStride] +
+    aBoneWeight.z * boneMat[aBoneNum.z + gl_InstanceID * aModelStride] +
+    aBoneWeight.w * boneMat[aBoneNum.w + gl_InstanceID * aModelStride];
+```

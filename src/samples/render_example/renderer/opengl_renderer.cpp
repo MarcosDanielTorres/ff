@@ -6,8 +6,6 @@ struct OpenGL
 
     i32 vsynch;
     
-    UIRenderGroup* ui_render_group;
-
     OpenGLDeclareMemberFunction(wglCreateContextAttribsARB);
     OpenGLDeclareMemberFunction(wglGetExtensionsStringEXT);
     OpenGLDeclareMemberFunction(wglSwapIntervalEXT);
@@ -319,8 +317,9 @@ end_ui_frame(OpenGL* opengl)
     opengl->glUseProgram(0);
 }
 
+#if 0
 internal void
-opengl_free_resources(OpenGL *opengl)
+opengl_free_resources(OpenGL *opengl, ...)
 {
     UIRenderGroup *ui_rg = opengl->ui_render_group;
     opengl->glDeleteProgram(ui_rg->program_id);
@@ -331,6 +330,7 @@ opengl_free_resources(OpenGL *opengl)
 
     glDeleteTextures(1, &ui_rg->tex);
 }
+#endif
 
 internal
 void opengl_init(OpenGL *opengl, OS_Window window)
@@ -464,15 +464,6 @@ void opengl_init(OpenGL *opengl, OS_Window window)
 
     opengl_enable_debug(opengl);
 
-    // ui rendering
-    UIRenderGroup *ui_render_group = arena_push_size(&g_arena, UIRenderGroup, 1);
-    opengl->ui_render_group = ui_render_group;
-    ui_render_group->vertex_array = arena_push_size(&g_arena, UIVertex, max_vertex_per_batch);
-    ui_render_group->index_array = arena_push_size(&g_arena, u16, max_index_per_batch);
-    ui_render_group->vertex_count = 0;
-    ui_render_group->index_count  = 0;
-
-    init_ui(opengl, opengl->ui_render_group);
 }
 
 // TODO

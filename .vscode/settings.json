@@ -1,4 +1,7 @@
 {
     "C_Cpp.errorSquiggles": "disabled",
     "cmake.sourceDirectory": "E:/font_rendering/build/glslang",
+    "files.associations": {
+        "cmath": "cpp"
+    },
 }

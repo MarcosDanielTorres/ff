@@ -1,3 +1,5 @@
+#include <algorithm>
+//#include "math.h"
 struct Bone
 {
     unsigned int mBoneId = 0;
@@ -152,6 +154,37 @@ struct Node
 
     /* extra matrix to move model instances  around */
     glm::mat4 mRootTransformMatrix = glm::mat4(1.0f);
+
+    void setTranslation(glm::vec3 translation) 
+    {
+        mTranslation = translation;
+        mTranslationMatrix = glm::translate(glm::mat4(1.0f), mTranslation);
+    }
+
+    void setRotation(glm::quat rotation) 
+    {
+        mRotation = rotation;
+        mRotationMatrix = glm::mat4_cast(mRotation);
+    }
+
+    void setScaling(glm::vec3 scaling) 
+    {
+        mScaling = scaling;
+        mScalingMatrix = glm::scale(glm::mat4(1.0f), mScaling);
+    }
+
+    void updateTRSMatrix() 
+    {
+        if (mParentNode) {
+            mParentNodeMatrix = mParentNode->getTRSMatrix();
+        }
+
+        mLocalTRSMatrix = mRootTransformMatrix * mParentNodeMatrix * mTranslationMatrix * mRotationMatrix * mScalingMatrix;
+    }
+
+    glm::mat4 getTRSMatrix() {
+        return mLocalTRSMatrix;
+    }
 };
 
 struct VertexIndexBuffer
@@ -275,6 +308,277 @@ glm::mat4 convertAiToGLM(aiMatrix4x4 inMat) {
   };
 }
 
+struct InstanceSettings
+{
+    glm::vec3 isWorldPosition = glm::vec3(0.0f);
+    glm::vec3 isWorldRotation = glm::vec3(0.0f);
+    float isScale = 1.0f;
+    bool isSwapYZAxis = false;
+
+    unsigned int isAnimClipNr = 0;
+    float isAnimPlayTimePos = 0.0f;
+    float isAnimSpeedFactor = 1.0f;
+};
+
+struct AssimpAnimChannel 
+{
+    void loadChannelData(aiNodeAnim* nodeAnim)
+    {
+        mNodeName = nodeAnim->mNodeName.C_Str();
+        unsigned int numTranslations = nodeAnim->mNumPositionKeys;
+        unsigned int numRotations = nodeAnim->mNumRotationKeys;
+        unsigned int numScalings = nodeAnim->mNumScalingKeys;
+        unsigned int preState = nodeAnim->mPreState;
+        unsigned int postState = nodeAnim->mPostState;
+
+        // Logger::log(1, "%s: - loading animation channel for node '%s', with %i translation keys, %i rotation keys, %i scaling keys (preState %i, postState %i)\n", __FUNCTION__, mNodeName.c_str(), numTranslations, numRotations, numScalings, preState, postState);
+
+        for (unsigned int i = 0; i < numTranslations; ++i) {
+            mTranslationTiminngs.emplace_back(static_cast<float>(nodeAnim->mPositionKeys[i].mTime));
+            mTranslations.emplace_back(glm::vec3(nodeAnim->mPositionKeys[i].mValue.x, nodeAnim->mPositionKeys[i].mValue.y, nodeAnim->mPositionKeys[i].mValue.z));
+        }
+
+        for (unsigned int i = 0; i < numRotations; ++i) {
+            mRotationTiminigs.emplace_back(static_cast<float>(nodeAnim->mRotationKeys[i].mTime));
+            mRotations.emplace_back(glm::quat(nodeAnim->mRotationKeys[i].mValue.w, nodeAnim->mRotationKeys[i].mValue.x, nodeAnim->mRotationKeys[i].mValue.y, nodeAnim->mRotationKeys[i].mValue.z));
+        }
+
+        for (unsigned int i = 0; i < numScalings; ++i) {
+            mScaleTimings.emplace_back(static_cast<float>(nodeAnim->mScalingKeys[i].mTime));
+            mScalings.emplace_back(glm::vec3(nodeAnim->mScalingKeys[i].mValue.x, nodeAnim->mScalingKeys[i].mValue.y, nodeAnim->mScalingKeys[i].mValue.z));
+        }
+
+        /* precalcuate the inverse offset to avoid divisions when scaling the section */
+        for (unsigned int i = 0; i < mTranslationTiminngs.size() - 1; ++i) {
+            mInverseTranslationTimeDiffs.emplace_back(1.0f / (mTranslationTiminngs.at(i + 1) - mTranslationTiminngs.at(i)));
+        }
+        for (unsigned int i = 0; i < mRotationTiminigs.size() - 1; ++i) {
+            mInverseRotationTimeDiffs.emplace_back(1.0f / (mRotationTiminigs.at(i + 1) - mRotationTiminigs.at(i)));
+        }
+        for (unsigned int i = 0; i < mScaleTimings.size() - 1; ++i) {
+            mInverseScaleTimeDiffs.emplace_back(1.0f / (mScaleTimings.at(i + 1) - mScaleTimings.at(i)));
+        }
+
+        mPreState = preState;
+        mPostState = postState;
+    }
+
+    std::string getTargetNodeName() 
+    {
+        return mNodeName;
+    }
+
+    float getMaxTime() 
+    {
+        float maxTranslationTime = mTranslationTiminngs.at(mTranslationTiminngs.size() - 1);
+        float maxRotationTime = mRotationTiminigs.at(mRotationTiminigs.size() - 1);
+        float maxScaleTime = mScaleTimings.at(mScaleTimings.size() - 1);
+
+        return Max(Max(maxRotationTime, maxTranslationTime), maxScaleTime);
+    }
+
+    /* precalculate TRS matrix */
+    glm::mat4 getTRSMatrix(float time) {
+        return glm::translate(glm::mat4_cast(getRotation(time)) * glm::scale(glm::mat4(1.0f), getScaling(time)), getTranslation(time));
+    }
+
+    glm::vec3 getTranslation(float time) 
+    {
+        if (mTranslations.empty()) {
+            return glm::vec3(0.0f);
+        }
+
+        /* handle time before and after */
+        switch (mPreState) {
+            case 0:
+            /* do not change vertex position-> aiAnimBehaviour_DEFAULT */
+            if (time < mTranslationTiminngs.at(0)) {
+                return glm::vec3(0.0f);
+            }
+            break;
+            case 1:
+            /* use value at zero time "aiAnimBehaviour_CONSTANT" */
+            if (time < mTranslationTiminngs.at(0)) {
+                return mTranslations.at(0);
+            }
+            break;
+            default:
+            //Logger::log(1, "%s error: preState %i not implmented\n", __FUNCTION__, mPreState);
+            break;
+        }
+
+        switch(mPostState) {
+            case 0:
+            if (time > mTranslationTiminngs.at(mTranslationTiminngs.size() - 1)) {
+                return glm::vec3(0.0f);
+            }
+            break;
+            case 1:
+            if (time >= mTranslationTiminngs.at(mTranslationTiminngs.size() - 1)) {
+                return mTranslations.at(mTranslations.size() - 1);
+            }
+            break;
+            default:
+            //Logger::log(1, "%s error: postState %i not implmented\n", __FUNCTION__, mPostState);
+            break;
+        }
+
+        auto timeIndexPos = std::lower_bound(mTranslationTiminngs.begin(), mTranslationTiminngs.end(), time);
+        /* catch rare cases where time is exaclty zero */
+        int timeIndex = Max(static_cast<int>(std::distance(mTranslationTiminngs.begin(), timeIndexPos)) - 1, 0);
+
+        float interpolatedTime = (time - mTranslationTiminngs.at(timeIndex)) * mInverseTranslationTimeDiffs.at(timeIndex);
+
+        return glm::mix(mTranslations.at(timeIndex), mTranslations.at(timeIndex + 1), interpolatedTime);
+    }
+
+    glm::vec3 getScaling(float time) 
+    {
+        if (mScalings.empty()) {
+            return glm::vec3(1.0f);
+        }
+
+        /* handle time before and after */
+        switch (mPreState) {
+            case 0:
+            /* do not change vertex position-> aiAnimBehaviour_DEFAULT */
+            if (time < mScaleTimings.at(0)) {
+                return glm::vec3(0.0f);
+            }
+            break;
+            case 1:
+            /* use value at zero time "aiAnimBehaviour_CONSTANT" */
+            if (time < mScaleTimings.at(0)) {
+                return mScalings.at(0);
+            }
+            break;
+            default:
+            //Logger::log(1, "%s error: preState %i not implmented\n", __FUNCTION__, mPreState);
+            break;
+        }
+
+        switch(mPostState) {
+            case 0:
+            if (time > mScaleTimings.at(mScaleTimings.size() - 1)) {
+                return glm::vec3(0.0f);
+            }
+            break;
+            case 1:
+            if (time >= mScaleTimings.at(mScaleTimings.size() - 1)) {
+                return mScalings.at(mScalings.size() - 1);
+            }
+            break;
+            default:
+            //Logger::log(1, "%s error: postState %i not implmented\n", __FUNCTION__, mPostState);
+            break;
+        }
+
+        auto timeIndexPos = std::lower_bound(mScaleTimings.begin(), mScaleTimings.end(), time);
+        int timeIndex = Max(static_cast<int>(std::distance(mScaleTimings.begin(), timeIndexPos)) - 1, 0);
+
+        float interpolatedTime = (time - mScaleTimings.at(timeIndex)) * mInverseScaleTimeDiffs.at(timeIndex);
+
+        return glm::mix(mScalings.at(timeIndex), mScalings.at(timeIndex + 1), interpolatedTime);
+    }
+
+    glm::quat getRotation(float time) 
+    {
+        if (mRotations.empty()) 
+        {
+            return glm::identity<glm::quat>();
+        }
+
+        /* handle time before and after */
+        switch (mPreState) {
+            case 0:
+            /* do not change vertex position-> aiAnimBehaviour_DEFAULT */
+            if (time < mRotationTiminigs.at(0)) {
+                return glm::identity<glm::quat>();
+            }
+            break;
+            case 1:
+            /* use value at zero time "aiAnimBehaviour_CONSTANT" */
+            if (time < mRotationTiminigs.at(0)) {
+                return mRotations.at(0);
+            }
+            break;
+            default:
+            //Logger::log(1, "%s error: preState %i not implmented\n", __FUNCTION__, mPreState);
+            break;
+        }
+
+        switch(mPostState) {
+            case 0:
+            if (time > mRotationTiminigs.at(mRotationTiminigs.size() - 1)) {
+                return glm::identity<glm::quat>();
+            }
+            break;
+            case 1:
+            if (time >= mRotationTiminigs.at(mRotationTiminigs.size() - 1)) {
+                return mRotations.at(mRotations.size() - 1);
+            }
+            break;
+            default:
+            {
+                //Logger::log(1, "%s error: postState %i not implmented\n", __FUNCTION__, mPostState);
+            }
+            break;
+        }
+
+        auto timeIndexPos = std::lower_bound(mRotationTiminigs.begin(), mRotationTiminigs.end(), time);
+        int timeIndex = Max(static_cast<int>(std::distance(mRotationTiminigs.begin(), timeIndexPos)) - 1, 0);
+
+        float interpolatedTime = (time - mRotationTiminigs.at(timeIndex)) * mInverseRotationTimeDiffs.at(timeIndex);
+
+        /* roiations are interpolated via SLERP */
+        return glm::normalize(glm::slerp(mRotations.at(timeIndex), mRotations.at(timeIndex + 1), interpolatedTime));
+    }
+
+
+    std::string mNodeName;
+
+    /* use separate timinigs vectors, just in case not all keys have the same time */
+    std::vector<float> mTranslationTiminngs{};
+    std::vector<float> mInverseTranslationTimeDiffs{};
+    std::vector<float> mRotationTiminigs{};
+    std::vector<float> mInverseRotationTimeDiffs{};
+    std::vector<float> mScaleTimings{};
+    std::vector<float> mInverseScaleTimeDiffs{};
+
+    /* every entry here has the same index as the timing for that key type */
+    std::vector<glm::vec3> mTranslations{};
+    std::vector<glm::vec3> mScalings{};
+    std::vector<glm::quat> mRotations{};
+
+    unsigned int mPreState = 0;
+    unsigned int mPostState = 0;
+};
+
+struct AssimpAnimClip 
+{
+    void addChannels(aiAnimation* animation) 
+    {
+        mClipName = animation->mName.C_Str();
+        mClipDuration = animation->mDuration;
+        mClipTicksPerSecond = animation->mTicksPerSecond;
+
+        //Logger::log(1, "%s: - loading clip %s, duration %lf (%lf ticks per second)\n", __FUNCTION__, mClipName.c_str(), mClipDuration, mClipTicksPerSecond);
+
+        for (unsigned int i = 0; i < animation->mNumChannels; ++i) {
+        AssimpAnimChannel *channel = new AssimpAnimChannel();
+
+        //Logger::log(1, "%s: -- loading channel %i for node '%s'\n", __FUNCTION__, i, animation->mChannels[i]->mNodeName.C_Str());
+        channel->loadChannelData(animation->mChannels[i]);
+        mAnimChannels.emplace_back(channel);
+        }
+    }
+
+    std::string mClipName;
+    double mClipDuration = 0.0f;
+    double mClipTicksPerSecond = 0.0f;
+
+    std::vector<AssimpAnimChannel*> mAnimChannels{};
+};
 
 struct Model
 {
@@ -289,6 +593,7 @@ struct Model
     std::vector<Bone*> mBoneList{};
     std::unordered_map<std::string, glm::mat4> mBoneOffsetMatrices{};
 
+    std::vector<AssimpAnimClip*> mAnimClips{};
 
     std::vector<OGLMesh> mModelMeshes;
     std::vector<VertexIndexBuffer> mVertexBuffers{};
@@ -301,7 +606,53 @@ struct Model
     Texture *mWhiteTexture = nullptr;
 
 
+    // TODO(Marcos): inspect this because they put all this info inside AssimpInstance
+    InstanceSettings mInstanceSettings{};
+
+    glm::mat4 mLocalTranslationMatrix = glm::mat4(1.0f);
+    glm::mat4 mLocalRotationMatrix = glm::mat4(1.0f);
+    glm::mat4 mLocalScaleMatrix = glm::mat4(1.0f);
+    glm::mat4 mLocalSwapAxisMatrix = glm::mat4(1.0f);
+
+    glm::mat4 mLocalTransformMatrix = glm::mat4(1.0f);
+
+    std::vector<glm::mat4> mBoneMatrices{};
+
+    void updateAnimation(float deltaTime) 
+    {
+        mInstanceSettings.isAnimPlayTimePos += deltaTime * mAnimClips.at(mInstanceSettings.isAnimClipNr)->mClipTicksPerSecond * mInstanceSettings.isAnimSpeedFactor;
+        mInstanceSettings.isAnimPlayTimePos = fmod(mInstanceSettings.isAnimPlayTimePos, mAnimClips.at(mInstanceSettings.isAnimClipNr)->mClipDuration);
+
+        std::vector<AssimpAnimChannel*> animChannels = mAnimClips.at(mInstanceSettings.isAnimClipNr)->mAnimChannels;
+
+        /* animate clip via channels */
+        for (const auto& channel : animChannels) {
+            std::string nodeNameToAnimate = channel->getTargetNodeName();
+            Node *node = mNodeMap.at(nodeNameToAnimate);
+
+            node->setRotation(channel->getRotation(mInstanceSettings.isAnimPlayTimePos));
+            node->setScaling(channel->getScaling(mInstanceSettings.isAnimPlayTimePos));
+            node->setTranslation(channel->getTranslation(mInstanceSettings.isAnimPlayTimePos));
+        }
+
+        /* set root node transform matrix, enabling instance movement */
+        mRootNode->mRootTransformMatrix = mLocalTransformMatrix * mRootTransformMatrix;
+
+        /* flat node map contains nodes in parent->child order, starting with root node, update matrices down the skeleton tree */
+        mBoneMatrices.clear();
+        for (auto& node : mNodeList) {
+            std::string nodeName = node->nodeName;
+            node->updateTRSMatrix();
+            if (mBoneOffsetMatrices.count(nodeName) > 0) {
+                mBoneMatrices.emplace_back(mNodeMap.at(nodeName)->getTRSMatrix() * mBoneOffsetMatrices.at(nodeName));
+            }
+        }
+    }
+
 };
+
+
+
 
 Node *createNode(std::string nodeName)
 {
@@ -657,7 +1008,7 @@ load_model(OpenGL *opengl, const char* model_filepath)
         //Logger::log(1, "%s: root node name: '%s'\n", __FUNCTION__, rootNodeName.c_str());
 
         // TODO is this the texture directory?
-        std::string assetDirectory = "E:/Mastering-Cpp-Game-Animation-Programming/chapter01/01_opengl_assimp/assets/woman";
+        std::string assetDirectory = "C:/Users/marcos/Desktop/Mastering-Cpp-Game-Animation-Programming/chapter01/01_opengl_assimp/assets/woman";
         processNode(opengl, model, model->mRootNode, rootNode, scene, assetDirectory);
 
         //Logger::log(1, "%s: ... processing nodes finished...\n", __FUNCTION__);
@@ -680,26 +1031,25 @@ load_model(OpenGL *opengl, const char* model_filepath)
             model->mVertexBuffers.emplace_back(buffer);
         }
 
-        #if 0
         /* animations */
-        unsigned int numAnims = scene->mNumAnimations;
-        for (unsigned int i = 0; i < numAnims; ++i) {
-            aiAnimation* animation = scene->mAnimations[i];
+        u32 num_anims = scene->mNumAnimations;
+        for (u32 anim = 0; anim < num_anims; ++anim) {
+            aiAnimation* animation = scene->mAnimations[anim];
 
-            Logger::log(1, "%s: -- animation clip %i has %i skeletal channels, %i mesh channels, and %i morph mesh channels\n",
-            __FUNCTION__, i, animation->mNumChannels, animation->mNumMeshChannels, animation->mNumMorphMeshChannels);
+            //Logger::log(1, "%s: -- animation clip %i has %i skeletal channels, %i mesh channels, and %i morph mesh channels\n", __FUNCTION__, i, animation->mNumChannels, animation->mNumMeshChannels, animation->mNumMorphMeshChannels);
 
-            std::shared_ptr<AssimpAnimClip> animClip = std::make_shared<AssimpAnimClip>();
+            AssimpAnimClip *animClip = new AssimpAnimClip();
             animClip->addChannels(animation);
-            if (animClip->getClipName().empty()) {
-            animClip->setClipName(std::to_string(i));
+            if (animClip->mClipName.empty()) {
+                animClip->mClipName = std::to_string(anim);
             }
-            mAnimClips.emplace_back(animClip);
+            model->mAnimClips.emplace_back(animClip);
         }
 
-        mModelFilenamePath = modelFilename;
-        mModelFilename = std::filesystem::path(modelFilename).filename().generic_string();
-        #endif
+        // TODO see what i do with this, its better if i dont include filesystem
+        // This is the model_filepath param
+        //mModelFilenamePath = modelFilename;
+        //mModelFilename = std::filesystem::path(modelFilename).filename().generic_string();
 
         /* get root transformation matrix from model's root node */
         model->mRootTransformMatrix = convertAiToGLM(rootNode->mTransformation);

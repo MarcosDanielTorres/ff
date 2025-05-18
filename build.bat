@@ -8,9 +8,9 @@ set some_path=%root%\build
 set freetype_root=%root%\thirdparty\freetype-2.13.3
 set glm_root=%root%\thirdparty\glm
 
-set assimp_root="C:\Program Files\assimp"
-set assimp_lib_path="C:\Program Files\assimp\lib"
-set assimp_lib_path_dll="C:\Program Files\assimp\lib-dll"
+set assimp_root="C:\Archivos de programa\assimp"
+set assimp_lib_path="C:\Archivos de programa\assimp\lib"
+set assimp_lib_path_dll="C:\Archivos de programa\assimp\lib-dll"
 
 set inc_files=
 set inc_files=%inc_files% -I%freetype_root%\custom

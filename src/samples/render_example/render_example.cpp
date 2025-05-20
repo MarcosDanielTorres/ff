@@ -99,6 +99,15 @@ struct ShaderStorageBuffer
     size_t mBufferSize = 0;
     GLuint mShaderStorageBuffer = 0;
 
+    void init(OpenGL *opengl, size_t buffer_size)
+    {
+        mBufferSize = buffer_size;
+        opengl->glGenBuffers(1, &mShaderStorageBuffer);
+        opengl->glBindBuffer(GL_SHADER_STORAGE_BUFFER, mShaderStorageBuffer);
+        opengl->glBufferData(GL_SHADER_STORAGE_BUFFER, mBufferSize, nullptr, GL_DYNAMIC_COPY);
+        opengl->glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
+    }
+
     void uploadSsboData(OpenGL* opengl, std::vector<glm::mat4> bufferData, int bindingPoint) 
     {
         if (bufferData.empty()) {
@@ -108,9 +117,9 @@ struct ShaderStorageBuffer
         size_t bufferSize = bufferData.size() * sizeof(glm::mat4);
         if (bufferSize > mBufferSize) {
             //Logger::log(1, "%s: resizing SSBO %i from %i to %i bytes\n", __FUNCTION__, mShaderStorageBuffer, mBufferSize, bufferSize);
-            //cleanup();
-            //init(bufferSize);
-            abort();
+            printf("%s: resizing SSBO %i from %zi to %zi bytes\n", __FUNCTION__, mShaderStorageBuffer, mBufferSize, bufferSize);
+            cleanup(opengl);
+            init(opengl, bufferSize);
         }
 
         opengl->glBindBuffer(GL_SHADER_STORAGE_BUFFER, mShaderStorageBuffer);
@@ -118,6 +127,11 @@ struct ShaderStorageBuffer
         opengl->glBindBufferRange(GL_SHADER_STORAGE_BUFFER, bindingPoint, mShaderStorageBuffer, 0,
             bufferSize);
         opengl->glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
+    }
+
+    void cleanup(OpenGL *opengl)
+    {
+        opengl->glDeleteBuffers(1, &mShaderStorageBuffer);
     }
 };
 
@@ -587,8 +601,8 @@ void opengl_render (OpenGL *opengl, Camera *curr_camera, u32 cubeVAO,
             mWorldPosBuffer.uploadSsboData(opengl, mWorldPosMatrices, 1);
             drawInstanced(woman, opengl, 1);
             #else
-            opengl->glUseProgram(placeholder_state->skinned_pid);
             /* animated models */
+
 
             if (!woman->mAnimClips.empty() && !woman->mBoneMatrices.empty()) {
             //if (!(model->mAnimClips.empty()) && !modelType.second.at(0)->getBoneMatrices().empty()) {
@@ -613,12 +627,17 @@ void opengl_render (OpenGL *opengl, Camera *curr_camera, u32 cubeVAO,
 
                 //mAssimpSkinningShader.use();
                 //mUploadToUBOTimer.start();
+
+                opengl->glUseProgram(placeholder_state->skinned_pid);
+                opengl->glUniform1i(opengl->glGetUniformLocation(placeholder_state->skinned_pid, "aModelStride"), numberOfBones);
                 //mAssimpSkinningShader.setUniformValue(numberOfBones);
-                mAssimpSkinningShader.use();
-                mAssimpSkinningShader.setUniformValue(numberOfBones);
                 mShaderBoneMatrixBuffer.uploadSsboData(opengl, mModelBoneMatrices, 1);
+                //mAssimpSkinningShader.use();
+                //mAssimpSkinningShader.setUniformValue(numberOfBones);
+                //mShaderBoneMatrixBuffer.uploadSsboData(opengl, mModelBoneMatrices, 1);
                 //mRenderData.rdUploadToUBOTime += mUploadToUBOTimer.stop();
 
+                drawInstanced(woman, opengl, 1);
             }
             #endif
             opengl->glUseProgram(0);
@@ -718,11 +737,8 @@ int main() {
     mUniformBuffer.init(opengl, uniform_matrix_buffer_size);
 
     // ssbo init!
-    mWorldPosBuffer.mBufferSize = 256;
-    opengl->glGenBuffers(1, &mWorldPosBuffer.mShaderStorageBuffer);
-    opengl->glBindBuffer(GL_SHADER_STORAGE_BUFFER, mWorldPosBuffer.mShaderStorageBuffer);
-    opengl->glBufferData(GL_SHADER_STORAGE_BUFFER, mWorldPosBuffer.mBufferSize, nullptr, GL_DYNAMIC_COPY);
-    opengl->glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
+    mShaderBoneMatrixBuffer.init(opengl, 256);
+    mWorldPosBuffer.init(opengl, 256);
 
     // TODO see todos
     Shader skinning_shader{};
@@ -734,7 +750,8 @@ int main() {
     placeholder_state->nonskinned_pid = create_program(opengl, str8("assimp.vert"), str8("assimp.frag"));
     placeholder_state->skinned_pid = create_program(opengl, str8("assimp_skinning.vert"), str8("assimp_skinning.frag"));
     placeholder_state->persp_proj = glm::perspective(glm::radians(curr_camera->zoom), (float)SRC_WIDTH / (float)SRC_HEIGHT, 0.1f, 10000.0f);
-    placeholder_state->model = load_model(opengl, "C:/Users/marcos/Desktop/Mastering-Cpp-Game-Animation-Programming/chapter01/01_opengl_assimp/assets/woman/Woman.gltf");
+    //placeholder_state->model = load_model(opengl, "C:/Users/marcos/Desktop/Mastering-Cpp-Game-Animation-Programming/chapter01/01_opengl_assimp/assets/woman/Woman.gltf");
+    placeholder_state->model = load_model(opengl, "E:/Mastering-Cpp-Game-Animation-Programming/chapter01/01_opengl_assimp/assets/woman/Woman.gltf");
 
     f32 pre_transformed_quad[] = 
     {

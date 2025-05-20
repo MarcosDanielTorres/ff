@@ -152,7 +152,7 @@ struct Node
     glm::mat4 mParentNodeMatrix = glm::mat4(1.0f);
     glm::mat4 mLocalTRSMatrix = glm::mat4(1.0f);
 
-    /* extra matrix to move model instances  around */
+    /* extra matrix to move model instances around */
     glm::mat4 mRootTransformMatrix = glm::mat4(1.0f);
 
     void setTranslation(glm::vec3 translation) 
@@ -606,6 +606,7 @@ struct Model
     Texture *mWhiteTexture = nullptr;
 
 
+    /////////// Instacing ////////////
     // TODO(Marcos): inspect this because they put all this info inside AssimpInstance
     InstanceSettings mInstanceSettings{};
 
@@ -617,6 +618,33 @@ struct Model
     glm::mat4 mLocalTransformMatrix = glm::mat4(1.0f);
 
     std::vector<glm::mat4> mBoneMatrices{};
+
+    void updateModelRootMatrix() 
+    {
+        // NOTE(Marcos): This is not neccesary because we are the model
+        #if 0
+        if (!mAssimpModel) {
+            //Logger::log(1, "%s error: invalid model\n", __FUNCTION__);
+            return;
+        }
+        #endif
+
+        mLocalScaleMatrix = glm::scale(glm::mat4(1.0f), glm::vec3(mInstanceSettings.isScale));
+
+        if (mInstanceSettings.isSwapYZAxis) {
+            glm::mat4 flipMatrix = glm::rotate(glm::mat4(1.0f), glm::radians(-90.0f), glm::vec3(0.0f, 0.0f, 1.0f));
+            mLocalSwapAxisMatrix = glm::rotate(flipMatrix, glm::radians(-90.0f), glm::vec3(0.0f, 1.0f, 0.0f));
+        } else {
+            mLocalSwapAxisMatrix = glm::mat4(1.0f);
+        }
+
+        mLocalRotationMatrix = glm::mat4_cast(glm::quat(glm::radians(mInstanceSettings.isWorldRotation)));
+
+        mLocalTranslationMatrix = glm::translate(glm::mat4(1.0f), mInstanceSettings.isWorldPosition);
+
+        mLocalTransformMatrix = mLocalTranslationMatrix * mLocalRotationMatrix * mLocalSwapAxisMatrix * mLocalScaleMatrix;
+    }
+
 
     void updateAnimation(float deltaTime) 
     {
@@ -648,6 +676,7 @@ struct Model
             }
         }
     }
+    /////////// Instacing ////////////
 
 };
 
@@ -1008,7 +1037,8 @@ load_model(OpenGL *opengl, const char* model_filepath)
         //Logger::log(1, "%s: root node name: '%s'\n", __FUNCTION__, rootNodeName.c_str());
 
         // TODO is this the texture directory?
-        std::string assetDirectory = "C:/Users/marcos/Desktop/Mastering-Cpp-Game-Animation-Programming/chapter01/01_opengl_assimp/assets/woman";
+        //std::string assetDirectory = "C:/Users/marcos/Desktop/Mastering-Cpp-Game-Animation-Programming/chapter01/01_opengl_assimp/assets/woman";
+        std::string assetDirectory = "E:/Mastering-Cpp-Game-Animation-Programming/chapter01/01_opengl_assimp/assets/woman";
         processNode(opengl, model, model->mRootNode, rootNode, scene, assetDirectory);
 
         //Logger::log(1, "%s: ... processing nodes finished...\n", __FUNCTION__);
@@ -1059,5 +1089,38 @@ load_model(OpenGL *opengl, const char* model_filepath)
         //Logger::log(1, "%s: - model has a total of %i animation%s\n", __FUNCTION__, numAnims, numAnims == 1 ? "" : "s");
 
         //Logger::log(1, "%s: successfully loaded model '%s' (%s)\n", __FUNCTION__, modelFilename.c_str(), mModelFilename.c_str());
+
+
+        /////////////// instancing/////////////
+
+        // NOTE(Marcos): This is not neccesary because we are the model
+        #if 0
+        if (!model) {
+            //Logger::log(1, "%s error: invalid model given\n", __FUNCTION__);
+            return;
+        }
+        #endif
+
+         
+        // NOTE(Marcos): This are in a constructor by default
+        glm::vec3 position = glm::vec3(0.0f);
+        glm::vec3 rotation = glm::vec3(0.0f);
+        float modelScale = 1.0f;
+        model->mInstanceSettings.isWorldPosition = position;
+        model->mInstanceSettings.isWorldRotation = rotation;
+        model->mInstanceSettings.isScale = modelScale;
+
+        /* we need one 4x4 matrix for every bone */
+        model->mBoneMatrices.resize(model->mBoneList.size());
+        std::fill(model->mBoneMatrices.begin(), model->mBoneMatrices.end(), glm::mat4(1.0f));
+
+        model->updateModelRootMatrix();
+
+        // Note(Marcos): This is just for profiling
+        // updateTriangleCount() 
+
+        /////////////// instancing/////////////
+
+        
         return model;
     }

@@ -670,7 +670,7 @@ void Win32ProcessPendingMessages() {
                 sprintf(buf,  "MOUSE MOVE: x: %d, y: %d\n", xPos, yPos);
                 OutputDebugStringA(buf);
 
-                assert((xxPos == xPos && yyPos == yPos));
+                Assert((xxPos == xPos && yyPos == yPos));
                 global_input.curr_mouse_state.x = xPos;
                 global_input.curr_mouse_state.y = yPos;
             }
@@ -1247,7 +1247,7 @@ int CALLBACK WinMain(HINSTANCE Instance, HINSTANCE PrevInstance, LPSTR CommandLi
         Str8 thread_name = str8_lit("aim thread 8 bits");
         Str16 thread_name16 = str16_lit(L"aim thread 16 bits");
         size_t wc_len = wcslen(L"aim thread 16 bits");
-        assert(wc_len == thread_name16.size);
+        Assert(wc_len == thread_name16.size);
 
         HRESULT r;
         r = SetThreadDescription(

@@ -6,7 +6,7 @@ struct SubmitHandle {
   uint32_t submitId_ = 0;
   SubmitHandle() = default;
   explicit SubmitHandle(uint64_t handle) : bufferIndex_(uint32_t(handle & 0xffffffff)), submitId_(uint32_t(handle >> 32)) {
-    assert(submitId_);
+    Assert(submitId_);
   }
   bool empty() const {
     return submitId_ == 0;

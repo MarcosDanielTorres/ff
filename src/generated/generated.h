@@ -33,7 +33,7 @@ struct Pool_ShaderModule
 ShaderModuleHandle pool_create(Pool_ShaderModule *pool, ShaderModuleState data)
 {
     ShaderModuleHandle handle = {0};
-    assert(pool->count < array_count(pool->entries));
+    Assert(pool->count < array_count(pool->entries));
     handle.idx = pool->count++;
     handle.gen = 1;
     Pool_ShaderModule::Pool_ShaderModule_Entry entry = {.gen = 1, .data = data};
@@ -85,7 +85,7 @@ struct Pool_RenderPipeline
 RenderPipelineHandle pool_create(Pool_RenderPipeline *pool, RenderPipelineState data)
 {
     RenderPipelineHandle handle = {0};
-    assert(pool->count < array_count(pool->entries));
+    Assert(pool->count < array_count(pool->entries));
     handle.idx = pool->count++;
     handle.gen = 1;
     Pool_RenderPipeline::Pool_RenderPipeline_Entry entry = {.gen = 1, .data = data};
@@ -137,7 +137,7 @@ struct Pool_Buffer
 BufferHandle pool_create(Pool_Buffer *pool, VulkanBuffer data)
 {
     BufferHandle handle = {0};
-    assert(pool->count < array_count(pool->entries));
+    Assert(pool->count < array_count(pool->entries));
     handle.idx = pool->count++;
     handle.gen = 1;
     Pool_Buffer::Pool_Buffer_Entry entry = {.gen = 1, .data = data};
@@ -189,7 +189,7 @@ struct Pool_Sampler
 SamplerHandle pool_create(Pool_Sampler *pool, VkSampler data)
 {
     SamplerHandle handle = {0};
-    assert(pool->count < array_count(pool->entries));
+    Assert(pool->count < array_count(pool->entries));
     handle.idx = pool->count++;
     handle.gen = 1;
     Pool_Sampler::Pool_Sampler_Entry entry = {.gen = 1, .data = data};
@@ -241,7 +241,7 @@ struct Pool_Texture
 TextureHandle pool_create(Pool_Texture *pool, VulkanImage data)
 {
     TextureHandle handle = {0};
-    assert(pool->count < array_count(pool->entries));
+    Assert(pool->count < array_count(pool->entries));
     handle.idx = pool->count++;
     handle.gen = 1;
     Pool_Texture::Pool_Texture_Entry entry = {.gen = 1, .data = data};

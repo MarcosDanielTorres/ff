@@ -334,7 +334,7 @@ struct ShaderModuleDesc
     ShaderModuleDesc(const char* source, ShaderStage stage, const char* debugName) : stage(stage), data(source), debugName(debugName) {}
     ShaderModuleDesc(const void* data, size_t dataLength, ShaderStage stage, const char* debugName) :
         stage(stage), data(static_cast<const char*>(data)), dataSize(dataLength), debugName(debugName) {
-        assert(dataSize);
+        Assert(dataSize);
     }
 };
 

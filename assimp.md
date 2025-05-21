@@ -1,8 +1,7 @@
-# Get the version
-# build it jaaaaaa
-a new version of asssimp may break the version im using on my engine!
+# Introduction!
+A new version of asssimp may break the version im using on my engine!
 
-so i could:
+So i could:
 - first try to build that version
 - ignore what ive done in my engine and proceed reading the animation book and use that version
   instead! this will take a lot of time!
@@ -36,19 +35,25 @@ Okay this is what I did
 In order:
 DONE When instance count is 1 use the regular draw, maybe its not useful though, evaluate!
     This is just negligible, it doesn't matter but yes I should just go with draw!
-TODO Clean up first (replace std as well, move to arena based, rethink shader management)
-TODO Take extensive notes of skinning, sadly! 
-TODO Add textures and materials
-TODO Add bones and animations
-TODO Add instancing. Make the SSBO works, right now all these things are ignored because im using the identity matrix for everything, and because there are no animations it doesnt matter.
+DONE just try to render a ui
+DONE Clean up ui path
+DONE Add textures and materials
+    - First use the book shader
+    - Change model position to center of the plane
+DONE Take extensive notes of skinning, sadly! 
+TODO Refactor the model system a bit, like I did with the ui. Having everything in main is becoming mess!
+DONE Add bones and animations
+DONE Add instancing. Make the SSBO works, right now all these things are ignored because im using the identity matrix for everything, and because there are no animations it doesnt matter.
     Because I dont have animations im using the non-animated model ssbo, there are 2. And because there is no instancing im just using my regular shader which doesnt use a SSBO!!!
-
+TODO Replace STD
+TODO Replace old 'skinning_shader' im using. Beware of lighting, take it away from it!
+TODO change ui ortho matrix for 2D alternative (my own)
 
 Some ambitious things:
 DONE Maybe I should just do assimp as a DLL and build only the gltf and fbx loader
     - So I managed to create the DLL and sped up quite a lot, although wasn't able to only let the importers for gltf and fbx
-    (This I did the same time I wrote this todo list haha)
+    (I did this the same time I wrote this todo list haha (it was not ambitious at all, it didn't take me much!))
 TODO Use my own math library for everything but quaternions
 TODO Move away from Assimp, create my own format
 TODO Create a DLL for the game. Maybe this must be done faster than I think. The compilation times are really bad!
-
+TODO implement my own imgui

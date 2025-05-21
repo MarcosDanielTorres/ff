@@ -5,7 +5,7 @@
 #include <iostream>
 // fileysystem, sstream, fstream breaks the macro 'internal'
 
-#include "samples/opengl_bindings.cpp"
+#include "bindings/opengl_bindings.cpp"
 // thirdparty
 
 /* TODO primero ver de sacar lo que esta en shader, capaz es el causante del internal
@@ -15,29 +15,10 @@
     primero migrar glfw, despues shader, despues chequear el internal
 */
 //#define internal_linkage static
-#define internal static
-#define global_variable static
-#define local_persist static
 #define RAW_INPUT 1
 
 // TODO get the core, i should only fix the assert macro! (just call it Assert)
-typedef uint8_t u8;
-typedef uint16_t u16;
-typedef uint32_t u32;
-typedef uint64_t u64;
-typedef int8_t i8;
-typedef int16_t i16;
-typedef int32_t i32;
-typedef int64_t i64;
-typedef float f32;
-typedef double f64;
-typedef uint32_t b32;
-typedef u32 b32;
-
-#define kb(value) (value * 1024)
-#define mb(value) (1024 * kb(value))
-#define gb(value) (1024 * mb(value))
-
+#include "base/base_core.h"
 // glm
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
@@ -80,7 +61,7 @@ typedef u32 b32;
 
 // TODO fix assert collision with windows.h or something else!
 
-#define gui_assert(expr, fmt, ...) do {                                       \
+#define AssertGui(expr, fmt, ...) do {                                       \
     if (!(expr)) {                                                            \
         char _msg_buf[1024];                                                  \
                 snprintf(_msg_buf, sizeof(_msg_buf),                                        \
@@ -461,7 +442,7 @@ public:
 				return index;
 		}
         return 1;
-		assert(0);
+		Assert(0);
 	}
 
 	int GetRotationIndex(float animationTime)
@@ -472,7 +453,7 @@ public:
 				return index;
 		}
         return 1;
-		assert(0);
+		Assert(0);
 	}
 
 	int GetScaleIndex(float animationTime)
@@ -483,7 +464,7 @@ public:
 				return index;
 		}
         return 1;
-		assert(0);
+		Assert(0);
 	}
 
 
@@ -598,7 +579,7 @@ public:
 		Assimp::Importer importer;
 		m_skeleton_index = skeleton_index;
 		const aiScene* scene = importer.ReadFile(animationPath, aiProcess_Triangulate);
-		assert(scene && scene->mRootNode);
+		Assert(scene && scene->mRootNode);
 		auto animation = scene->mAnimations[0];
 		m_Duration = animation->mDuration;
 		m_TicksPerSecond = animation->mTicksPerSecond;
@@ -679,7 +660,7 @@ private:
 	// esto lee toda la jerarquia de la animacion, no solo el skeleton
 	void ReadHeirarchyData(AssimpNodeData& dest, const aiNode* src)
 	{
-		assert(src);
+		Assert(src);
 
 		dest.name = src->mName.data;
 		dest.transformation = AssimpGLMHelpers::ConvertMatrixToGLMFormat(src->mTransformation);
@@ -847,7 +828,7 @@ void processAssimpNode(OpenGL* opengl, aiNode* node, AssimpNode* parent, const a
 						//abort();
 						std::cout << "hola";
 					}
-					assert(boneId != -1);
+					Assert(boneId != -1);
 					for (size_t j = 0; j < mesh->mBones[i]->mNumWeights; j++) {
 						uint32_t vertex_id = mesh->mBones[i]->mWeights[j].mVertexId;
 						float weight_value = mesh->mBones[i]->mWeights[j].mWeight;
@@ -1198,7 +1179,7 @@ void win32_process_pending_msgs() {
                 sprintf(buf,  "MOUSE MOVE: x: %d, y: %d\n", xPos, yPos);
                 //printf(buf);
 
-                assert((xxPos == xPos && yyPos == yPos));
+                Assert((xxPos == xPos && yyPos == yPos));
                 global_input.curr_mouse_state.x = xPos;
                 global_input.curr_mouse_state.y = yPos;
                 
@@ -1214,7 +1195,7 @@ void win32_process_pending_msgs() {
                 UINT size;
                 GetRawInputData((HRAWINPUT)Message.lParam, RID_INPUT, NULL, &size, sizeof(RAWINPUTHEADER));
 
-                gui_assert(size < 1000, "GetRawInputData surpassed 1000 bytes");
+                AssertGui(size < 1000, "GetRawInputData surpassed 1000 bytes");
                 u8 bytes[1000];
                 RAWINPUT* raw = (RAWINPUT*)bytes;
                 GetRawInputData((HRAWINPUT)Message.lParam, RID_INPUT, raw, &size, sizeof(RAWINPUTHEADER));
@@ -1229,7 +1210,7 @@ void win32_process_pending_msgs() {
                     }
                 }else
                 {
-                    gui_assert(1 < 0, "MOUSE_MOVE_ABSOLUTE");
+                    AssertGui(1 < 0, "MOUSE_MOVE_ABSOLUTE");
                 }
                 POINT center = { LONG(SRC_WIDTH)/2, LONG(SRC_HEIGHT)/2 };
                 ClientToScreen(global_w32_window.handle, &center);
@@ -1318,7 +1299,7 @@ LRESULT CALLBACK win32_main_callback(HWND Window, UINT Message, WPARAM wParam, L
 
             if (!RegisterRawInputDevices(&rid, 1, sizeof(rid)))
             {
-                assert('wtf');
+                Assert('wtf');
             }
             ClipCursor(NULL);
             ReleaseCapture();

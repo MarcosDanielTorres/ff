@@ -525,7 +525,7 @@ int main()
             "%.*s pool_create(Pool_%.*s *pool, %.*s data)\n"
             "{\n"
             "    %.*s handle = {0};\n"
-            "    assert(pool->count < array_count(pool->entries));\n"
+            "    Assert(pool->count < array_count(pool->entries));\n"
             "    handle.idx = pool->count++;\n"
             "    handle.gen = 1;\n"
             "    Pool_%.*s::Pool_%.*s_Entry entry = {.gen = 1, .data = data};\n"

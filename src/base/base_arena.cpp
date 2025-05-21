@@ -33,7 +33,7 @@ internal void* _push_size(Arena* arena, size_t size, u64 alignment)
 
     }
     size += alignment_offset;
-    gui_assert(arena->len + size <= arena->max_len, "Arena size exceeded!");
+    AssertGui(arena->len + size <= arena->max_len, "Arena size exceeded!");
     //memset(arena->base, 0, size);
     arena->len += size;
     void* result = (void*)(result_ptr + alignment_offset);
@@ -52,7 +52,7 @@ internal TempArena temp_begin(Arena* arena)
 
 internal void temp_end(TempArena temp_arena) 
 {
-    assert(temp_arena.arena->temp_count > 0);
+    Assert(temp_arena.arena->temp_count > 0);
     //memset(temp_arena.arena->base, 0, temp_arena.arena->len);
     temp_arena.arena->len = temp_arena.pos;
     temp_arena.arena->temp_count--;

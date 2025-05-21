@@ -78,7 +78,7 @@ VulkanPipelineBuilder::VulkanPipelineBuilder() :
   }) {}
 
 VulkanPipelineBuilder& VulkanPipelineBuilder::dynamicState(VkDynamicState state) {
-  assert(numDynamicStates_ < LVK_MAX_DYNAMIC_STATES);
+  Assert(numDynamicStates_ < LVK_MAX_DYNAMIC_STATES);
   dynamicStates_[numDynamicStates_++] = state;
   return *this;
 }
@@ -118,10 +118,10 @@ VulkanPipelineBuilder& VulkanPipelineBuilder::vertexInputState(const VkPipelineV
 VulkanPipelineBuilder& VulkanPipelineBuilder::colorAttachments(const VkPipelineColorBlendAttachmentState* states,
                                                                          const VkFormat* formats,
                                                                          uint32_t numColorAttachments) {
-  assert(states);
-  assert(formats);
-  assert(numColorAttachments <= array_count(colorBlendAttachmentStates_));
-  assert(numColorAttachments <= array_count(colorAttachmentFormats_));
+  Assert(states);
+  Assert(formats);
+  Assert(numColorAttachments <= array_count(colorBlendAttachmentStates_));
+  Assert(numColorAttachments <= array_count(colorAttachmentFormats_));
   for (uint32_t i = 0; i != numColorAttachments; i++) {
     colorBlendAttachmentStates_[i] = states[i];
     colorAttachmentFormats_[i] = formats[i];
@@ -147,7 +147,7 @@ VulkanPipelineBuilder& VulkanPipelineBuilder::patchControlPoints(uint32_t numPoi
 
 VulkanPipelineBuilder& VulkanPipelineBuilder::shaderStage(VkPipelineShaderStageCreateInfo stage) {
   if (stage.module != VK_NULL_HANDLE) {
-    assert(numShaderStages_ < array_count(shaderStages_));
+    Assert(numShaderStages_ < array_count(shaderStages_));
     shaderStages_[numShaderStages_++] = stage;
   }
   return *this;

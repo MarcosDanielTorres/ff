@@ -15,7 +15,10 @@
 
 #define GL_FRAGMENT_SHADER                0x8B30
 #define GL_VERTEX_SHADER                  0x8B31
+#define GL_COMPUTE_SHADER                 0x91B9
+#define GL_PROGRAM                        0x82E2
 #define GL_ARRAY_BUFFER                   0x8892
+#define GL_UNIFORM_BUFFER                 0x8A11
 #define GL_STATIC_DRAW                    0x88E4
 #define GL_DYNAMIC_DRAW                   0x88E8
 #define GL_DYNAMIC_COPY                   0x88EA
@@ -27,10 +30,36 @@
 #define GL_UNSIGNED_INT                   0x1405
 #define GL_CLAMP_TO_EDGE                  0x812F
 #define GL_TEXTURE0                       0x84C0
+#define GL_SRGB8_ALPHA8                   0x8C43
+
+
+#define GL_DEBUG_SEVERITY_HIGH            0x9146
+#define GL_DEBUG_SEVERITY_MEDIUM          0x9147
+#define GL_DEBUG_SEVERITY_LOW             0x9148
+#define GL_DEBUG_TYPE_PORTABILITY         0x824F
+#define GL_DEBUG_TYPE_PERFORMANCE         0x8250
+#define GL_DEBUG_TYPE_MARKER              0x8268
+#define GL_DEBUG_TYPE_OTHER               0x8251
+#define GL_DEBUG_TYPE_PUSH_GROUP          0x8269
+#define GL_DEBUG_TYPE_POP_GROUP           0x826A
+#define GL_DEBUG_SEVERITY_NOTIFICATION    0x826B
+#define GL_DEBUG_OUTPUT                   0x92E0
+#define GL_DEBUG_OUTPUT_SYNCHRONOUS       0x8242
+
+#define GL_DEBUG_SOURCE_API               0x8246
+#define GL_DEBUG_SOURCE_WINDOW_SYSTEM     0x8247
+#define GL_DEBUG_SOURCE_SHADER_COMPILER   0x8248
+#define GL_DEBUG_SOURCE_THIRD_PARTY       0x8249
+#define GL_DEBUG_SOURCE_APPLICATION       0x824A
+#define GL_DEBUG_SOURCE_OTHER             0x824B
+#define GL_DEBUG_TYPE_ERROR               0x824C
+#define GL_DEBUG_TYPE_DEPRECATED_BEHAVIOR 0x824D
+#define GL_DEBUG_TYPE_UNDEFINED_BEHAVIOR  0x824E
 
 typedef ptrdiff_t GLsizeiptr;
 typedef ptrdiff_t GLintptr;
 typedef char GLchar;
+typedef void (APIENTRY  *GLDEBUGPROC)(GLenum source,GLenum type,GLuint id,GLenum severity,GLsizei length,const GLchar *message,const void *userParam);
 
 #define OpenGLDefineFunction(name, ret, ...) \
  typedef ret (WINAPI *OpenGLType_##name) (__VA_ARGS__); \
@@ -59,6 +88,7 @@ OpenGLDefineFunction(glCreateProgram, GLuint, void);
 OpenGLDefineFunction(glAttachShader, void, GLuint program, GLuint shader);
 OpenGLDefineFunction(glLinkProgram, void, GLuint program);
 OpenGLDefineFunction(glDeleteShader, void, GLuint shader);
+OpenGLDefineFunction(glDeleteProgram, void, GLuint program);
 OpenGLDefineFunction(glUseProgram, void, GLuint program);
 OpenGLDefineFunction(glGetShaderiv, void, GLuint shader, GLenum pname, GLint *params);
 OpenGLDefineFunction(glGetShaderInfoLog, void, GLuint shader, GLsizei bufSize, GLsizei *length, GLchar *infoLog);
@@ -79,10 +109,14 @@ OpenGLDefineFunction(glUniformMatrix4fv, void, GLint location, GLsizei count, GL
 OpenGLDefineFunction(glGetUniformLocation, GLint, GLuint program, const GLchar *name);
 
 OpenGLDefineFunction(glActiveTexture, void, GLenum texture);
-
+OpenGLDefineFunction(glGenerateMipmap, void, GLenum target);
 
 OpenGLDefineFunction(glDrawElementsInstanced, void, GLenum mode, GLsizei count, GLenum type, const void *indices, GLsizei instancecount);
 OpenGLDefineFunction(glBufferSubData, void, GLenum target, GLintptr offset, GLsizeiptr size, const void *data);
 OpenGLDefineFunction(glBindBufferRange, void, GLenum target, GLuint index, GLuint buffer, GLintptr offset, GLsizeiptr size);
+
+OpenGLDefineFunction(glDebugMessageCallback, void, GLDEBUGPROC callback, const void *userParam);
+OpenGLDefineFunction(glDebugMessageControl, void, GLenum source, GLenum type, GLenum severity, GLsizei count, const GLuint *ids, GLboolean enabled);
+
 
 #define OpenGLGetFunction(name) (OpenGLType_##name) wglGetProcAddress(#name)

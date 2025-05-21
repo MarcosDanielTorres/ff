@@ -364,7 +364,7 @@ void win32_process_pending_msgs() {
                 sprintf(buf,  "MOUSE MOVE: x: %d, y: %d\n", xPos, yPos);
                 OutputDebugStringA(buf);
 
-                assert((xxPos == xPos && yyPos == yPos));
+                Assert((xxPos == xPos && yyPos == yPos));
                 global_input.curr_mouse_state.x = xPos;
                 global_input.curr_mouse_state.y = yPos;
             }
@@ -657,7 +657,7 @@ int main()
 
 void debug_draw_menu(DebugState *debug_state, DebugVariable *var)
 {
-    assert(var->group.first_child);
+    Assert(var->group.first_child);
     var = var->group.first_child;
     char temp[4096];
     char *at = temp;

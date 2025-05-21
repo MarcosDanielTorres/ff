@@ -230,7 +230,7 @@ getVulkanResultString(VkResult result)
                     __LINE__,                                      \
                     #func,                                         \
                     getVulkanResultString(vk_assert_result));      \
-      assert(false);                                               \
+      Assert(false);                                               \
     }                                                              \
   }
 
@@ -243,7 +243,7 @@ getVulkanResultString(VkResult result)
                     __LINE__,                                      \
                     #func,                                         \
                     getVulkanResultString(vk_assert_result));      \
-      assert(false);                                               \
+      Assert(false);                                               \
     }                                                              \
   }
 
@@ -480,7 +480,7 @@ getPipelineStageAccess(VkImageLayout layout)
             .access = VK_ACCESS_2_NONE | VK_ACCESS_2_SHADER_WRITE_BIT,
         };
     default:
-        gui_assert(false, "Unsupported image layout transition!");
+        AssertGui(false, "Unsupported image layout transition!");
         return {
             .stage = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT,
             .access = VK_ACCESS_2_MEMORY_READ_BIT | VK_ACCESS_2_MEMORY_WRITE_BIT,
@@ -651,7 +651,7 @@ vulkan_image_generate_mipmap(VulkanImage *image, VkCommandBuffer commandBuffer)
 
     VkImageLayout originalImageLayout = image->vkImageLayout_;
 
-    assert(originalImageLayout != VK_IMAGE_LAYOUT_UNDEFINED);
+    Assert(originalImageLayout != VK_IMAGE_LAYOUT_UNDEFINED);
 
     // 0: Transition the first level and all layers into VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL
     vulkan_image_transition_layout(image, commandBuffer, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, VkImageSubresourceRange{imageAspectFlags, 0, 1, 0, image->numLayers_});
@@ -856,7 +856,7 @@ internal Handle
 pool_create(Pool *pool, VulkanImage image)
 {
     Handle result;
-    assert(pool->count < array_count(pool->entries));
+    Assert(pool->count < array_count(pool->entries));
     result.idx = pool->count++;
     result.gen = 1;
     PoolEntry new_entry = {.gen = result.gen, .image = image};
@@ -935,7 +935,7 @@ vulkan_create_fence(VkDevice device, const char *debug_name)
 internal b32
 vulkan_immediate_commands_is_ready(VulkanImmediateCommands *immediate, SubmitHandle handle, b32 fast_check_no_vulkan = false)
 {
-    assert(handle.bufferIndex_ < immediate->kMaxCommandBuffers);
+    Assert(handle.bufferIndex_ < immediate->kMaxCommandBuffers);
     if(handle.empty())
     {
         return true;
@@ -1077,7 +1077,7 @@ vulkan_immediate_commands_acquire_last_submit_semaphore(VulkanImmediateCommands 
 internal void
 vulkan_immediate_commands_signal_semaphore(VulkanImmediateCommands *immediate, VkSemaphore semaphore, u64 signal_value)
 {
-    assert(immediate->signalSemaphore_.semaphore == VK_NULL_HANDLE);
+    Assert(immediate->signalSemaphore_.semaphore == VK_NULL_HANDLE);
     immediate->signalSemaphore_.semaphore = semaphore;
     immediate->signalSemaphore_.value = signal_value;
 }
@@ -1109,11 +1109,11 @@ vulkan_immediate_commands_acquire(VulkanImmediateCommands *immediate)
     }
 
     // make clang happy
-    assert(current);
+    Assert(current);
 
-    gui_assert(immediate->numAvailableCommandBuffers_, "No available command buffers");
-    gui_assert(current, "No available command buffers");
-    assert(current->cmdBufAllocated_ != VK_NULL_HANDLE);
+    AssertGui(immediate->numAvailableCommandBuffers_, "No available command buffers");
+    AssertGui(current, "No available command buffers");
+    Assert(current->cmdBufAllocated_ != VK_NULL_HANDLE);
 
     current->handle_.submitId_ = immediate->submitCounter_;
     immediate->numAvailableCommandBuffers_--;
@@ -1136,7 +1136,7 @@ vulkan_immediate_commands_acquire(VulkanImmediateCommands *immediate)
 internal void
 vulkan_immediate_commands_wait_semaphore(VulkanImmediateCommands *immediate, VkSemaphore semaphore)
 {
-    assert(immediate->waitSemaphore_.semaphore == VK_NULL_HANDLE);
+    Assert(immediate->waitSemaphore_.semaphore == VK_NULL_HANDLE);
     immediate->waitSemaphore_.semaphore = semaphore;
 }
 
@@ -1144,7 +1144,7 @@ internal SubmitHandle
 vulkan_immediate_commands_submit(VulkanImmediateCommands *immediate, CommandBufferWrapper *wrapper)
 {
     //LVK_PROFILER_FUNCTION_COLOR(LVK_PROFILER_COLOR_SUBMIT);
-    assert(wrapper->isEncoding_);
+    Assert(wrapper->isEncoding_);
     VK_ASSERT(vkEndCommandBuffer(wrapper->cmdBuf_));
 
     VkSemaphoreSubmitInfo waitSemaphores[] = {{}, {}};
@@ -1283,12 +1283,12 @@ vulkan_swapchain_get_current_texture(VulkanContext *ctx)
     TextureHandle tex = vulkan_swapchain_get_current_texture(ctx->swapchain_);
     //if (!LVK_VERIFY(tex.valid())) {
     if (!handle_is_valid(tex)) {
-        gui_assert(false, "Swapchain has no valid texture");
+        AssertGui(false, "Swapchain has no valid texture");
         return {};
     }
 
     //LVK_ASSERT_MSG(texturesPool_.get(tex)->vkImageFormat_ != VK_FORMAT_UNDEFINED, "Invalid image format");
-    gui_assert(pool_get(&ctx->texturesPool_, tex)->vkImageFormat_ != VK_FORMAT_UNDEFINED, "Invalid image format");
+    AssertGui(pool_get(&ctx->texturesPool_, tex)->vkImageFormat_ != VK_FORMAT_UNDEFINED, "Invalid image format");
 
     return tex;
 }
@@ -1333,8 +1333,8 @@ vulkan_image_view_create(VulkanImage *image,
 internal VkImageView
 getOrCreateVkImageViewForFramebuffer(VulkanImage *img, VulkanContext *ctx, uint8_t level, uint16_t layer) 
 {
-  assert(level < LVK_MAX_MIP_LEVELS);
-  assert(layer < array_count(img->imageViewForFramebuffer_[0]));
+  Assert(level < LVK_MAX_MIP_LEVELS);
+  Assert(layer < array_count(img->imageViewForFramebuffer_[0]));
 
   if (level >= LVK_MAX_MIP_LEVELS || layer >= array_count(img->imageViewForFramebuffer_[0])) {
     return VK_NULL_HANDLE;
@@ -1495,7 +1495,7 @@ Format vkFormatToFormat(VkFormat format) {
     return Format_YUV_420p;
   default:;
   }
-  gui_assert(false, "VkFormat value not handled: %d", (int)format);
+  AssertGui(false, "VkFormat value not handled: %d", (int)format);
   return Format_Invalid;
 }
 
@@ -1503,7 +1503,7 @@ VkFormat vertexFormatToVkFormat(VertexFormat fmt)
 {
   switch (fmt) {
   case VertexFormat::Invalid:
-    assert(false);
+    Assert(false);
     return VK_FORMAT_UNDEFINED;
   case VertexFormat::Float1:
     return VK_FORMAT_R32_SFLOAT;
@@ -1589,7 +1589,7 @@ VkFormat vertexFormatToVkFormat(VertexFormat fmt)
   case VertexFormat::Int_2_10_10_10_REV:
     return VK_FORMAT_A2B10G10R10_SNORM_PACK32;
   }
-  assert(false);
+  Assert(false);
   return VK_FORMAT_UNDEFINED;
 }
 
@@ -1601,7 +1601,7 @@ VkPolygonMode polygonModeToVkPolygonMode(PolygonMode mode)
   case PolygonMode_Line:
     return VK_POLYGON_MODE_LINE;
   }
-  gui_assert(false, "Implement a missing polygon fill mode");
+  AssertGui(false, "Implement a missing polygon fill mode");
   return VK_POLYGON_MODE_FILL;
 }
 
@@ -1647,7 +1647,7 @@ VkBlendFactor blendFactorToVkBlendFactor(BlendFactor value)
   case BlendFactor_OneMinusSrc1Alpha:
     return VK_BLEND_FACTOR_ONE_MINUS_SRC1_ALPHA;
   default:
-    assert(false);
+    Assert(false);
     return VK_BLEND_FACTOR_ONE; // default for unsupported values
   }
 }
@@ -1667,7 +1667,7 @@ VkBlendOp blendOpToVkBlendOp(BlendOp value)
     return VK_BLEND_OP_MAX;
   }
 
-  assert(false);
+  Assert(false);
   return VK_BLEND_OP_ADD;
 }
 
@@ -1680,7 +1680,7 @@ VkCullModeFlags cullModeToVkCullMode(CullMode mode) {
   case CullMode_Back:
     return VK_CULL_MODE_BACK_BIT;
   }
-  gui_assert(false, "Implement a missing cull mode");
+  AssertGui(false, "Implement a missing cull mode");
   return VK_CULL_MODE_NONE;
 }
 
@@ -1691,7 +1691,7 @@ VkFrontFace windingModeToVkFrontFace(WindingMode mode) {
   case WindingMode_CW:
     return VK_FRONT_FACE_CLOCKWISE;
   }
-  gui_assert(false, "Wrong winding order (cannot be more than 2)");
+  AssertGui(false, "Wrong winding order (cannot be more than 2)");
   return VK_FRONT_FACE_CLOCKWISE;
 }
 
@@ -1714,7 +1714,7 @@ VkStencilOp stencilOpToVkStencilOp(StencilOp op) {
   case StencilOp_DecrementWrap:
     return VK_STENCIL_OP_DECREMENT_AND_WRAP;
   }
-  assert(false);
+  Assert(false);
   return VK_STENCIL_OP_KEEP;
 }
 
@@ -1746,7 +1746,7 @@ samplerFilterToVkFilter(SamplerFilter filter)
         case SamplerFilter_Linear:
             return VK_FILTER_LINEAR;
     }
-    gui_assert(false, "SamplerFilter value not handled: %d", (int)filter);
+    AssertGui(false, "SamplerFilter value not handled: %d", (int)filter);
     return VK_FILTER_LINEAR;
 }
 
@@ -1760,7 +1760,7 @@ samplerMipMapToVkSamplerMipmapMode(SamplerMip filter)
         case SamplerMip_Linear:
             return VK_SAMPLER_MIPMAP_MODE_LINEAR;
     }
-    gui_assert(false, "SamplerMipMap value not handled: %d", (int)filter);
+    AssertGui(false, "SamplerMipMap value not handled: %d", (int)filter);
     return VK_SAMPLER_MIPMAP_MODE_NEAREST;
 }
 
@@ -1776,7 +1776,7 @@ samplerWrapModeToVkSamplerAddressMode(SamplerWrap mode)
         case SamplerWrap_MirrorRepeat:
             return VK_SAMPLER_ADDRESS_MODE_MIRRORED_REPEAT;
     }
-    gui_assert(false, "SamplerWrapMode value not handled: %d", (int)mode);
+    AssertGui(false, "SamplerWrapMode value not handled: %d", (int)mode);
     return VK_SAMPLER_ADDRESS_MODE_REPEAT;
 }
 
@@ -1818,14 +1818,14 @@ compareOpToVkCompareOp(CompareOp func)
     case CompareOp_AlwaysPass:
         return VK_COMPARE_OP_ALWAYS;
  }
-    gui_assert(false, "CompareFunction value not handled: %d", (int)func);
+    AssertGui(false, "CompareFunction value not handled: %d", (int)func);
     return VK_COMPARE_OP_ALWAYS;
 }
 
 internal VkSamplerCreateInfo
 samplerStateDescToVkSamplerCreateInfo(const SamplerStateDesc& desc, const VkPhysicalDeviceLimits& limits)
 {
-    gui_assert(desc.mipLodMax >= desc.mipLodMin,
+    AssertGui(desc.mipLodMax >= desc.mipLodMin,
                "mipLodMax (%d) must be greater than or equal to mipLodMin (%d)",
                (int)desc.mipLodMax,
                (int)desc.mipLodMin);
@@ -1855,7 +1855,7 @@ samplerStateDescToVkSamplerCreateInfo(const SamplerStateDesc& desc, const VkPhys
     if (desc.maxAnisotropic > 1) 
     {
         const bool isAnisotropicFilteringSupported = limits.maxSamplerAnisotropy > 1;
-        gui_assert(isAnisotropicFilteringSupported, "Anisotropic filtering is not supported by the device.");
+        AssertGui(isAnisotropicFilteringSupported, "Anisotropic filtering is not supported by the device.");
         ci.anisotropyEnable = isAnisotropicFilteringSupported ? VK_TRUE : VK_FALSE;
 
         if (limits.maxSamplerAnisotropy < desc.maxAnisotropic) 
@@ -1881,7 +1881,7 @@ getOrCreateYcbcrConversionInfo(VulkanContext *context, Format format)
 
     if (!(context->vkFeatures11.samplerYcbcrConversion)) 
     {
-        gui_assert(false, "Ycbcr samplers are not supported");
+        AssertGui(false, "Ycbcr samplers are not supported");
         return nullptr;
     }
 
@@ -1895,7 +1895,7 @@ getOrCreateYcbcrConversionInfo(VulkanContext *context, Format format)
 
     if (!(cosited || midpoint)) 
     {
-        gui_assert(cosited || midpoint, "Unsupported Ycbcr feature");
+        AssertGui(cosited || midpoint, "Unsupported Ycbcr feature");
         return nullptr;
     }
 
@@ -1945,7 +1945,7 @@ getOrCreateYcbcrConversionInfo(VulkanContext *context, Format format)
     };
     vkGetPhysicalDeviceImageFormatProperties2(context->physical_device, &imageFormatInfo, &imageFormatProps);
 
-    assert(samplerYcbcrConversionImageFormatProps.combinedImageSamplerDescriptorCount <= 3);
+    Assert(samplerYcbcrConversionImageFormatProps.combinedImageSamplerDescriptorCount <= 3);
 
     VkSamplerCreateInfo cinfo = samplerStateDescToVkSamplerCreateInfo({}, vulkan_get_physical_device_props(context).limits);
 
@@ -2023,7 +2023,7 @@ vulkan_staging_device_create(VulkanStagingDevice *staging_device, VulkanContext 
     // TODO see if this min works
     staging_device->maxBufferSize_ = min(limits.maxStorageBufferRange, 128u * 1024u * 1024u);
 
-    assert(staging_device->minBufferSize_ <= staging_device->maxBufferSize_);
+    Assert(staging_device->minBufferSize_ <= staging_device->maxBufferSize_);
 }
 
 
@@ -2045,7 +2045,7 @@ growDescriptorPool(VulkanContext *context, u32 maxTextures, u32 maxSamplers, u32
   //LLOGL("growDescriptorPool(%u, %u)\n", maxTextures, maxSamplers);
 #endif // LVK_VULKAN_PRINT_COMMANDS
 
-  gui_assert(maxTextures <= context->vkPhysicalDeviceVulkan12Properties.maxDescriptorSetUpdateAfterBindSampledImages,
+  AssertGui(maxTextures <= context->vkPhysicalDeviceVulkan12Properties.maxDescriptorSetUpdateAfterBindSampledImages,
      "Max Textures exceeded: %u (max %u)", maxTextures, context->vkPhysicalDeviceVulkan12Properties.maxDescriptorSetUpdateAfterBindSampledImages);
 
 #if 0
@@ -2364,7 +2364,7 @@ findMemoryType(VkPhysicalDevice physDev, u32 memoryTypeBits, VkMemoryPropertyFla
         }
     }
 
-    assert(false);
+    Assert(false);
 
     return 0;
 
@@ -2372,7 +2372,7 @@ findMemoryType(VkPhysicalDevice physDev, u32 memoryTypeBits, VkMemoryPropertyFla
 
 VkResult allocateMemory2(VkPhysicalDevice physDev, VkDevice device, const VkMemoryRequirements2* memRequirements, VkMemoryPropertyFlags props, VkDeviceMemory* outMemory) 
 {
-  assert(memRequirements);
+  Assert(memRequirements);
 
   const VkMemoryAllocateFlagsInfo memoryAllocateFlagsInfo = {
       .sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_FLAGS_INFO,
@@ -2414,7 +2414,7 @@ generateMipmap(VulkanContext *context, TextureHandle handle)
     {
         return;
     }
-    assert(tex->vkImageLayout_ != VK_IMAGE_LAYOUT_UNDEFINED);
+    Assert(tex->vkImageLayout_ != VK_IMAGE_LAYOUT_UNDEFINED);
     CommandBufferWrapper *wrapper = vulkan_immediate_commands_acquire(context->immediate_);
     vulkan_image_generate_mipmap(tex, wrapper->cmdBuf_);
     //context->immediate_->submit(wrapper);
@@ -2494,7 +2494,7 @@ vulkan_upload(VulkanContext *context, Handle buffer_handle, const void *data, si
         result = true;
     }
 
-    gui_assert(size, "Data size should be non-zero");
+    AssertGui(size, "Data size should be non-zero");
 
     lvk::VulkanBuffer* buf = buffersPool_.get(handle);
 
@@ -2586,7 +2586,7 @@ vulkan_create_texture(VulkanContext *context, const TextureDesc& requestedDesc, 
         usageFlags |= VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
     }
 
-    //assert(usageFlags != 0, "Invalid usage flags");
+    //Assert(usageFlags != 0, "Invalid usage flags");
 
     const VkMemoryPropertyFlags memFlags = storageTypeToVkMemoryPropertyFlags(desc.storage);
 
@@ -2635,12 +2635,12 @@ vulkan_create_texture(VulkanContext *context, const TextureDesc& requestedDesc, 
         return {};
     }
 
-    gui_assert(numLevels > 0, "The image must contain at least one mip-level");
-    gui_assert(numLayers > 0, "The image must contain at least one layer");
-    gui_assert(vkSamples > 0, "The image must contain at least one sample");
-    assert(vkExtent.width > 0);
-    assert(vkExtent.height > 0);
-    assert(vkExtent.depth > 0);
+    AssertGui(numLevels > 0, "The image must contain at least one mip-level");
+    AssertGui(numLayers > 0, "The image must contain at least one layer");
+    AssertGui(vkSamples > 0, "The image must contain at least one sample");
+    Assert(vkExtent.width > 0);
+    Assert(vkExtent.height > 0);
+    Assert(vkExtent.depth > 0);
 
     VulkanImage image = {
         .vkUsageFlags_ = usageFlags,
@@ -2665,10 +2665,10 @@ vulkan_create_texture(VulkanContext *context, const TextureDesc& requestedDesc, 
 
     if (isDisjoint) {
         // some constraints for multiplanar image formats
-        assert(vkImageType == VK_IMAGE_TYPE_2D);
-        assert(vkSamples == VK_SAMPLE_COUNT_1_BIT);
-        assert(numLayers == 1);
-        assert(numLevels == 1);
+        Assert(vkImageType == VK_IMAGE_TYPE_2D);
+        Assert(vkSamples == VK_SAMPLE_COUNT_1_BIT);
+        Assert(numLayers == 1);
+        Assert(numLevels == 1);
         vkCreateFlags |= VK_IMAGE_CREATE_DISJOINT_BIT | VK_IMAGE_CREATE_ALIAS_BIT | VK_IMAGE_CREATE_MUTABLE_FORMAT_BIT;
         context->awaitingNewImmutableSamplers_ = true;
     }
@@ -2792,7 +2792,7 @@ vulkan_create_texture(VulkanContext *context, const TextureDesc& requestedDesc, 
         // use identity swizzle for storage images
         image.imageViewStorage_ = vulkan_image_view_create(&image, 
             context->device, vkImageViewType, vkFormat, aspect, 0, VK_REMAINING_MIP_LEVELS, 0, numLayers, {}, ycbcrInfo, debugNameImageView);
-        assert(image.imageViewStorage_ != VK_NULL_HANDLE);
+        Assert(image.imageViewStorage_ != VK_NULL_HANDLE);
         }
     }
 
@@ -2807,8 +2807,8 @@ vulkan_create_texture(VulkanContext *context, const TextureDesc& requestedDesc, 
     context->awaitingCreation_ = true;
 
     if (desc.data) {
-        assert(desc.type == TextureType_2D || desc.type == TextureType_Cube);
-        assert(desc.dataNumMipLevels <= desc.numMipLevels);
+        Assert(desc.type == TextureType_2D || desc.type == TextureType_Cube);
+        Assert(desc.dataNumMipLevels <= desc.numMipLevels);
         u32 numLayers = desc.type == TextureType_Cube ? 6 : 1;
         //b32 res = upload(handle, {.dimensions = desc.dimensions, .numLayers = numLayers, .numMipLevels = desc.dataNumMipLevels}, desc.data);
         b32 res = true;
@@ -2917,7 +2917,7 @@ VKAPI_ATTR VkBool32 VKAPI_CALL vulkanDebugCallback(VkDebugUtilsMessageSeverityFl
 
   const size_t len = cbData->pMessage ? strlen(cbData->pMessage) : 128u;
 
-  assert(len < 65536);
+  Assert(len < 65536);
 
   char* errorName = (char*)alloca(len + 1);
   int object = 0;
@@ -4082,7 +4082,7 @@ auto addOptionalExtensions = [&allDeviceExtensions, &deviceExtensionNames, &crea
    }
    if (!missingExtensions.empty()) {
      printf("Missing Vulkan device extensions: %s\n", missingExtensions.c_str());
-     assert(false);
+     Assert(false);
    }
  }
 
@@ -4095,7 +4095,7 @@ auto addOptionalExtensions = [&allDeviceExtensions, &deviceExtensionNames, &crea
     }
     if (!missingExtensions.empty()) {
       //MINILOG_LOG_PROC(minilog::FatalError, "Missing Vulkan device extensions: %s\n", missingExtensions.c_str());
-      assert(false);
+      Assert(false);
       abort();
       //return Result(Result::Code::RuntimeError);
     }
@@ -4262,7 +4262,7 @@ auto addOptionalExtensions = [&allDeviceExtensions, &deviceExtensionNames, &crea
           missingFeatures.c_str());
       // Do not exit here in case of MoltenVK, some 1.3 features are available via extensions.
 #ifndef __APPLE__
-      assert(false);
+      Assert(false);
       abort();
 #endif
 
@@ -4340,7 +4340,7 @@ auto addOptionalExtensions = [&allDeviceExtensions, &deviceExtensionNames, &crea
     if (LVK_VULKAN_USE_VMA) {
         context->vma = vulkan_vma_allocator_create(
             context->physical_device, context->device, context->instance, api_version > VK_API_VERSION_1_3 ? VK_API_VERSION_1_3 : api_version);
-        assert(context->vma != VK_NULL_HANDLE);
+        Assert(context->vma != VK_NULL_HANDLE);
     }
 
     context->stagingDevice_ = (VulkanStagingDevice*)arena_push_size(arena, VulkanStagingDevice, 1);
@@ -4363,14 +4363,14 @@ auto addOptionalExtensions = [&allDeviceExtensions, &deviceExtensionNames, &crea
         return result;
         }
         #endif
-        assert(context->texturesPool_.count == 1);
+        Assert(context->texturesPool_.count == 1);
     }
 
 
 
 
     // default sampler
-    assert(context->samplersPool_.count == 0);
+    Assert(context->samplersPool_.count == 0);
     vulkan_sampler_create(
         context,
         {
@@ -4449,7 +4449,7 @@ auto addOptionalExtensions = [&allDeviceExtensions, &deviceExtensionNames, &crea
         pimpl_->tracyVkCtx_ = TracyVkContext(context->physical_device, context->device, queues.graphicsQueue, pimpl_->tracyCommandBuffer_);
         };
     }
-    assert(pimpl_->tracyVkCtx_);
+    Assert(pimpl_->tracyVkCtx_);
     #endif // LVK_WITH_TRACY_GPU
     #endif
 
@@ -4457,7 +4457,7 @@ auto addOptionalExtensions = [&allDeviceExtensions, &deviceExtensionNames, &crea
 }
 
 VkSurfaceFormatKHR chooseSwapSurfaceFormat(std::vector<VkSurfaceFormatKHR>& formats, ColorSpace colorSpace) {
-    assert(!formats.empty());
+    Assert(!formats.empty());
 
     auto isNativeSwapChainBGR = [](std::vector<VkSurfaceFormatKHR>& formats) -> bool {
         for (VkSurfaceFormatKHR& fmt : formats) {
@@ -4526,11 +4526,11 @@ void vulkan_init_swapchain(Arena *arena, Arena *transient, VulkanContext *contex
     swap->surfaceFormat_ = chooseSwapSurfaceFormat(context->deviceSurfaceFormats_, ColorSpace_SRGB_LINEAR);
     swap->getNextImage_ = true;
 
-    gui_assert(context->vkSurface_ != VK_NULL_HANDLE, "VulkanContext::Surface is empty!");
+    AssertGui(context->vkSurface_ != VK_NULL_HANDLE, "VulkanContext::Surface is empty!");
     VkBool32 queueFamilySupportsPresentation = VK_FALSE;
     VK_ASSERT(vkGetPhysicalDeviceSurfaceSupportKHR(
         context->physical_device, context->queues.graphicsQueueFamilyIndex, context->vkSurface_, &queueFamilySupportsPresentation));
-    gui_assert(queueFamilySupportsPresentation == VK_TRUE, "The queue family used with the swapchain does not support presentation");
+    AssertGui(queueFamilySupportsPresentation == VK_TRUE, "The queue family used with the swapchain does not support presentation");
 
     VulkanContext *ctx = context;
     auto chooseSwapImageCount = [](VkSurfaceCapabilitiesKHR& caps) -> u32 {
@@ -4599,12 +4599,12 @@ void vulkan_init_swapchain(Arena *arena, Arena *transient, VulkanContext *contex
     VkImage swapchainImages[VulkanSwapchain::LVK_MAX_SWAPCHAIN_IMAGES];
     VK_ASSERT(vkGetSwapchainImagesKHR(context->device, context->swapchain_->swapchain_, &context->swapchain_->numSwapchainImages_, nullptr));
     if (context->swapchain_->numSwapchainImages_ > VulkanSwapchain::LVK_MAX_SWAPCHAIN_IMAGES) {
-        assert(context->swapchain_->numSwapchainImages_ <= VulkanSwapchain::LVK_MAX_SWAPCHAIN_IMAGES);
+        Assert(context->swapchain_->numSwapchainImages_ <= VulkanSwapchain::LVK_MAX_SWAPCHAIN_IMAGES);
         context->swapchain_->numSwapchainImages_ = VulkanSwapchain::LVK_MAX_SWAPCHAIN_IMAGES;
     }
     VK_ASSERT(vkGetSwapchainImagesKHR(context->device, context->swapchain_->swapchain_, &context->swapchain_->numSwapchainImages_, swapchainImages));
 
-    assert(context->swapchain_->numSwapchainImages_ > 0);
+    Assert(context->swapchain_->numSwapchainImages_ > 0);
 
     char debugNameImage[256] = {0};
     char debugNameImageView[256] = {0};
@@ -4732,7 +4732,7 @@ vulkan_cmd_buffer_acquire(VulkanContext *ctx)
 {
     //LVK_PROFILER_FUNCTION();
 
-    gui_assert(!ctx->currentCommandBuffer_.ctx_, "Cannot acquire more than 1 command buffer simultaneously");
+    AssertGui(!ctx->currentCommandBuffer_.ctx_, "Cannot acquire more than 1 command buffer simultaneously");
 
     #if defined(_M_ARM64)
     vkDeviceWaitIdle(vkDevice_); // a temporary workaround for Windows on Snapdragon
@@ -4784,9 +4784,9 @@ vulkan_cmd_buffer_submit(VulkanContext *ctx, CommandBuffer *vkCmdBuffer, Texture
     // This is not needed, explicit in the function arg
     //CommandBuffer* vkCmdBuffer = static_cast<CommandBuffer*>(&commandBuffer);
 
-    assert(vkCmdBuffer);
-    assert(vkCmdBuffer->ctx_);
-    assert(vkCmdBuffer->wrapper_);
+    Assert(vkCmdBuffer);
+    Assert(vkCmdBuffer->ctx_);
+    Assert(vkCmdBuffer->wrapper_);
 
     #if defined(LVK_WITH_TRACY_GPU)
         TracyVkCollect(pimpl_->tracyVkCtx_, vkCmdBuffer->wrapper_->cmdBuf_);
@@ -4796,7 +4796,7 @@ vulkan_cmd_buffer_submit(VulkanContext *ctx, CommandBuffer *vkCmdBuffer, Texture
         //const VulkanImage& tex = *texturesPool_.get(present);
         VulkanImage* tex = pool_get(&ctx->texturesPool_, present);
 
-        assert(tex->isSwapchainImage_);
+        Assert(tex->isSwapchainImage_);
 
         /*
         tex.transitionLayout(vkCmdBuffer->wrapper_->cmdBuf_,
@@ -4918,14 +4918,14 @@ topologyToVkPrimitiveTopology(Topology t)
   case Topology_Patch:
     return VK_PRIMITIVE_TOPOLOGY_PATCH_LIST;
   }
-  gui_assert(false, "Implement Topology = %u", (u32)t);
+  AssertGui(false, "Implement Topology = %u", (u32)t);
   return VK_PRIMITIVE_TOPOLOGY_MAX_ENUM;
 }
 
 VkAttachmentLoadOp loadOpToVkAttachmentLoadOp(LoadOp a) {
   switch (a) {
   case LoadOp_Invalid:
-    assert(false);
+    Assert(false);
     return VK_ATTACHMENT_LOAD_OP_DONT_CARE;
   case LoadOp_DontCare:
     return VK_ATTACHMENT_LOAD_OP_DONT_CARE;
@@ -4936,7 +4936,7 @@ VkAttachmentLoadOp loadOpToVkAttachmentLoadOp(LoadOp a) {
   case LoadOp_None:
     return VK_ATTACHMENT_LOAD_OP_NONE_EXT;
   }
-  assert(false);
+  Assert(false);
   return VK_ATTACHMENT_LOAD_OP_DONT_CARE;
 }
 
@@ -4952,7 +4952,7 @@ VkAttachmentStoreOp storeOpToVkAttachmentStoreOp(StoreOp a) {
   case StoreOp_None:
     return VK_ATTACHMENT_STORE_OP_NONE;
   }
-  assert(false);
+  Assert(false);
   return VK_ATTACHMENT_STORE_OP_DONT_CARE;
 }
 
@@ -4989,7 +4989,7 @@ VkShaderStageFlagBits shaderStageToVkShaderStage(ShaderStage stage) {
   case Stage_Callable:
     return VK_SHADER_STAGE_CALLABLE_BIT_KHR;
   };
-  assert(false);
+  Assert(false);
   return VK_SHADER_STAGE_FLAG_BITS_MAX_ENUM;
 }
 
@@ -5057,11 +5057,11 @@ createShaderModuleFromSPIRV(VkDevice device, const void *spirv, size_t numBytes,
     {
         VK_ASSERT(setDebugObjectName(device, VK_OBJECT_TYPE_SHADER_MODULE, (u64)vkShaderModule, debugName));
 
-        assert(vkShaderModule != VK_NULL_HANDLE);
+        Assert(vkShaderModule != VK_NULL_HANDLE);
 
         SpvReflectShaderModule mdl;
         SpvReflectResult result = spvReflectCreateShaderModule(numBytes, spirv, &mdl);
-        assert(result == SPV_REFLECT_RESULT_SUCCESS);
+        Assert(result == SPV_REFLECT_RESULT_SUCCESS);
         //SCOPE_EXIT {
         //    spvReflectDestroyShaderModule(&mdl);
         //};
@@ -5235,9 +5235,9 @@ static glslang_stage_t getGLSLangShaderStage(VkShaderStageFlagBits stage) {
   case VK_SHADER_STAGE_CALLABLE_BIT_KHR:
     return GLSLANG_STAGE_CALLABLE;
   default:
-    assert(false);
+    Assert(false);
   };
-  assert(false);
+  Assert(false);
   return GLSLANG_STAGE_COUNT;
 }
 
@@ -5249,7 +5249,7 @@ compileShader(VkShaderStageFlagBits stage, const char* code, std::vector<uint8_t
 {
   //LVK_PROFILER_FUNCTION();
 
-    gui_assert(outSPIRV, "outSPIRV is null");
+    AssertGui(outSPIRV, "outSPIRV is null");
   //if (!outSPIRV) {
     //return Result(Result::Code::ArgumentOutOfRange, "outSPIRV is NULL");
   //}
@@ -5281,7 +5281,7 @@ compileShader(VkShaderStageFlagBits stage, const char* code, std::vector<uint8_t
         printf("  %s\n", glslang_shader_get_info_log(shader));
         printf("  %s\n", glslang_shader_get_info_debug_log(shader));
         //lvk::logShaderSource(code);
-        assert(false);
+        Assert(false);
         //return Result(Result::Code::RuntimeError, "glslang_shader_preprocess() failed");
     }
 
@@ -5291,7 +5291,7 @@ compileShader(VkShaderStageFlagBits stage, const char* code, std::vector<uint8_t
         printf("  %s\n", glslang_shader_get_info_log(shader));
         printf("  %s\n", glslang_shader_get_info_debug_log(shader));
         //lvk::logShaderSource(glslang_shader_get_preprocessed_code(shader));
-        assert(false);
+        Assert(false);
         //return Result(Result::Code::RuntimeError, "glslang_shader_parse() failed");
     }
 
@@ -5306,7 +5306,7 @@ compileShader(VkShaderStageFlagBits stage, const char* code, std::vector<uint8_t
         printf("Shader linking failed:\n");
         printf("  %s\n", glslang_program_get_info_log(program));
         printf("  %s\n", glslang_program_get_info_debug_log(program));
-        assert(false);
+        Assert(false);
         //return Result(Result::Code::RuntimeError, "glslang_program_link() failed");
     }
 
@@ -5342,8 +5342,8 @@ internal ShaderModuleState
 createShaderModuleFromGLSL(VulkanContext *ctx, ShaderStage stage, const char *source, const char *debugName)
 {
     const VkShaderStageFlagBits vkStage = shaderStageToVkShaderStage(stage);
-    assert(vkStage != VK_SHADER_STAGE_FLAG_BITS_MAX_ENUM);
-    assert(source);
+    Assert(vkStage != VK_SHADER_STAGE_FLAG_BITS_MAX_ENUM);
+    Assert(source);
 
     std::string sourcePatched;
 
@@ -5557,7 +5557,7 @@ internal void
 vulkan_cmd_transition_to_shader_read_only(CommandBuffer *cmd_buf, TextureHandle handle)
 {
     VulkanImage *img = pool_get(&cmd_buf->ctx_->texturesPool_, handle);
-    assert(!img->isSwapchainImage_);
+    Assert(!img->isSwapchainImage_);
 
     // transition only non-multisampled images - MSAA images cannot be accessed from shaders!
     if(img->vkSamples_ == VK_SAMPLE_COUNT_1_BIT)
@@ -5626,11 +5626,11 @@ void transitionToColorAttachment(VkCommandBuffer buffer, VulkanImage* colorTex) 
     }
 
     if (!(!colorTex->isDepthFormat_ && !colorTex->isStencilFormat_)) {
-        gui_assert(false, "Color attachments cannot have depth/stencil formats");
+        AssertGui(false, "Color attachments cannot have depth/stencil formats");
         return;
     }
 
-    gui_assert(colorTex->vkImageFormat_ != VK_FORMAT_UNDEFINED, "Invalid color attachment format");
+    AssertGui(colorTex->vkImageFormat_ != VK_FORMAT_UNDEFINED, "Invalid color attachment format");
 
     vulkan_image_transition_layout(colorTex, buffer, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VkImageSubresourceRange{VK_IMAGE_ASPECT_COLOR_BIT, 0, VK_REMAINING_MIP_LEVELS, 0, VK_REMAINING_ARRAY_LAYERS});
     //colorTex->transitionLayout(buffer,
@@ -5650,10 +5650,10 @@ checkAndUpdateDescriptorSets(VulkanContext *ctx) {
   // update Vulkan descriptor set here
 
   // make sure the guard values are always there
-  //assert(texturesPool_.numObjects() >= 1);
-  //assert(samplersPool_.numObjects() >= 1);
-  assert(ctx->texturesPool_.count >= 1);
-  assert(ctx->samplersPool_.count >= 1);
+  //Assert(texturesPool_.numObjects() >= 1);
+  //Assert(samplersPool_.numObjects() >= 1);
+  Assert(ctx->texturesPool_.count >= 1);
+  Assert(ctx->samplersPool_.count >= 1);
 
   uint32_t newMaxTextures = ctx->currentMaxTextures_;
   uint32_t newMaxSamplers = ctx->currentMaxSamplers_;
@@ -5715,7 +5715,7 @@ checkAndUpdateDescriptorSets(VulkanContext *ctx) {
         .imageView = isSampledImage ? view : dummyImageView,
         .imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
     });
-    assert(infoSampledImages.back().imageView != VK_NULL_HANDLE);
+    Assert(infoSampledImages.back().imageView != VK_NULL_HANDLE);
     infoStorageImages.push_back(VkDescriptorImageInfo{
         .sampler = VK_NULL_HANDLE,
         .imageView = isStorageImage ? storageView : dummyImageView,
@@ -5856,7 +5856,7 @@ vulkan_cmd_begin_rendering(CommandBuffer *cmd_buf, RenderPass *renderPass, Frame
 {
     //LVK_PROFILER_FUNCTION();
 
-    assert(!cmd_buf->isRendering_);
+    Assert(!cmd_buf->isRendering_);
 
     cmd_buf->isRendering_ = true;
 
@@ -5870,7 +5870,7 @@ vulkan_cmd_begin_rendering(CommandBuffer *cmd_buf, RenderPass *renderPass, Frame
         VkPipelineStageFlags2 dstStageFlags = VK_PIPELINE_STAGE_2_VERTEX_SHADER_BIT | VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT;
         //const VulkanBuffer* buf = ctx_->buffersPool_.get(deps.buffers[i]);
         VulkanBuffer* buf = pool_get(&cmd_buf->ctx_->buffersPool_, deps.buffers[i]);
-        assert(buf);
+        Assert(buf);
         if ((buf->vkUsageFlags_ & VK_BUFFER_USAGE_INDEX_BUFFER_BIT) || (buf->vkUsageFlags_ & VK_BUFFER_USAGE_VERTEX_BUFFER_BIT)) {
         dstStageFlags |= VK_PIPELINE_STAGE_2_VERTEX_INPUT_BIT;
         }
@@ -5884,7 +5884,7 @@ vulkan_cmd_begin_rendering(CommandBuffer *cmd_buf, RenderPass *renderPass, Frame
     const uint32_t numFbColorAttachments = fb.getNumColorAttachments();
     const uint32_t numPassColorAttachments = renderPass->getNumColorAttachments();
 
-    assert(numPassColorAttachments == numFbColorAttachments);
+    Assert(numPassColorAttachments == numFbColorAttachments);
 
     cmd_buf->framebuffer_ = fb;
 
@@ -5908,8 +5908,8 @@ vulkan_cmd_begin_rendering(CommandBuffer *cmd_buf, RenderPass *renderPass, Frame
     if (depthTex) {
         //const lvk::VulkanImage& depthImg = *ctx_->texturesPool_.get(depthTex);
         VulkanImage *depthImg = pool_get(&cmd_buf->ctx_->texturesPool_, depthTex);
-        gui_assert(depthImg->vkImageFormat_ != VK_FORMAT_UNDEFINED, "Invalid depth attachment format");
-        gui_assert(depthImg->isDepthFormat_, "Invalid depth attachment format");
+        AssertGui(depthImg->vkImageFormat_ != VK_FORMAT_UNDEFINED, "Invalid depth attachment format");
+        AssertGui(depthImg->isDepthFormat_, "Invalid depth attachment format");
         VkImageAspectFlags flags = vulkan_image_get_aspect_flags(depthImg);
         vulkan_image_transition_layout(depthImg, cmd_buf->wrapper_->cmdBuf_, VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
                                         VkImageSubresourceRange{flags, 0, VK_REMAINING_MIP_LEVELS, 0, VK_REMAINING_ARRAY_LAYERS});
@@ -5922,7 +5922,7 @@ vulkan_cmd_begin_rendering(CommandBuffer *cmd_buf, RenderPass *renderPass, Frame
     if (TextureHandle handle = fb.depthStencil.resolveTexture) {
         //lvk::VulkanImage& depthResolveImg = *ctx_->texturesPool_.get(handle);
         VulkanImage *depthResolveImg = pool_get(&cmd_buf->ctx_->texturesPool_, handle);
-        gui_assert(depthResolveImg->isDepthFormat_, "Invalid resolve depth attachment format");
+        AssertGui(depthResolveImg->isDepthFormat_, "Invalid resolve depth attachment format");
         depthResolveImg->isResolveAttachment = true;
         //const VkImageAspectFlags flags = depthResolveImg.getImageAspectFlags();
         VkImageAspectFlags flags = vulkan_image_get_aspect_flags(depthResolveImg);
@@ -5943,20 +5943,20 @@ vulkan_cmd_begin_rendering(CommandBuffer *cmd_buf, RenderPass *renderPass, Frame
 
     for (uint32_t i = 0; i != numFbColorAttachments; i++) {
         const Framebuffer::AttachmentDesc& attachment = fb.color[i];
-        assert(!handle_is_empty(attachment.texture));
+        Assert(!handle_is_empty(attachment.texture));
 
         //lvk::VulkanImage& colorTexture = *ctx_->texturesPool_.get(attachment.texture);
         VulkanImage* colorTexture = pool_get(&cmd_buf->ctx_->texturesPool_, attachment.texture);
         RenderPass::AttachmentDesc& descColor = renderPass->color[i];
         if (mipLevel && descColor.level) {
-            gui_assert(descColor.level == mipLevel, "All color attachments should have the same mip-level");
+            AssertGui(descColor.level == mipLevel, "All color attachments should have the same mip-level");
         }
         const VkExtent3D dim = colorTexture->vkExtent_;
         if (fbWidth) {
-            gui_assert(dim.width == fbWidth, "All attachments should have the same width");
+            AssertGui(dim.width == fbWidth, "All attachments should have the same width");
         }
         if (fbHeight) {
-            gui_assert(dim.height == fbHeight, "All attachments should have the same height");
+            AssertGui(dim.height == fbHeight, "All attachments should have the same height");
         }
         mipLevel = descColor.level;
         fbWidth = dim.width;
@@ -5977,8 +5977,8 @@ vulkan_cmd_begin_rendering(CommandBuffer *cmd_buf, RenderPass *renderPass, Frame
         };
         // handle MSAA
         if (descColor.storeOp == StoreOp_MsaaResolve) {
-        assert(samples > 1);
-        gui_assert(!handle_is_empty(attachment.resolveTexture), "Framebuffer attachment should contain a resolve texture");
+        Assert(samples > 1);
+        AssertGui(!handle_is_empty(attachment.resolveTexture), "Framebuffer attachment should contain a resolve texture");
         //lvk::VulkanImage& colorResolveTexture = *ctx_->texturesPool_.get(attachment.resolveTexture);
         VulkanImage *colorResolveTexture = pool_get(&cmd_buf->ctx_->texturesPool_, attachment.resolveTexture);
         colorAttachments[i].resolveImageView =
@@ -5993,7 +5993,7 @@ vulkan_cmd_begin_rendering(CommandBuffer *cmd_buf, RenderPass *renderPass, Frame
         //lvk::VulkanImage& depthTexture = *ctx_->texturesPool_.get(fb.depthStencil.texture);
         VulkanImage *depthTexture = pool_get(&cmd_buf->ctx_->texturesPool_, fb.depthStencil.texture);
         const RenderPass::AttachmentDesc& descDepth = renderPass->depth;
-        gui_assert(descDepth.level == mipLevel, "Depth attachment should have the same mip-level as color attachments");
+        AssertGui(descDepth.level == mipLevel, "Depth attachment should have the same mip-level as color attachments");
         depthAttachment = {
             .sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
             .pNext = nullptr,
@@ -6008,9 +6008,9 @@ vulkan_cmd_begin_rendering(CommandBuffer *cmd_buf, RenderPass *renderPass, Frame
         };
         // handle depth MSAA
         if (descDepth.storeOp == StoreOp_MsaaResolve) {
-        assert(depthTexture->vkSamples_ == samples);
+        Assert(depthTexture->vkSamples_ == samples);
         const Framebuffer::AttachmentDesc& attachment = fb.depthStencil;
-        gui_assert(!handle_is_empty(attachment.resolveTexture), "Framebuffer depth attachment should contain a resolve texture");
+        AssertGui(!handle_is_empty(attachment.resolveTexture), "Framebuffer depth attachment should contain a resolve texture");
         //lvk::VulkanImage& depthResolveTexture = *ctx_->texturesPool_.get(attachment.resolveTexture);
         VulkanImage *depthResolveTexture = pool_get(&cmd_buf->ctx_->texturesPool_, attachment.resolveTexture);
         depthAttachment.resolveImageView = getOrCreateVkImageViewForFramebuffer(depthResolveTexture, cmd_buf->ctx_, descDepth.level, descDepth.layer);
@@ -6020,11 +6020,11 @@ vulkan_cmd_begin_rendering(CommandBuffer *cmd_buf, RenderPass *renderPass, Frame
         const VkExtent3D dim = depthTexture->vkExtent_;
         if (fbWidth) 
         {
-            gui_assert(dim.width == fbWidth, "All attachments should have the same width");
+            AssertGui(dim.width == fbWidth, "All attachments should have the same width");
         }
         if (fbHeight) 
         {
-            gui_assert(dim.height == fbHeight, "All attachments should have the same height");
+            AssertGui(dim.height == fbHeight, "All attachments should have the same height");
         }
         mipLevel = descDepth.level;
         fbWidth = dim.width;
@@ -6147,7 +6147,7 @@ vulkan_context_pipeline(VulkanContext *ctx, RenderPipelineHandle handle)
 
     for (uint32_t i = 0; i != numColorAttachments; i++) {
         const ColorAttachment& attachment = desc.color[i];
-        assert(attachment.format != Format_Invalid);
+        Assert(attachment.format != Format_Invalid);
         colorAttachmentFormats[i] = formatToVkFormat(attachment.format);
         if (!attachment.blendEnabled) {
         colorBlendAttachmentStates[i] = VkPipelineColorBlendAttachmentState{
@@ -6182,13 +6182,13 @@ vulkan_context_pipeline(VulkanContext *ctx, RenderPipelineHandle handle)
     const ShaderModuleState* taskModule = pool_get(&ctx->shaderModulesPool_, desc.smTask);
     const ShaderModuleState* meshModule = pool_get(&ctx->shaderModulesPool_, desc.smMesh);
 
-    assert(vertModule || meshModule);
-    assert(fragModule);
+    Assert(vertModule || meshModule);
+    Assert(fragModule);
 
     if (tescModule || teseModule || desc.patchControlPoints) {
-        gui_assert(tescModule && teseModule, "Both tessellation control and evaluation shaders should be provided");
+        AssertGui(tescModule && teseModule, "Both tessellation control and evaluation shaders should be provided");
         // TODO aca estaba tirando error, pero igual no tenia hecho el begin rendering...
-        assert(desc.patchControlPoints > 0 &&
+        Assert(desc.patchControlPoints > 0 &&
                 desc.patchControlPoints <= ctx->vkPhysicalDeviceProperties2.properties.limits.maxTessellationPatchSize);
     }
 
@@ -6333,7 +6333,7 @@ vulkan_cmd_bind_render_pipeline(CommandBuffer *buf, RenderPipelineHandle handle)
     //RenderPipelineState* rps = ctx_->renderPipelinesPool_.get(handle);
     RenderPipelineState* rps = pool_get(&buf->ctx_->renderPipelinesPool_, handle);
 
-    assert(rps);
+    Assert(rps);
 
     bool hasDepthAttachmentPipeline = rps->desc_.depthFormat != Format_Invalid;
     //bool hasDepthAttachmentPass = !framebuffer_.depthStencil.texture.empty();
@@ -6341,7 +6341,7 @@ vulkan_cmd_bind_render_pipeline(CommandBuffer *buf, RenderPipelineHandle handle)
 
     if (hasDepthAttachmentPipeline != hasDepthAttachmentPass) 
     {
-        assert(false);
+        Assert(false);
         printf("Make sure your render pass and render pipeline both have matching depth attachments\n");
     }
 
@@ -6350,7 +6350,7 @@ vulkan_cmd_bind_render_pipeline(CommandBuffer *buf, RenderPipelineHandle handle)
     //VkPipeline pipeline = buf->ctx_->getVkPipeline(handle);
     VkPipeline pipeline = vulkan_context_pipeline(buf->ctx_, handle);
 
-    assert(pipeline != VK_NULL_HANDLE);
+    Assert(pipeline != VK_NULL_HANDLE);
 
     if (buf->lastPipelineBound_ != pipeline) 
     {
@@ -6366,7 +6366,7 @@ vulkan_cmd_bind_render_pipeline(CommandBuffer *buf, RenderPipelineHandle handle)
 internal void
 vulkan_cmd_push_debug_group_label(CommandBuffer *buf, const char *label, u32 colorRGBA)
 {
-    assert(label);
+    Assert(label);
 
     if (!label || !vkCmdBeginDebugUtilsLabelEXT) {
         return;
@@ -6409,7 +6409,7 @@ vulkan_cmd_pop_debug_group_label(CommandBuffer *buf)
 internal void
 vulkan_cmd_end_rendering(CommandBuffer *buf)
 {
-    assert(buf->isRendering_);
+    Assert(buf->isRendering_);
     buf->isRendering_ = false;
     vkCmdEndRendering(buf->wrapper_->cmdBuf_);
     buf->framebuffer_ = {};

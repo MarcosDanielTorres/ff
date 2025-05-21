@@ -14,7 +14,7 @@
 #include "aim_timer.h"
 #include "aim_profiler.cpp"
 #include "aim_timer.cpp"
-#include "opengl_bindings.cpp"
+#include "bindings/opengl_bindings.cpp"
 
 
 LRESULT WndProc(HWND window, UINT message, WPARAM w_param, LPARAM l_param) 

@@ -1,5 +1,8 @@
 #pragma once
 
+// NOTE(Marcos): 
+// This define is here so that Windows does not include its one min and max macro definitions which conflicts when using std::max and std::min
+#define NOMINMAX
 #include <windows.h>
 #include <processthreadsapi.h>
 

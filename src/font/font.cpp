@@ -87,8 +87,8 @@ FontGlyph font_load_glyph(FT_Face face, char codepoint, FontInfo *info) {
             printf("FT_Load_Glyph: %s\n", err_str);
         }
 
-		info->max_glyph_width = max(info->max_glyph_width, face->glyph->bitmap.width);
-		info->max_glyph_height = max(info->max_glyph_height, face->glyph->bitmap.rows);
+		info->max_glyph_width = Max(info->max_glyph_width, face->glyph->bitmap.width);
+		info->max_glyph_height = Max(info->max_glyph_height, face->glyph->bitmap.rows);
 
         result.bitmap.width = face->glyph->bitmap.width;
         result.bitmap.height = face->glyph->bitmap.rows;
@@ -97,7 +97,7 @@ FontGlyph font_load_glyph(FT_Face face, char codepoint, FontInfo *info) {
         result.bitmap_top = face->glyph->bitmap_top;
         result.bitmap_left = face->glyph->bitmap_left;
         result.advance_x = face->glyph->advance.x;
-        info->max_char_width = max(info->max_char_width, result.advance_x);
+        info->max_char_width = Max(info->max_char_width, result.advance_x);
 
         FT_Bitmap* bitmap = &face->glyph->bitmap;
         result.bitmap.buffer = (u8*)malloc(result.bitmap.pitch * result.bitmap.height);
@@ -122,7 +122,7 @@ font_get_text_size(FontInfo *font_info, Str8 text)
     {
         if(text.str[i] == '\n')
         {
-            max_width = max(max_width, char_count_per_line);
+            max_width = Max(max_width, char_count_per_line);
             char_count_per_line = 0;
             new_lines++;
             multiline = 1;

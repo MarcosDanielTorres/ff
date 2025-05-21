@@ -5,6 +5,7 @@ struct Bitmap {
     u8* buffer;
 };
 
+// TODO fix this FontGlyph structure here. Because for font.h to use it it needs first to import this draw.h file
 struct FontGlyph {
     Bitmap bitmap;
     i32 bitmap_top;

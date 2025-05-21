@@ -224,8 +224,149 @@ create_program(OpenGL* opengl, Str8 vertex_shader_filename, Str8 fragment_shader
     return program_id;
 }
 
+struct TestPackerResult
+{
+    u8* data;
+    size_t size;
+    u32 width;
+    u32 height;
+};
+
+internal TestPackerResult
+test_packer()
+{
+    TestPackerResult result = {};
+
+    OS_FileReadResult font_file = os_file_read(&g_arena, "C:\\Windows\\Fonts\\CascadiaMono.ttf");
+    FT_Face face = {0};
+    if(font_file.data)
+    {
+        FT_Open_Args args = {0};
+        args.flags = FT_OPEN_MEMORY;
+        args.memory_base = (u8*) font_file.data;
+        args.memory_size = font_file.size;
+
+        FT_Error opened_face = FT_Open_Face(library, &args, 0, &face);
+        if (opened_face) 
+        {
+            const char* err_str = FT_Error_String(opened_face);
+            printf("FT_Open_Face: %s\n", err_str);
+            exit(1);
+        }
+
+
+        FT_Error set_char_size_err = FT_Set_Char_Size(face, 4 * 64, 4 * 64, 300, 300);
+        u32 glyph_count = 4;
+        u32 max_height_per_cell = face->size->metrics.height >> 6;
+        u32 max_width_per_cell = face->size->metrics.max_advance >> 6;
+
+        // NOTE for now
+        u32 atlas_width = max_width_per_cell * 2;
+        u32 atlas_height = max_height_per_cell * 2;
+
+        result.data = (u8*) arena_push_size(&g_arena, u8, max_height_per_cell * max_width_per_cell * glyph_count); // space for 4 glyphs
+        result.size = glyph_count * max_width_per_cell * max_height_per_cell; // in bytes! 4 is the glyph_count
+
+        u32 char_code = 0;
+        u32 min_index = UINT32_MAX;
+        u32 max_index = 0;
+        for(;;) 
+        {
+            u32 glyph_index = 0;
+            char_code = FT_Get_Next_Char(face, char_code, &glyph_index);
+            if (char_code == 0) 
+            {
+                break;
+            }
+            // here each char_code corresponds to ascii representantion. Also the glyph index is the same as if I did:
+            // `FT_Get_Char_Index(face, 'A');`. So A would be: (65, 36)
+            //printf("(%d, %d)\n", char_code, glyph_index);
+            min_index = Min(min_index, glyph_index);
+            max_index = Max(max_index, glyph_index);
+
+        }
+        printf("min and max indexes: (%d, %d)\n", min_index, max_index);
+
+        u32 prev_h = 0;
+        u32 glyph_start_x = 0;
+        u32 glyph_start_y = 0;
+        for(u32 i = 0; i <= 1; i++) 
+        {
+            //for(u32 glyph_index = min_index; glyph_index <= max_index; glyph_index++) 
+            for(u32 codepoint = 'A'; codepoint <= 'B'; codepoint++) 
+            {
+                u32 glyph_index = FT_Get_Char_Index(face, char(codepoint));
+
+                if (glyph_index)
+                {
+                    FT_Error load_glyph_err = FT_Load_Glyph(face, glyph_index, FT_LOAD_DEFAULT);
+                    if (load_glyph_err) 
+                    {
+                        const char* err_str = FT_Error_String(load_glyph_err);
+                        printf("FT_Load_Glyph: %s\n", err_str);
+                    }
+
+                    FT_Error render_glyph_err = FT_Render_Glyph(face->glyph, FT_RENDER_MODE_NORMAL);
+                    if (render_glyph_err) 
+                    {
+                        const char* err_str = FT_Error_String(render_glyph_err);
+                        printf("FT_Load_Glyph: %s\n", err_str);
+                    }
+
+                    u8 *pixel = result.data + glyph_start_x + glyph_start_y * (max_width_per_cell * glyph_count);
+                    u8 *src_buffer = face->glyph->bitmap.buffer;
+                    u32 y_offset = glyph_start_y;
+                    for(u32 y = 0; y < face->glyph->bitmap.rows; y++)
+                    {
+                        for(u32 x = 0; x < face->glyph->bitmap.width; x++)
+                        {
+                            *pixel++ = *src_buffer++;
+                        }
+
+                        y_offset += 1;
+                        pixel = result.data + glyph_start_x + y_offset * (max_width_per_cell * glyph_count);
+                    }
+                    prev_h = face->glyph->bitmap.rows;
+                    //result.width += face->glyph->bitmap.width;
+                    //result.height += face->glyph->bitmap.rows;
+                    result.width += max_width_per_cell;
+                    result.height += max_height_per_cell;
+
+                    // TODO solo tocar esto!!!
+                    // uv0 = (glyph_start_x * max_width_per_cell, glyph_start_y) // 0, 0
+                    // uv1 = (glyph_start_x * max_width_per_cell + max_width_per_cell, glyph_start_y)
+
+                    // uv2 = (glyph_start_x * max_width_per_cell + max_width_per_cell, glyph_start * max_height_per_cell)
+                    // uv3 = (glyph_start_x * max_width_per_cell,  glyph_start * max_height_per_cell)
+                    
+                    glyph_start_x += max_width_per_cell;
+                    //glyph_start_x += face->glyph->bitmap.width;
+
+                }
+            }
+            glyph_start_x = 0;
+            glyph_start_y += max_height_per_cell;
+            //glyph_start_y += prev_h;
+        }
+    }
+    return result;
+}
+/*
+    When rendering I want the rect to be as tall as line height, everyone will share the same height!
+    The width of the rectangle is going to be equal to the width of the char, for monospace
+    (I wont worry about kerning for now!)
+
+    When texture packing:
+    I can make it so the texture is max_advance * glyph_count but when actually filling it
+    i will use the right dimensions for each glyph. So there will be some space wasted in the texture.
+    The thing is I believe is going to be easier to render, but maybe not!
+
+    I will have to deal with centering the letter inside the rectangle of height height
+
+*/
+
 internal void
-init_ui(OpenGL *opengl, UIRenderGroup* render_group)
+init_ui(OpenGL *opengl, UIState *ui_state, UIRenderGroup* render_group)
 {
     u32 program_id = create_program(opengl, str8("ui_quad.vs.glsl"), str8("ui_quad.fs.glsl"));
     if(program_id)
@@ -253,34 +394,59 @@ init_ui(OpenGL *opengl, UIRenderGroup* render_group)
         opengl->glEnableVertexAttribArray(1);
         opengl->glEnableVertexAttribArray(2);
 
+        // NOTE this is going to be done outside this time, because this is the texture where the fonts will be...
+        // this is provisory!
+        // Only one glyph for now!
+
+        FontGlyph glyph = ui_state->font_info.font_table[u32('A')];
+        TestPackerResult jaja = test_packer();
+
+        #if 1
         glBindTexture(GL_TEXTURE_2D, render_group->tex);
         {
-            constexpr int W = 2, H = 2;
-            u8 dummy[W*H*4] = 
-            {
-                255, 0, 0, 255,
-                0, 255, 0, 255, 
-                0, 0, 255, 255,
-                255, 255, 0, 255,
-            };
-
-            // upload into the texture
+            glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+            int W = jaja.width, H = jaja.height;
             glTexImage2D(GL_TEXTURE_2D,
                         0,                // mip level
-                        GL_RGBA8,         // internal format
+                        //GL_RGBA8,         // internal format
+                        GL_RED,
                         W, H,
                         0,                // border
-                        GL_RGBA,          // data format
+                        GL_RED,          // data format
+                        //GL_RED,          // data format
                         GL_UNSIGNED_BYTE, // data type
-                        dummy);
+                        jaja.data);
 
             // set filtering & wrap modes
-            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
             glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S,     GL_CLAMP_TO_EDGE);
             glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T,     GL_CLAMP_TO_EDGE);
+
+            #if 0
+            glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+            int W = glyph.bitmap.width, H = glyph.bitmap.height;
+            glTexImage2D(GL_TEXTURE_2D,
+                        0,                // mip level
+                        //GL_RGBA8,         // internal format
+                        GL_RED,
+                        W, H,
+                        0,                // border
+                        GL_RED,          // data format
+                        //GL_RED,          // data format
+                        GL_UNSIGNED_BYTE, // data type
+                        glyph.bitmap.buffer);
+
+            // set filtering & wrap modes
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S,     GL_CLAMP_TO_EDGE);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T,     GL_CLAMP_TO_EDGE);
+            #endif
         }
         glBindTexture(GL_TEXTURE_2D, 0);
+        glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
+        #endif
 
         render_group->ortho_proj = opengl->glGetUniformLocation(render_group->program_id, "ortho_proj");
         render_group->texture_sampler = opengl->glGetUniformLocation(render_group->program_id, "texture_sampler");
@@ -292,6 +458,8 @@ init_ui(OpenGL *opengl, UIRenderGroup* render_group)
 internal void
 begin_ui_frame(OpenGL *opengl, UIRenderGroup *render_group)
 {
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
     glDisable(GL_DEPTH_TEST);
     opengl->glUseProgram(render_group->program_id);
 	opengl->glBindVertexArray(render_group->vao);
@@ -311,6 +479,7 @@ begin_ui_frame(OpenGL *opengl, UIRenderGroup *render_group)
 internal void
 end_ui_frame(OpenGL* opengl)
 {
+    glDisable(GL_BLEND);
     glEnable(GL_DEPTH_TEST);
     glBindTexture(GL_TEXTURE_2D, 0);
     opengl->glBindVertexArray(0);

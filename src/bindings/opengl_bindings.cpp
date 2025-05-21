@@ -56,6 +56,7 @@
 #define GL_DEBUG_TYPE_DEPRECATED_BEHAVIOR 0x824D
 #define GL_DEBUG_TYPE_UNDEFINED_BEHAVIOR  0x824E
 
+#define GL_R8                             0x8229
 typedef ptrdiff_t GLsizeiptr;
 typedef ptrdiff_t GLintptr;
 typedef char GLchar;

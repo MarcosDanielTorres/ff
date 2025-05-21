@@ -26,11 +26,18 @@
 #include "base/base_arena.h"
 #include "base/base_string.h"
 #include "os/os_core.h"
+#include "draw/draw.h"
+#include "font/font.h"
+
+
 #include "base/base_arena.cpp"
 #include "base/base_string.cpp"
 #include "os/os_core.cpp"
+#include "font/font.cpp"
 #include "input/input.h"
+
 typedef Input GameInput;
+
 
 #include "bindings/opengl_bindings.cpp"
 #include "camera.h"
@@ -50,6 +57,14 @@ static Arena g_arena;
 static Arena g_transient_arena;
 
 #include "renderer.cpp"
+// TODO move away from here!
+struct UIState
+{
+    // TODO probably should have its own memory. After I remove std first!
+    FontInfo font_info;
+    glm::mat4 ortho_proj;
+    UIRenderGroup *render_group;
+};
 #include "renderer/opengl_renderer.cpp"
 #include "model_loader.cpp"
 
@@ -486,12 +501,6 @@ LRESULT CALLBACK win32_main_callback(HWND Window, UINT Message, WPARAM wParam, L
 
 
 
-struct UIState
-{
-    // TODO probably should have its own memory. After I remove std first!
-    glm::mat4 ortho_proj;
-    UIRenderGroup *render_group;
-};
 
 
 struct PlaceholderState
@@ -668,6 +677,9 @@ int main() {
 	arena_init(&g_arena, mb(2));
 	arena_init(&g_transient_arena, mb(2));
 
+    font_init();
+    FontInfo font_info = font_load(&g_arena);
+
     //os_win32_toggle_fullscreen(global_w32_window.handle, &global_w32_window.window_placement);
 
     #if RAW_INPUT
@@ -691,18 +703,25 @@ int main() {
     OpenGL* opengl = arena_push_size(&g_arena, OpenGL, 1);
     opengl_init(opengl, global_w32_window);
 
+
     // ui state init
     UIState *ui_state = arena_push_size(&g_arena, UIState, 1);
-    ui_state->ortho_proj = glm::ortho(0.0f, f32(SRC_WIDTH), f32(SRC_HEIGHT), 0.0f, -1.0f, 1.0f);
-
     UIRenderGroup *ui_render_group = arena_push_size(&g_arena, UIRenderGroup, 1);
-    ui_state->render_group = ui_render_group;
-    ui_render_group->vertex_array = arena_push_size(&g_arena, UIVertex, max_vertex_per_batch);
-    ui_render_group->index_array = arena_push_size(&g_arena, u16, max_index_per_batch);
-    ui_render_group->vertex_count = 0;
-    ui_render_group->index_count  = 0;
+    {
+        ui_state->ortho_proj = glm::ortho(0.0f, f32(SRC_WIDTH), f32(SRC_HEIGHT), 0.0f, -1.0f, 1.0f);
+        ui_state->render_group = ui_render_group;
+        ui_render_group->vertex_array = arena_push_size(&g_arena, UIVertex, max_vertex_per_batch);
+        ui_render_group->index_array = arena_push_size(&g_arena, u16, max_index_per_batch);
+        ui_render_group->vertex_count = 0;
+        ui_render_group->index_count  = 0;
 
-    init_ui(opengl, ui_render_group);
+        // fonts
+        ui_state->font_info = font_info;
+    }
+
+
+
+    init_ui(opengl, ui_state, ui_render_group);
     {
         /* TODO The biggest problem here is do I recreate the render group every frame or not
             Because why would I do this if I can instead save the points in each model? Which is why they do
@@ -720,13 +739,22 @@ int main() {
         push_quad(render_group, T1v, glm::vec3(0.5f), glm::vec4(0.0f, 1.0f, 0.0f, 1.0f));
         push_quad(render_group, T2v, glm::vec3(0.5f), glm::vec4(0.0f, 0.0f, 1.0f, 1.0f));
         */
-        const glm::vec3 T0v = {100.0f,  500.0f, 0.0f};
-        const glm::vec3 T1v = {300.0f,  500.0f, 0.0f};
-        const glm::vec3 T2v = {300.0f,  300.0f, 0.0f};
-        const glm::vec3 T3v = {100.0f,  300.0f, 0.0f};
+        FontGlyph glyph = ui_state->font_info.font_table[u32('A')];
+        int w = glyph.bitmap.width;
+        int h = glyph.bitmap.height;
 
+        const glm::vec3 T0v = {100.0f,  500.0f, 0.0f};
+        const glm::vec3 T1v = {100.0f + w,  500.0f, 0.0f};
+        const glm::vec3 T2v = {100.0f + w,  500.0f - h, 0.0f};
+        const glm::vec3 T3v = {100.0f,  500.0f - h, 0.0f};
+
+        // for fonts:
+        glm::vec2 uv0 = glm::vec2(1, 1);
+        glm::vec2 uv1 = glm::vec2(0, 1);
+        glm::vec2 uv2 = glm::vec2(0, 0);
+        glm::vec2 uv3 = glm::vec2(1, 0);
         const glm::vec3 rect_points[4] = {T0v, T1v, T2v, T3v};
-        push_rect(ui_render_group, rect_points);
+        push_rect(ui_render_group, rect_points, uv0, uv1, uv2, uv3);
         glm::vec3 tri_points[3] = {glm::vec3(500.0f, 500.0f, 0.0f), glm::vec3(600.0f, 500.0f, 0.0f), glm::vec3(450.0f, 300.0f, 0.0f)};
         u16 tri_indices[3] = {0, 1, 2};
         push_triangle(ui_render_group, tri_points, tri_indices);

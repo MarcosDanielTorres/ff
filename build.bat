@@ -69,6 +69,7 @@ if "%game%"=="1"                %compile% ..\src\samples\2d_game\game.cpp /link 
 if "%openglrewrite%"=="1"       %compile% -MD -Fmmain.map ..\src\samples\opengl\maain.cpp /I%VULKAN_SDK%\Include /link /LIBPATH:%assimp_lib_path% opengl32.lib gdi32.lib user32.lib assimp.lib zlibstatic.lib
 
 if "%skinning%"=="1"            %compile% -MD -Feopengl-skinning.exe -Fmopengl-skinning.map ..\src\samples\skinning\skinning.cpp /I%VULKAN_SDK%\Include /link /LIBPATH:%assimp_lib_path% opengl32.lib gdi32.lib user32.lib assimp.lib zlibstatic.lib
-if "%render_example%"=="1"      %compile% -MD -Ferender_example.exe -Fmrender_example.map ..\src\samples\render_example\render_example.cpp /I%glm_root% /link -incremental:no -opt:ref /LIBPATH:%assimp_lib_path_dll% opengl32.lib gdi32.lib user32.lib assimp.lib 
+@rem NOTE I was previously using -MD for compilation (I guess for no particular reason, just found that it worked at the moment. But when adding freetype i had to moved back to the fault (whic is MT))
+if "%render_example%"=="1"      %compile% -MT -Ferender_example.exe -Fmrender_example.map ..\src\samples\render_example\render_example.cpp /I%glm_root% /link -incremental:no -opt:ref /LIBPATH:%assimp_lib_path_dll% opengl32.lib gdi32.lib user32.lib assimp.lib /LIBPATH:%freetype_lib_path% libfreetype.lib 
 
 popd

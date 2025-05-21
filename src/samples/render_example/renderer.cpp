@@ -1,4 +1,3 @@
-
 struct UIVertex
 {
     glm::vec3 p;
@@ -58,16 +57,15 @@ void push_triangle(UIRenderGroup *render_group, glm::vec3 tri_points[3], u16 tri
 
 }
 
-void push_rect(UIRenderGroup *render_group, const glm::vec3 quad_points[4])
+void push_rect(UIRenderGroup *render_group, const glm::vec3 quad_points[4], 
+    glm::vec2 uv0 = glm::vec2(0, 0),
+    glm::vec2 uv1 = glm::vec2(1, 0),
+    glm::vec2 uv2 = glm::vec2(1, 1),
+    glm::vec2 uv3 = glm::vec2(0, 1))
 {
     check_bounds(4 + render_group->vertex_count, 6 + render_group->index_count);
 
-    glm::vec2 uv0 = glm::vec2(0, 0);
-    glm::vec2 uv1 = glm::vec2(1, 0);
-    glm::vec2 uv2 = glm::vec2(1, 1);
-    glm::vec2 uv3 = glm::vec2(0, 1);
-
-    glm::vec4 c = glm::vec4(0.0f, 1.0f, 0.0f, 1.0f);
+    glm::vec4 c = glm::vec4(1.0f, 0.0f, 1.0f, 1.0f);
     UIVertex *v = render_group->vertex_array + render_group->vertex_count;
     v[0] = {quad_points[0], uv0, c};
     v[1] = {quad_points[1], uv1, c};

@@ -606,7 +606,7 @@ struct Model
     Texture *mWhiteTexture = nullptr;
 
 
-    /////////// Instacing ////////////
+    /////////// Instancing ////////////
     // TODO(Marcos): inspect this because they put all this info inside AssimpInstance
     InstanceSettings mInstanceSettings{};
 
@@ -676,7 +676,7 @@ struct Model
             }
         }
     }
-    /////////// Instacing ////////////
+    /////////// Instancing ////////////
 
 };
 

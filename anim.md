@@ -157,3 +157,8 @@ for (auto& node : mNodeList) {
     }
 }
 ```
+`mBoneMatrices = mNodeMap.at(nodeName)->getTRSMatrix() * mBoneOffsetMatrices.at(nodeName)`
+`boneMat = animatedMatrix * inverseBindMatrix`
+
+
+`locPos = model * nodeMatrix * skinMat * vec4(aPos, 1.0);`

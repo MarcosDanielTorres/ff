@@ -674,7 +674,7 @@ int main() {
     aim_profiler_begin();
     global_w32_window = os_win32_open_window("opengl", SRC_WIDTH, SRC_HEIGHT, win32_main_callback, 1);
 	
-	arena_init(&g_arena, mb(2));
+	arena_init(&g_arena, mb(20));
 	arena_init(&g_transient_arena, mb(2));
 
     font_init();
@@ -740,8 +740,14 @@ int main() {
         push_quad(render_group, T2v, glm::vec3(0.5f), glm::vec4(0.0f, 0.0f, 1.0f, 1.0f));
         */
         FontGlyph glyph = ui_state->font_info.font_table[u32('A')];
+        #if 0
         int w = glyph.bitmap.width;
         int h = glyph.bitmap.height;
+        #else
+        TestPackerResult jaja = test_packer();
+        int w = jaja.width;
+        int h = jaja.height;
+        #endif
 
         const glm::vec3 T0v = {100.0f,  500.0f, 0.0f};
         const glm::vec3 T1v = {100.0f + w,  500.0f, 0.0f};
@@ -749,10 +755,10 @@ int main() {
         const glm::vec3 T3v = {100.0f,  500.0f - h, 0.0f};
 
         // for fonts:
-        glm::vec2 uv0 = glm::vec2(1, 1);
-        glm::vec2 uv1 = glm::vec2(0, 1);
-        glm::vec2 uv2 = glm::vec2(0, 0);
-        glm::vec2 uv3 = glm::vec2(1, 0);
+        glm::vec2 uv0 = glm::vec2(0, 1);
+        glm::vec2 uv1 = glm::vec2(1, 1);
+        glm::vec2 uv2 = glm::vec2(1, 0);
+        glm::vec2 uv3 = glm::vec2(0, 0);
         const glm::vec3 rect_points[4] = {T0v, T1v, T2v, T3v};
         push_rect(ui_render_group, rect_points, uv0, uv1, uv2, uv3);
         glm::vec3 tri_points[3] = {glm::vec3(500.0f, 500.0f, 0.0f), glm::vec3(600.0f, 500.0f, 0.0f), glm::vec3(450.0f, 300.0f, 0.0f)};

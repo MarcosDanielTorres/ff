@@ -256,16 +256,28 @@ test_packer()
 
 
         FT_Error set_char_size_err = FT_Set_Char_Size(face, 4 * 64, 4 * 64, 300, 300);
-        u32 glyph_count = 4;
+        // NOTE If `glyph_count` is not even everything goes to hell!!!
+        // TODO fix this  hahah wtf is going on!?!?!?
+        u32 glyph_count = u32('z') - u32('A') + 1;
+        u32 glyphs_per_row = round(sqrtf(u32('z') - u32('A') + 1));
+        glyphs_per_row = 14;
+        //glyph_count = 8;
+        printf("Glyph count: %d\n", glyph_count);
+        printf("Glyphs per row: %d\n", glyphs_per_row);
         u32 max_height_per_cell = face->size->metrics.height >> 6;
         u32 max_width_per_cell = face->size->metrics.max_advance >> 6;
 
-        // NOTE for now
-        u32 atlas_width = max_width_per_cell * 2;
-        u32 atlas_height = max_height_per_cell * 2;
+        //u32 atlas_width = max_width_per_cell * 2;
+        //u32 atlas_height = max_height_per_cell * 2;
 
-        result.data = (u8*) arena_push_size(&g_arena, u8, max_height_per_cell * max_width_per_cell * glyph_count); // space for 4 glyphs
-        result.size = glyph_count * max_width_per_cell * max_height_per_cell; // in bytes! 4 is the glyph_count
+        u32 texture_atlas_rows = round(glyph_count / glyphs_per_row);
+        u32 margin_per_glyph = 2;
+        u32 texture_atlas_left_padding = 2;
+        result.width = (max_width_per_cell + margin_per_glyph + texture_atlas_left_padding)  * (glyphs_per_row + 3);
+        result.height = max_height_per_cell * (texture_atlas_rows + 3);
+
+
+        result.data = (u8*) arena_push_size(&g_arena, u8, result.height * result.width); // space for 4 glyphs
 
         u32 char_code = 0;
         u32 min_index = UINT32_MAX;
@@ -288,65 +300,67 @@ test_packer()
         printf("min and max indexes: (%d, %d)\n", min_index, max_index);
 
         u32 prev_h = 0;
-        u32 glyph_start_x = 0;
+        u32 glyph_start_x = texture_atlas_left_padding;
         u32 glyph_start_y = 0;
-        for(u32 i = 0; i <= 1; i++) 
+        u32 count = 0;
+        //for(u32 glyph_index = min_index; glyph_index <= max_index; glyph_index++) 
+        for(u32 codepoint = 'A'; codepoint <= 'z'; codepoint++) 
         {
-            //for(u32 glyph_index = min_index; glyph_index <= max_index; glyph_index++) 
-            for(u32 codepoint = 'A'; codepoint <= 'B'; codepoint++) 
+
+            if((count % (glyphs_per_row + 1)) == 0)
             {
-                u32 glyph_index = FT_Get_Char_Index(face, char(codepoint));
-
-                if (glyph_index)
-                {
-                    FT_Error load_glyph_err = FT_Load_Glyph(face, glyph_index, FT_LOAD_DEFAULT);
-                    if (load_glyph_err) 
-                    {
-                        const char* err_str = FT_Error_String(load_glyph_err);
-                        printf("FT_Load_Glyph: %s\n", err_str);
-                    }
-
-                    FT_Error render_glyph_err = FT_Render_Glyph(face->glyph, FT_RENDER_MODE_NORMAL);
-                    if (render_glyph_err) 
-                    {
-                        const char* err_str = FT_Error_String(render_glyph_err);
-                        printf("FT_Load_Glyph: %s\n", err_str);
-                    }
-
-                    u8 *pixel = result.data + glyph_start_x + glyph_start_y * (max_width_per_cell * glyph_count);
-                    u8 *src_buffer = face->glyph->bitmap.buffer;
-                    u32 y_offset = glyph_start_y;
-                    for(u32 y = 0; y < face->glyph->bitmap.rows; y++)
-                    {
-                        for(u32 x = 0; x < face->glyph->bitmap.width; x++)
-                        {
-                            *pixel++ = *src_buffer++;
-                        }
-
-                        y_offset += 1;
-                        pixel = result.data + glyph_start_x + y_offset * (max_width_per_cell * glyph_count);
-                    }
-                    prev_h = face->glyph->bitmap.rows;
-                    //result.width += face->glyph->bitmap.width;
-                    //result.height += face->glyph->bitmap.rows;
-                    result.width += max_width_per_cell;
-                    result.height += max_height_per_cell;
-
-                    // TODO solo tocar esto!!!
-                    // uv0 = (glyph_start_x * max_width_per_cell, glyph_start_y) // 0, 0
-                    // uv1 = (glyph_start_x * max_width_per_cell + max_width_per_cell, glyph_start_y)
-
-                    // uv2 = (glyph_start_x * max_width_per_cell + max_width_per_cell, glyph_start * max_height_per_cell)
-                    // uv3 = (glyph_start_x * max_width_per_cell,  glyph_start * max_height_per_cell)
-                    
-                    glyph_start_x += max_width_per_cell;
-                    //glyph_start_x += face->glyph->bitmap.width;
-
-                }
+                glyph_start_x = texture_atlas_left_padding;
+                glyph_start_y += max_height_per_cell;
+                count = 0;
             }
-            glyph_start_x = 0;
-            glyph_start_y += max_height_per_cell;
-            //glyph_start_y += prev_h;
+            u32 glyph_index = FT_Get_Char_Index(face, char(codepoint));
+
+            if (glyph_index)
+            {
+                FT_Error load_glyph_err = FT_Load_Glyph(face, glyph_index, FT_LOAD_DEFAULT);
+                if (load_glyph_err) 
+                {
+                    const char* err_str = FT_Error_String(load_glyph_err);
+                    printf("FT_Load_Glyph: %s\n", err_str);
+                }
+
+                FT_Error render_glyph_err = FT_Render_Glyph(face->glyph, FT_RENDER_MODE_NORMAL);
+                if (render_glyph_err) 
+                {
+                    const char* err_str = FT_Error_String(render_glyph_err);
+                    printf("FT_Load_Glyph: %s\n", err_str);
+                }
+
+                u8 *pixel = result.data + glyph_start_x + face->glyph->bitmap_left + glyph_start_y * (result.width);
+                u8 *src_buffer = face->glyph->bitmap.buffer;
+                u32 y_offset = glyph_start_y;
+                for(u32 y = 0; y < face->glyph->bitmap.rows; y++)
+                {
+                    for(u32 x = 0; x < face->glyph->bitmap.width; x++)
+                    {
+                        *pixel++ = *src_buffer++;
+                    }
+
+                    y_offset += 1;
+                    pixel = result.data + glyph_start_x + face->glyph->bitmap_left + y_offset * (result.width);
+                }
+                prev_h = face->glyph->bitmap.rows;
+                //result.width += face->glyph->bitmap.width;
+                //result.height += face->glyph->bitmap.rows;
+                //result.height += max_height_per_cell;
+
+                // TODO solo tocar esto!!!
+                // uv0 = (glyph_start_x * max_width_per_cell, glyph_start_y) // 0, 0
+                // uv1 = (glyph_start_x * max_width_per_cell + max_width_per_cell, glyph_start_y)
+
+                // uv2 = (glyph_start_x * max_width_per_cell + max_width_per_cell, glyph_start * max_height_per_cell)
+                // uv3 = (glyph_start_x * max_width_per_cell,  glyph_start * max_height_per_cell)
+                
+                glyph_start_x += max_width_per_cell + margin_per_glyph + face->glyph->bitmap_left;
+                //glyph_start_x += face->glyph->bitmap.width;
+
+            }
+            count++;
         }
     }
     return result;
@@ -401,15 +415,15 @@ init_ui(OpenGL *opengl, UIState *ui_state, UIRenderGroup* render_group)
         FontGlyph glyph = ui_state->font_info.font_table[u32('A')];
         TestPackerResult jaja = test_packer();
 
+        glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
         #if 1
         glBindTexture(GL_TEXTURE_2D, render_group->tex);
         {
-            glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
             int W = jaja.width, H = jaja.height;
             glTexImage2D(GL_TEXTURE_2D,
                         0,                // mip level
                         //GL_RGBA8,         // internal format
-                        GL_RED,
+                        GL_R8,
                         W, H,
                         0,                // border
                         GL_RED,          // data format

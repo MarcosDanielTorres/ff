@@ -172,7 +172,8 @@ draw_text(OS_PixelBuffer *buffer, i32 x, i32 y, const char* text, FontGlyph* fon
         }
         
         // y - glyph->bitmap causes the 0,0 to be at the bot-left corner. opposed as the rect and bitmap which are renderered with 0,0 at the top-left
-        draw_bitmap(buffer, glyph->bitmap_left + line_offset, y - glyph->bitmap_top, glyph->bitmap, text_color);
+        line_offset += glyph->bitmap_left;
+        draw_bitmap(buffer, line_offset, y - glyph->bitmap_top, glyph->bitmap, text_color);
         line_offset += glyph->advance_x >> 6;
         //draw_bitmap(buffer, x, y - bitmap.bitmap_top, c);
     }
@@ -204,7 +205,8 @@ draw_text(OS_PixelBuffer *buffer, i32 x, i32 y, Str8 text, FontGlyph* font_table
             {
                 FontGlyph* glyph = &font_table[(u32)text.str[i]];
                 // y - glyph->bitmap causes the 0,0 to be at the bot-left corner. opposed as the rect and bitmap which are renderered with 0,0 at the top-left
-                draw_bitmap(buffer, glyph->bitmap_left + line_offset, y - glyph->bitmap_top, glyph->bitmap, text_color);
+                line_offset += glyph->bitmap_left;
+                draw_bitmap(buffer, line_offset, y - glyph->bitmap_top, glyph->bitmap, text_color);
                 line_offset += glyph->advance_x >> 6;
                 //draw_bitmap(buffer, x, y - bitmap.bitmap_top, c);
 

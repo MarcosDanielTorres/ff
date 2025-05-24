@@ -11,6 +11,16 @@ struct FontGlyph {
     i32 bitmap_top;
     i32 bitmap_left;
     i32 advance_x;
+
+    f32 uv0_x;
+    f32 uv1_x;
+    f32 uv2_x;
+    f32 uv3_x;
+
+    f32 uv0_y;
+    f32 uv1_y;
+    f32 uv2_y;
+    f32 uv3_y;
 };
 
 enum DrawRectFlags

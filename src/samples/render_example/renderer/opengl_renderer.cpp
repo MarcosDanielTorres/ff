@@ -233,7 +233,7 @@ struct TestPackerResult
 };
 
 internal TestPackerResult
-test_packer()
+test_packer(UIState *ui_state)
 {
     TestPackerResult result = {};
     u32 result_width;
@@ -337,10 +337,10 @@ test_packer()
 
                 u8 *pixel = result_data + glyph_start_x + glyph_start_y * (result_width);
 
-                u8 *uv3 = pixel;
-                u8 *uv0 = pixel + (face->glyph->bitmap.rows - 1) * result_width;
-                u8 *uv1 = pixel + face->glyph->bitmap.width - 1 + (face->glyph->bitmap.rows - 1) * result_width;
-                u8 *uv2 = pixel + face->glyph->bitmap.width - 1;
+                u8 *ptr_uv3 = pixel;
+                u8 *ptr_uv0 = pixel + (face->glyph->bitmap.rows - 1) * result_width;
+                u8 *ptr_uv1 = pixel + face->glyph->bitmap.width - 1 + (face->glyph->bitmap.rows - 1) * result_width;
+                u8 *ptr_uv2 = pixel + face->glyph->bitmap.width - 1;
 
                 u8 *src_buffer = face->glyph->bitmap.buffer;
                 u32 y_offset = glyph_start_y;
@@ -366,10 +366,14 @@ test_packer()
                 v0 = 
                 */
 
-                *uv3 = 0xFF;
-                *uv2 = 0xFF;
-                *uv1 = 0xFF;
-                *uv0 = 0xFF;
+                // for debug!!!
+                #if 0
+                *ptr_uv3 = 0xFF;
+                *ptr_uv2 = 0xFF;
+                *ptr_uv1 = 0xFF;
+                *ptr_uv0 = 0xFF;
+                #endif
+
 
                 // this one seemed promising but only works for the height and also.. i thought 
                 // this would have calclated thi value for width... so yeah
@@ -377,12 +381,11 @@ test_packer()
 
 
                 u32 start_x = glyph_start_x;
-                int x0 = glyph_start_x;                    // left
-				int x1 = glyph_start_x + face->glyph->bitmap.width - 1;        // right
-				int y0 = glyph_start_y;                    // top
-				int y1 = glyph_start_y + face->glyph->bitmap.rows - 1;         // bottom
+                int x0 = glyph_start_x;
+				int x1 = glyph_start_x + face->glyph->bitmap.width ;
+				int y0 = glyph_start_y;
+				int y1 = glyph_start_y + face->glyph->bitmap.rows ;
 
-				// Norm. UVs:
 				float u0 = float(x0) / float(result_width);
 				float v0 = float(y0) / float(result_height);
 
@@ -398,8 +401,8 @@ test_packer()
                 //f32 f_uv2_x = start_x / f32(result_width);
                 //f32 f_uv2_x = f32((uv2 - result_data) % result_width) / f32(result_width);
                 //f32 f_uv2_y = (uv2 - result_data) / result_width / f32(result_height);
-                //f32 f_uv2_x = u1;
-                //f32 f_uv2_y = v1;
+                f32 f_uv2_x = u1;
+                f32 f_uv2_y = v0;
 
                 //f32 f_uv1_x = start_x / f32(result_width) + (face->glyph->bitmap.width) / f32(result_width);
                 //f32 f_uv1_x = f32((uv1 - result_data) % result_width) / f32(result_width);
@@ -410,11 +413,21 @@ test_packer()
                 //f32 f_uv0_x = start_x / f32(result_width) + (face->glyph->bitmap.width) / f32(result_width);
                 //f32 f_uv0_x = f32((uv0 - result_data) % result_width) / f32(result_width);
                 //f32 f_uv0_y = (uv0 - result_data) / result_width / f32(result_height);
-                //f32 f_uv0_x = u0;
-                //f32 f_uv0_y = v0;
+                f32 f_uv0_x = u0;
+                f32 f_uv0_y = v1;
 
+                FontGlyph *glyph = &ui_state->font_info.font_table[codepoint];
 
-                
+                glyph->uv0_x = f_uv0_x;
+                glyph->uv1_x = f_uv1_x;
+                glyph->uv2_x = f_uv2_x;
+                glyph->uv3_x = f_uv3_x;
+
+                glyph->uv0_y = f_uv0_y;
+                glyph->uv1_y = f_uv1_y;
+                glyph->uv2_y = f_uv2_y;
+                glyph->uv3_y = f_uv3_y;
+
                 glyph_start_x += max_width_per_cell + margin_per_glyph + face->glyph->bitmap_left;
             }
             count++;
@@ -475,14 +488,12 @@ init_ui(OpenGL *opengl, UIState *ui_state, UIRenderGroup* render_group)
         // this is provisory!
         // Only one glyph for now!
 
-        FontGlyph glyph = ui_state->font_info.font_table[u32('A')];
-        TestPackerResult jaja = test_packer();
+        TestPackerResult texture_atlas = test_packer(ui_state);
 
         glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
-        #if 1
         glBindTexture(GL_TEXTURE_2D, render_group->tex);
         {
-            int W = jaja.width, H = jaja.height;
+            int W = texture_atlas.width, H = texture_atlas.height;
             glTexImage2D(GL_TEXTURE_2D,
                         0,                // mip level
                         //GL_RGBA8,         // internal format
@@ -492,7 +503,7 @@ init_ui(OpenGL *opengl, UIState *ui_state, UIRenderGroup* render_group)
                         GL_RED,          // data format
                         //GL_RED,          // data format
                         GL_UNSIGNED_BYTE, // data type
-                        jaja.data);
+                        texture_atlas.data);
 
             // set filtering & wrap modes
             glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
@@ -502,6 +513,7 @@ init_ui(OpenGL *opengl, UIState *ui_state, UIRenderGroup* render_group)
 
             #if 0
             glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+            FontGlyph glyph = ui_state->font_info.font_table[u32('A')];
             int W = glyph.bitmap.width, H = glyph.bitmap.height;
             glTexImage2D(GL_TEXTURE_2D,
                         0,                // mip level
@@ -523,7 +535,6 @@ init_ui(OpenGL *opengl, UIState *ui_state, UIRenderGroup* render_group)
         }
         glBindTexture(GL_TEXTURE_2D, 0);
         glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
-        #endif
 
         render_group->ortho_proj = opengl->glGetUniformLocation(render_group->program_id, "ortho_proj");
         render_group->texture_sampler = opengl->glGetUniformLocation(render_group->program_id, "texture_sampler");

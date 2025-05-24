@@ -56,8 +56,27 @@ using namespace aim::Components;
 static Arena g_arena;
 static Arena g_transient_arena;
 
-#include "renderer.cpp"
 // TODO move away from here!
+struct UIVertex
+{
+    glm::vec3 p;
+    glm::vec2 uv;
+    glm::vec4 c;
+};
+
+struct UIRenderGroup
+{
+    GLint ortho_proj;
+    GLint texture_sampler;
+    u32 program_id; 
+
+    u32 vbo, vao, ebo;
+    GLuint tex;
+    UIVertex *vertex_array;
+    u32 vertex_count;
+    u16 *index_array;
+    u32 index_count;
+};
 struct UIState
 {
     // TODO probably should have its own memory. After I remove std first!
@@ -65,6 +84,8 @@ struct UIState
     glm::mat4 ortho_proj;
     UIRenderGroup *render_group;
 };
+
+#include "renderer.cpp"
 #include "renderer/opengl_renderer.cpp"
 #include "model_loader.cpp"
 
@@ -739,7 +760,14 @@ int main() {
         push_quad(render_group, T1v, glm::vec3(0.5f), glm::vec4(0.0f, 1.0f, 0.0f, 1.0f));
         push_quad(render_group, T2v, glm::vec3(0.5f), glm::vec4(0.0f, 0.0f, 1.0f, 1.0f));
         */
-        FontGlyph glyph = ui_state->font_info.font_table[u32('A')];
+
+        glm::vec2 a_uv0 = glm::vec2(0.0084, 0.2256);
+        glm::vec2 a_uv1 = glm::vec2(0.0462, 0.2256);
+        glm::vec2 a_uv3 = glm::vec2(0.0084, 0.1429);
+        glm::vec2 a_uv2 = glm::vec2(0.0462, 0.1429);
+
+        #if 0
+        // for fonts:
         #if 0
         int w = glyph.bitmap.width;
         int h = glyph.bitmap.height;
@@ -753,23 +781,19 @@ int main() {
         const glm::vec3 T1v = {100.0f + w,  500.0f, 0.0f};
         const glm::vec3 T2v = {100.0f + w,  500.0f - h, 0.0f};
         const glm::vec3 T3v = {100.0f,  500.0f - h, 0.0f};
-
-        glm::vec2 a_uv0 = glm::vec2(0.0084, 0.2256);
-        glm::vec2 a_uv1 = glm::vec2(0.0462, 0.2256);
-        glm::vec2 a_uv3 = glm::vec2(0.0084, 0.1429);
-        glm::vec2 a_uv2 = glm::vec2(0.0462, 0.1429);
-
-        // for fonts:
         glm::vec2 uv0 = glm::vec2(0, 1);
         glm::vec2 uv1 = glm::vec2(1, 1);
         glm::vec2 uv2 = glm::vec2(1, 0);
         glm::vec2 uv3 = glm::vec2(0, 0);
         const glm::vec3 rect_points[4] = {T0v, T1v, T2v, T3v};
-        //push_rect(ui_render_group, rect_points, uv0, uv1, uv2, uv3);
-        push_rect(ui_render_group, rect_points, a_uv0, a_uv1, a_uv2, a_uv3);
+        push_rect(ui_render_group, rect_points, uv0, uv1, uv2, uv3);
+        #endif
+
+        push_text(ui_state, (char*)"Mouse coordinates in screen space", 200, 400);
+
         glm::vec3 tri_points[3] = {glm::vec3(500.0f, 500.0f, 0.0f), glm::vec3(600.0f, 500.0f, 0.0f), glm::vec3(450.0f, 300.0f, 0.0f)};
         u16 tri_indices[3] = {0, 1, 2};
-        push_triangle(ui_render_group, tri_points, tri_indices);
+        //push_triangle(ui_render_group, tri_points, tri_indices);
     }
 
     // uniform init

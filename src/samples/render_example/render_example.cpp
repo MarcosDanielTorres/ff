@@ -754,13 +754,19 @@ int main() {
         const glm::vec3 T2v = {100.0f + w,  500.0f - h, 0.0f};
         const glm::vec3 T3v = {100.0f,  500.0f - h, 0.0f};
 
+        glm::vec2 a_uv0 = glm::vec2(0.0084, 0.2256);
+        glm::vec2 a_uv1 = glm::vec2(0.0462, 0.2256);
+        glm::vec2 a_uv3 = glm::vec2(0.0084, 0.1429);
+        glm::vec2 a_uv2 = glm::vec2(0.0462, 0.1429);
+
         // for fonts:
         glm::vec2 uv0 = glm::vec2(0, 1);
         glm::vec2 uv1 = glm::vec2(1, 1);
         glm::vec2 uv2 = glm::vec2(1, 0);
         glm::vec2 uv3 = glm::vec2(0, 0);
         const glm::vec3 rect_points[4] = {T0v, T1v, T2v, T3v};
-        push_rect(ui_render_group, rect_points, uv0, uv1, uv2, uv3);
+        //push_rect(ui_render_group, rect_points, uv0, uv1, uv2, uv3);
+        push_rect(ui_render_group, rect_points, a_uv0, a_uv1, a_uv2, a_uv3);
         glm::vec3 tri_points[3] = {glm::vec3(500.0f, 500.0f, 0.0f), glm::vec3(600.0f, 500.0f, 0.0f), glm::vec3(450.0f, 300.0f, 0.0f)};
         u16 tri_indices[3] = {0, 1, 2};
         push_triangle(ui_render_group, tri_points, tri_indices);

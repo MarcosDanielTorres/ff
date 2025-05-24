@@ -236,6 +236,10 @@ internal TestPackerResult
 test_packer()
 {
     TestPackerResult result = {};
+    u32 result_width;
+    u32 result_height;
+    u32 result_size;
+    u8* result_data;
 
     OS_FileReadResult font_file = os_file_read(&g_arena, "C:\\Windows\\Fonts\\CascadiaMono.ttf");
     FT_Face face = {0};
@@ -273,11 +277,11 @@ test_packer()
         u32 texture_atlas_rows = round(glyph_count / glyphs_per_row);
         u32 margin_per_glyph = 2;
         u32 texture_atlas_left_padding = 2;
-        result.width = (max_width_per_cell + margin_per_glyph + texture_atlas_left_padding)  * (glyphs_per_row + 3);
-        result.height = max_height_per_cell * (texture_atlas_rows + 3);
 
-
-        result.data = (u8*) arena_push_size(&g_arena, u8, result.height * result.width); // space for 4 glyphs
+        result_width = (max_width_per_cell + margin_per_glyph + texture_atlas_left_padding)  * (glyphs_per_row + 3);
+        result_height = max_height_per_cell * (texture_atlas_rows + 3);
+        result_size = result_width * result_height;
+        result_data = (u8*) arena_push_size(&g_arena, u8, result_size); // space for 4 glyphs
 
         u32 char_code = 0;
         u32 min_index = UINT32_MAX;
@@ -331,7 +335,13 @@ test_packer()
                     printf("FT_Load_Glyph: %s\n", err_str);
                 }
 
-                u8 *pixel = result.data + glyph_start_x + face->glyph->bitmap_left + glyph_start_y * (result.width);
+                u8 *pixel = result_data + glyph_start_x + glyph_start_y * (result_width);
+
+                u8 *uv3 = pixel;
+                u8 *uv0 = pixel + (face->glyph->bitmap.rows - 1) * result_width;
+                u8 *uv1 = pixel + face->glyph->bitmap.width - 1 + (face->glyph->bitmap.rows - 1) * result_width;
+                u8 *uv2 = pixel + face->glyph->bitmap.width - 1;
+
                 u8 *src_buffer = face->glyph->bitmap.buffer;
                 u32 y_offset = glyph_start_y;
                 for(u32 y = 0; y < face->glyph->bitmap.rows; y++)
@@ -342,27 +352,55 @@ test_packer()
                     }
 
                     y_offset += 1;
-                    pixel = result.data + glyph_start_x + face->glyph->bitmap_left + y_offset * (result.width);
+                    pixel = result_data + glyph_start_x + y_offset * (result_width);
                 }
                 prev_h = face->glyph->bitmap.rows;
-                //result.width += face->glyph->bitmap.width;
-                //result.height += face->glyph->bitmap.rows;
-                //result.height += max_height_per_cell;
 
-                // TODO solo tocar esto!!!
-                // uv0 = (glyph_start_x * max_width_per_cell, glyph_start_y) // 0, 0
-                // uv1 = (glyph_start_x * max_width_per_cell + max_width_per_cell, glyph_start_y)
+                /*
+                glm::vec2 a_uv0 = glm::vec2(0.0084, 0.2256);
+                glm::vec2 a_uv1 = glm::vec2(0.0462, 0.2256);
+                glm::vec2 a_uv3 = glm::vec2(0.0084, 0.1429);
+                glm::vec2 a_uv2 = glm::vec2(0.0462, 0.1429);
+                I know the total width
+                I know the total height
+                v0 = 
+                */
 
-                // uv2 = (glyph_start_x * max_width_per_cell + max_width_per_cell, glyph_start * max_height_per_cell)
-                // uv3 = (glyph_start_x * max_width_per_cell,  glyph_start * max_height_per_cell)
+                *uv3 = 0xFF;
+                *uv2 = 0xFF;
+                *uv1 = 0xFF;
+                *uv0 = 0xFF;
+
+                // this one seemed promising but only works for the height and also.. i thought 
+                // this would have calclated thi value for width... so yeah
+                // f32(uv3 - texture_atlas_start) / f32((max_width_per_cell + margin_per_glyph + texture_atlas_left_padding)  * (glyphs_per_row + 3))
+
+
+                u32 start_x = glyph_start_x;
+
+                f32 f_uv3_x = start_x / f32(result_width);
+                f32 f_uv3_y = (uv3 - result_data) / result_width / f32(result_height);
+
+                f32 f_uv2_x = start_x / f32(result_width);
+                f32 f_uv2_y = (uv2 - result_data) / result_width / f32(result_height);
+
+                f32 f_uv1_x = start_x / f32(result_width) + (max_width_per_cell - 1) / f32(result_width);
+                f32 f_uv1_y = (uv1 - result_data) / result_width / f32(result_height);
+
+                f32 f_uv0_x = start_x / f32(result_width) + (max_width_per_cell - 1) / f32(result_width);
+                f32 f_uv0_y = (uv0 - result_data) / result_width / f32(result_height);
                 
                 glyph_start_x += max_width_per_cell + margin_per_glyph + face->glyph->bitmap_left;
-                //glyph_start_x += face->glyph->bitmap.width;
-
             }
             count++;
         }
     }
+    result.width = result_width;
+    result.height = result_height;
+    result.size = result_size;
+
+
+    result.data = result_data; // space for 4 glyphs
     return result;
 }
 /*

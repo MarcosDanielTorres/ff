@@ -377,18 +377,43 @@ test_packer()
 
 
                 u32 start_x = glyph_start_x;
+                int x0 = glyph_start_x;                    // left
+				int x1 = glyph_start_x + face->glyph->bitmap.width - 1;        // right
+				int y0 = glyph_start_y;                    // top
+				int y1 = glyph_start_y + face->glyph->bitmap.rows - 1;         // bottom
 
-                f32 f_uv3_x = start_x / f32(result_width);
-                f32 f_uv3_y = (uv3 - result_data) / result_width / f32(result_height);
+				// Norm. UVs:
+				float u0 = float(x0) / float(result_width);
+				float v0 = float(y0) / float(result_height);
 
-                f32 f_uv2_x = start_x / f32(result_width);
-                f32 f_uv2_y = (uv2 - result_data) / result_width / f32(result_height);
+				float u1 = float(x1) / float(result_width);
+				float v1 = float(y1) / float(result_height);
 
-                f32 f_uv1_x = start_x / f32(result_width) + (max_width_per_cell - 1) / f32(result_width);
-                f32 f_uv1_y = (uv1 - result_data) / result_width / f32(result_height);
+                //f32 f_uv3_x = start_x / f32(result_width);
+                //f32 f_uv3_x = f32((uv3 - result_data) % result_width) / f32(result_width);
+                //f32 f_uv3_y = (uv3 - result_data) / result_width / f32(result_height);
+                f32 f_uv3_x = u0;
+                f32 f_uv3_y = v0;
 
-                f32 f_uv0_x = start_x / f32(result_width) + (max_width_per_cell - 1) / f32(result_width);
-                f32 f_uv0_y = (uv0 - result_data) / result_width / f32(result_height);
+                //f32 f_uv2_x = start_x / f32(result_width);
+                //f32 f_uv2_x = f32((uv2 - result_data) % result_width) / f32(result_width);
+                //f32 f_uv2_y = (uv2 - result_data) / result_width / f32(result_height);
+                //f32 f_uv2_x = u1;
+                //f32 f_uv2_y = v1;
+
+                //f32 f_uv1_x = start_x / f32(result_width) + (face->glyph->bitmap.width) / f32(result_width);
+                //f32 f_uv1_x = f32((uv1 - result_data) % result_width) / f32(result_width);
+                //f32 f_uv1_y = (uv1 - result_data) / result_width / f32(result_height);
+                f32 f_uv1_x = u1;
+                f32 f_uv1_y = v1;
+
+                //f32 f_uv0_x = start_x / f32(result_width) + (face->glyph->bitmap.width) / f32(result_width);
+                //f32 f_uv0_x = f32((uv0 - result_data) % result_width) / f32(result_width);
+                //f32 f_uv0_y = (uv0 - result_data) / result_width / f32(result_height);
+                //f32 f_uv0_x = u0;
+                //f32 f_uv0_y = v0;
+
+
                 
                 glyph_start_x += max_width_per_cell + margin_per_glyph + face->glyph->bitmap_left;
             }

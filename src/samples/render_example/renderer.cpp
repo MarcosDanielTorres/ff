@@ -94,8 +94,11 @@ push_glyph(UIRenderGroup *render_group, FontGlyph *glyph, f32 x, f32 baseline)
     glm::vec2 uv1 = glm::vec2(glyph_uv1_x, glyph_uv1_y);
     glm::vec2 uv2 = glm::vec2(glyph_uv2_x, glyph_uv2_y);
     glm::vec2 uv3 = glm::vec2(glyph_uv3_x, glyph_uv3_y);
-    // TODO verificar que descent = (glyph_height - glyph_top)
-    // descent + glyph_top == glyph_height
+    /* NOTE 
+        descent = glyph_height - glyph_top
+        ascent = glyph_top
+        glyph_height = descent + glyph_top
+    */ 
     const glm::vec3 quad_points[4] = 
     {
         glm::vec3(x + glyph_left, baseline + (glyph_height - glyph_top), 0),

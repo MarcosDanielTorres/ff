@@ -26,11 +26,18 @@
 #include "base/base_arena.h"
 #include "base/base_string.h"
 #include "os/os_core.h"
+#include "draw/draw.h"
+#include "font/font.h"
+
+
 #include "base/base_arena.cpp"
 #include "base/base_string.cpp"
 #include "os/os_core.cpp"
+#include "font/font.cpp"
 #include "input/input.h"
+
 typedef Input GameInput;
+
 
 #include "bindings/opengl_bindings.cpp"
 #include "camera.h"
@@ -48,6 +55,35 @@ using namespace aim::Components;
 
 static Arena g_arena;
 static Arena g_transient_arena;
+
+// TODO move away from here!
+struct UIVertex
+{
+    glm::vec3 p;
+    glm::vec2 uv;
+    glm::vec4 c;
+};
+
+struct UIRenderGroup
+{
+    GLint ortho_proj;
+    GLint texture_sampler;
+    u32 program_id; 
+
+    u32 vbo, vao, ebo;
+    GLuint tex;
+    UIVertex *vertex_array;
+    u32 vertex_count;
+    u16 *index_array;
+    u32 index_count;
+};
+struct UIState
+{
+    // TODO probably should have its own memory. After I remove std first!
+    FontInfo font_info;
+    glm::mat4 ortho_proj;
+    UIRenderGroup *render_group;
+};
 
 #include "renderer.cpp"
 #include "renderer/opengl_renderer.cpp"
@@ -486,12 +522,6 @@ LRESULT CALLBACK win32_main_callback(HWND Window, UINT Message, WPARAM wParam, L
 
 
 
-struct UIState
-{
-    // TODO probably should have its own memory. After I remove std first!
-    glm::mat4 ortho_proj;
-    UIRenderGroup *render_group;
-};
 
 
 struct PlaceholderState
@@ -665,8 +695,11 @@ int main() {
     aim_profiler_begin();
     global_w32_window = os_win32_open_window("opengl", SRC_WIDTH, SRC_HEIGHT, win32_main_callback, 1);
 	
-	arena_init(&g_arena, mb(2));
+	arena_init(&g_arena, mb(20));
 	arena_init(&g_transient_arena, mb(2));
+
+    font_init();
+    FontInfo font_info = font_load(&g_arena);
 
     //os_win32_toggle_fullscreen(global_w32_window.handle, &global_w32_window.window_placement);
 
@@ -691,18 +724,25 @@ int main() {
     OpenGL* opengl = arena_push_size(&g_arena, OpenGL, 1);
     opengl_init(opengl, global_w32_window);
 
+
     // ui state init
     UIState *ui_state = arena_push_size(&g_arena, UIState, 1);
-    ui_state->ortho_proj = glm::ortho(0.0f, f32(SRC_WIDTH), f32(SRC_HEIGHT), 0.0f, -1.0f, 1.0f);
-
     UIRenderGroup *ui_render_group = arena_push_size(&g_arena, UIRenderGroup, 1);
-    ui_state->render_group = ui_render_group;
-    ui_render_group->vertex_array = arena_push_size(&g_arena, UIVertex, max_vertex_per_batch);
-    ui_render_group->index_array = arena_push_size(&g_arena, u16, max_index_per_batch);
-    ui_render_group->vertex_count = 0;
-    ui_render_group->index_count  = 0;
+    {
+        ui_state->ortho_proj = glm::ortho(0.0f, f32(SRC_WIDTH), f32(SRC_HEIGHT), 0.0f, -1.0f, 1.0f);
+        ui_state->render_group = ui_render_group;
+        ui_render_group->vertex_array = arena_push_size(&g_arena, UIVertex, max_vertex_per_batch);
+        ui_render_group->index_array = arena_push_size(&g_arena, u16, max_index_per_batch);
+        ui_render_group->vertex_count = 0;
+        ui_render_group->index_count  = 0;
 
-    init_ui(opengl, ui_render_group);
+        // fonts
+        ui_state->font_info = font_info;
+    }
+
+
+
+    init_ui(opengl, ui_state, ui_render_group);
     {
         /* TODO The biggest problem here is do I recreate the render group every frame or not
             Because why would I do this if I can instead save the points in each model? Which is why they do
@@ -720,16 +760,52 @@ int main() {
         push_quad(render_group, T1v, glm::vec3(0.5f), glm::vec4(0.0f, 1.0f, 0.0f, 1.0f));
         push_quad(render_group, T2v, glm::vec3(0.5f), glm::vec4(0.0f, 0.0f, 1.0f, 1.0f));
         */
-        const glm::vec3 T0v = {100.0f,  500.0f, 0.0f};
-        const glm::vec3 T1v = {300.0f,  500.0f, 0.0f};
-        const glm::vec3 T2v = {300.0f,  300.0f, 0.0f};
-        const glm::vec3 T3v = {100.0f,  300.0f, 0.0f};
 
+        glm::vec2 a_uv0 = glm::vec2(0.0084, 0.2256);
+        glm::vec2 a_uv1 = glm::vec2(0.0462, 0.2256);
+        glm::vec2 a_uv3 = glm::vec2(0.0084, 0.1429);
+        glm::vec2 a_uv2 = glm::vec2(0.0462, 0.1429);
+
+        #if 0
+        // for fonts:
+        #if 0
+        int w = glyph.bitmap.width;
+        int h = glyph.bitmap.height;
+        #else
+        TestPackerResult jaja = test_packer();
+        int w = jaja.width;
+        int h = jaja.height;
+        #endif
+
+        const glm::vec3 T0v = {100.0f,  500.0f, 0.0f};
+        const glm::vec3 T1v = {100.0f + w,  500.0f, 0.0f};
+        const glm::vec3 T2v = {100.0f + w,  500.0f - h, 0.0f};
+        const glm::vec3 T3v = {100.0f,  500.0f - h, 0.0f};
+        glm::vec2 uv0 = glm::vec2(0, 1);
+        glm::vec2 uv1 = glm::vec2(1, 1);
+        glm::vec2 uv2 = glm::vec2(1, 0);
+        glm::vec2 uv3 = glm::vec2(0, 0);
         const glm::vec3 rect_points[4] = {T0v, T1v, T2v, T3v};
-        push_rect(ui_render_group, rect_points);
+        push_rect(ui_render_group, rect_points, uv0, uv1, uv2, uv3);
+        #endif
+
+
+        // TODO fix put it into the update!
+        {
+            char buf[100];
+            char *at = buf;
+            char *end = buf + sizeof(buf);
+            const char* c  = "Mouse screen coordinates: (%.2f, %.2f)!";
+            
+            f32 mouse_p_x = global_input.curr_mouse_state.x;
+            f32 mouse_p_y = global_input.curr_mouse_state.y;
+            _snprintf_s(at, (size_t)(end - at), (size_t)(end - at), c, mouse_p_x, mouse_p_y);
+            push_text(ui_state, at, 200, 400);
+        }
+
         glm::vec3 tri_points[3] = {glm::vec3(500.0f, 500.0f, 0.0f), glm::vec3(600.0f, 500.0f, 0.0f), glm::vec3(450.0f, 300.0f, 0.0f)};
         u16 tri_indices[3] = {0, 1, 2};
-        push_triangle(ui_render_group, tri_points, tri_indices);
+        //push_triangle(ui_render_group, tri_points, tri_indices);
     }
 
     // uniform init

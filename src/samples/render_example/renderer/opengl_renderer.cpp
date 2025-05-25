@@ -262,8 +262,8 @@ test_packer(UIState *ui_state)
         FT_Error set_char_size_err = FT_Set_Char_Size(face, 4 * 64, 4 * 64, 300, 300);
         // NOTE If `glyph_count` is not even everything goes to hell!!!
         // TODO fix this  hahah wtf is going on!?!?!?
-        u32 glyph_count = u32('z') - u32('A') + 1;
-        u32 glyphs_per_row = round(sqrtf(u32('z') - u32('A') + 1));
+        u32 glyph_count = u32('~') - u32('!') + 1;
+        u32 glyphs_per_row = round(sqrtf(glyph_count));
         glyphs_per_row = 14;
         //glyph_count = 8;
         printf("Glyph count: %d\n", glyph_count);
@@ -308,7 +308,7 @@ test_packer(UIState *ui_state)
         u32 glyph_start_y = 0;
         u32 count = 0;
         //for(u32 glyph_index = min_index; glyph_index <= max_index; glyph_index++) 
-        for(u32 codepoint = 'A'; codepoint <= 'z'; codepoint++) 
+        for(u32 codepoint = '!'; codepoint <= '~'; codepoint++) 
         {
 
             if((count % (glyphs_per_row + 1)) == 0)

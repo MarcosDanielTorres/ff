@@ -789,7 +789,19 @@ int main() {
         push_rect(ui_render_group, rect_points, uv0, uv1, uv2, uv3);
         #endif
 
-        push_text(ui_state, (char*)"Mouse coordinates in screen space", 200, 400);
+
+        // TODO fix put it into the update!
+        {
+            char buf[100];
+            char *at = buf;
+            char *end = buf + sizeof(buf);
+            const char* c  = "Mouse screen coordinates: (%.2f, %.2f)!";
+            
+            f32 mouse_p_x = global_input.curr_mouse_state.x;
+            f32 mouse_p_y = global_input.curr_mouse_state.y;
+            _snprintf_s(at, (size_t)(end - at), (size_t)(end - at), c, mouse_p_x, mouse_p_y);
+            push_text(ui_state, at, 200, 400);
+        }
 
         glm::vec3 tri_points[3] = {glm::vec3(500.0f, 500.0f, 0.0f), glm::vec3(600.0f, 500.0f, 0.0f), glm::vec3(450.0f, 300.0f, 0.0f)};
         u16 tri_indices[3] = {0, 1, 2};

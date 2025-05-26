@@ -456,22 +456,22 @@ test_packer(UIState *ui_state)
 */
 
 internal void
-init_ui(OpenGL *opengl, UIState *ui_state, UIRenderGroup* render_group)
+init_ui(OpenGL *opengl, UIState *ui_state)
 {
     u32 program_id = create_program(opengl, str8("ui_quad.vs.glsl"), str8("ui_quad.fs.glsl"));
     if(program_id)
     {
-        render_group->program_id = program_id;
+        ui_state->program_id = program_id;
 
-        opengl->glGenVertexArrays(1, &render_group->vao);
-        opengl->glGenBuffers(1, &render_group->vbo);
-        opengl->glGenBuffers(1, &render_group->ebo);
-        glGenTextures(1, &render_group->tex);
+        opengl->glGenVertexArrays(1, &ui_state->vao);
+        opengl->glGenBuffers(1, &ui_state->vbo);
+        opengl->glGenBuffers(1, &ui_state->ebo);
+        glGenTextures(1, &ui_state->tex);
 
-        opengl->glBindVertexArray(render_group->vao);
+        opengl->glBindVertexArray(ui_state->vao);
 
-        opengl->glBindBuffer(GL_ARRAY_BUFFER, render_group->vbo);
-        opengl->glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, render_group->ebo);
+        opengl->glBindBuffer(GL_ARRAY_BUFFER, ui_state->vbo);
+        opengl->glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ui_state->ebo);
 
         // position attribute
         opengl->glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(UIVertex), (void*)OffsetOf(UIVertex, p));
@@ -491,7 +491,7 @@ init_ui(OpenGL *opengl, UIState *ui_state, UIRenderGroup* render_group)
         TestPackerResult texture_atlas = test_packer(ui_state);
 
         glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
-        glBindTexture(GL_TEXTURE_2D, render_group->tex);
+        glBindTexture(GL_TEXTURE_2D, ui_state->tex);
         {
             int W = texture_atlas.width, H = texture_atlas.height;
             glTexImage2D(GL_TEXTURE_2D,
@@ -536,32 +536,32 @@ init_ui(OpenGL *opengl, UIState *ui_state, UIRenderGroup* render_group)
         glBindTexture(GL_TEXTURE_2D, 0);
         glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
 
-        render_group->ortho_proj = opengl->glGetUniformLocation(render_group->program_id, "ortho_proj");
-        render_group->texture_sampler = opengl->glGetUniformLocation(render_group->program_id, "texture_sampler");
+        ui_state->ortho_proj = opengl->glGetUniformLocation(ui_state->program_id, "ortho_proj");
+        ui_state->texture_sampler = opengl->glGetUniformLocation(ui_state->program_id, "texture_sampler");
 
         opengl->glBindVertexArray(0);
     }
 }
 
 internal void
-begin_ui_frame(OpenGL *opengl, UIRenderGroup *render_group)
+begin_ui_frame(OpenGL *opengl, UIState *ui_state, UIRenderGroup *render_group)
 {
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
     glDisable(GL_DEPTH_TEST);
-    opengl->glUseProgram(render_group->program_id);
-	opengl->glBindVertexArray(render_group->vao);
+    opengl->glUseProgram(ui_state->program_id);
+	opengl->glBindVertexArray(ui_state->vao);
 
-	opengl->glBindBuffer(GL_ARRAY_BUFFER, render_group->vbo);
+	opengl->glBindBuffer(GL_ARRAY_BUFFER, ui_state->vbo);
 	opengl->glBufferData(GL_ARRAY_BUFFER, render_group->vertex_count * sizeof(UIVertex), render_group->vertex_array, GL_STATIC_DRAW);
 
-    opengl->glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, render_group->ebo);
+    opengl->glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ui_state->ebo);
     opengl->glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(u16) * render_group->index_count, render_group->index_array, GL_STATIC_DRAW);
 
     // TODO see how im passing args!
     // glUniformMatrix4fv(p->orthographic, 1, GL_FALSE, (float*)&rg->orthographic);
     opengl->glActiveTexture(GL_TEXTURE0);
-    glBindTexture(GL_TEXTURE_2D, render_group->tex);
+    glBindTexture(GL_TEXTURE_2D, ui_state->tex);
 }
 
 internal void
@@ -663,7 +663,8 @@ void opengl_init(OpenGL *opengl, OS_Window window)
         if(swap_control_supported) {
             OpenGLSetFunction(wglSwapIntervalEXT);
             OpenGLSetFunction(wglGetSwapIntervalEXT);
-            if(opengl->wglSwapIntervalEXT(1)) 
+            // vsync: enable = 1, disable = 0
+            if(opengl->wglSwapIntervalEXT(0)) 
             {
                 opengl->vsynch = opengl->wglGetSwapIntervalEXT();
             }

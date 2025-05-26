@@ -66,12 +66,6 @@ struct UIVertex
 
 struct UIRenderGroup
 {
-    GLint ortho_proj;
-    GLint texture_sampler;
-    u32 program_id; 
-
-    u32 vbo, vao, ebo;
-    GLuint tex;
     UIVertex *vertex_array;
     u32 vertex_count;
     u16 *index_array;
@@ -79,9 +73,15 @@ struct UIRenderGroup
 };
 struct UIState
 {
+    GLint ortho_proj;
+    GLint texture_sampler;
+    u32 program_id; 
+
+    u32 vbo, vao, ebo;
+    GLuint tex;
     // TODO probably should have its own memory. After I remove std first!
     FontInfo font_info;
-    glm::mat4 ortho_proj;
+    glm::mat4 ortho_proj_mat;
     UIRenderGroup *render_group;
 };
 
@@ -677,10 +677,10 @@ void opengl_render (OpenGL *opengl, Camera *curr_camera, u32 cubeVAO,
             UIRenderGroup *ui_render_group = ui_state->render_group;
             // render ui
             // TODO this should only be done at resizes
-            begin_ui_frame(opengl, ui_render_group);
-            opengl->glUniformMatrix4fv(ui_render_group->ortho_proj, 1, GL_FALSE, &ui_state->ortho_proj[0][0]);
+            begin_ui_frame(opengl, ui_state, ui_render_group);
+            opengl->glUniformMatrix4fv(ui_state->ortho_proj, 1, GL_FALSE, &ui_state->ortho_proj_mat[0][0]);
             // TODO see wtf is a 0 there? Why is the texture sampler for?
-            opengl->glUniform1i(ui_render_group->texture_sampler, 0);
+            opengl->glUniform1i(ui_state->texture_sampler, 0);
             // TODO investigate if i have to set this value for the uniforms again or not!. 
 
             glDrawElements(GL_TRIANGLES, ui_render_group->index_count, GL_UNSIGNED_SHORT, 0); //era 18
@@ -727,22 +727,16 @@ int main() {
 
     // ui state init
     UIState *ui_state = arena_push_size(&g_arena, UIState, 1);
-    UIRenderGroup *ui_render_group = arena_push_size(&g_arena, UIRenderGroup, 1);
     {
-        ui_state->ortho_proj = glm::ortho(0.0f, f32(SRC_WIDTH), f32(SRC_HEIGHT), 0.0f, -1.0f, 1.0f);
-        ui_state->render_group = ui_render_group;
-        ui_render_group->vertex_array = arena_push_size(&g_arena, UIVertex, max_vertex_per_batch);
-        ui_render_group->index_array = arena_push_size(&g_arena, u16, max_index_per_batch);
-        ui_render_group->vertex_count = 0;
-        ui_render_group->index_count  = 0;
-
+        ui_state->ortho_proj_mat = glm::ortho(0.0f, f32(SRC_WIDTH), f32(SRC_HEIGHT), 0.0f, -1.0f, 1.0f);
         // fonts
         ui_state->font_info = font_info;
     }
 
 
 
-    init_ui(opengl, ui_state, ui_render_group);
+    init_ui(opengl, ui_state);
+    #if 0
     {
         /* TODO The biggest problem here is do I recreate the render group every frame or not
             Because why would I do this if I can instead save the points in each model? Which is why they do
@@ -807,6 +801,7 @@ int main() {
         u16 tri_indices[3] = {0, 1, 2};
         //push_triangle(ui_render_group, tri_points, tri_indices);
     }
+    #endif
 
     // uniform init
     size_t uniform_matrix_buffer_size = 3 * sizeof(glm::mat4);
@@ -1141,7 +1136,25 @@ int main() {
         LONGLONG dt_long = now - last_frame;
         last_frame = now;
         f32 dt = aim_timer_ticks_to_sec(dt_long, frequency);
+        f32 dt_ms = aim_timer_ticks_to_ms(dt_long, frequency);
+        TempArena per_frame = temp_begin(&g_transient_arena);
+
+        UIRenderGroup *ui_render_group = arena_push_size(per_frame.arena, UIRenderGroup, 1);
+        ui_state->render_group = ui_render_group;
+        ui_render_group->vertex_array = arena_push_size(per_frame.arena, UIVertex, max_vertex_per_batch);
+        ui_render_group->index_array = arena_push_size(per_frame.arena, u16, max_index_per_batch);
+        ui_render_group->vertex_count = 0;
+        ui_render_group->index_count  = 0;
+
         global_input.dt = dt;
+        {
+            char buf[100];
+            char *at = buf;
+            char *end = buf + sizeof(buf);
+            const char* c  = "Frame time: %.4fms";
+            _snprintf_s(at, (size_t)(end - at), (size_t)(end - at), c, dt_ms);
+            push_text(ui_state, at, 200, 400);
+        }
 
         win32_process_pending_msgs();
         if (input_is_key_pressed(&global_input, Keys_W))
@@ -1170,6 +1183,7 @@ int main() {
 
         input_update(&global_input);
         SwapBuffers(hdc);
+        temp_end(per_frame);
     }
     ReleaseDC(global_w32_window.handle, hdc);
 	aim_profiler_end();

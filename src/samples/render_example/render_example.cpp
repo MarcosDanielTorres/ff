@@ -528,7 +528,8 @@ struct PlaceholderState
 {
     // TODO probably should have its own memory. After I remove std first!
     glm::mat4 persp_proj;
-    Model *model;
+    //ModelInstance *instances;
+    InstancesHolder *instances;
     u32 nonskinned_pid;
     u32 skinned_pid;
 };
@@ -599,7 +600,8 @@ void opengl_render (OpenGL *opengl, Camera *curr_camera, u32 cubeVAO,
 
         // render model
         {
-            Model *woman = placeholder_state->model;
+            InstancesHolder *instances = placeholder_state->instances;
+            Model *woman = instances->model;
             std::vector<glm::mat4> matrixData;
             matrixData.emplace_back(view);
             matrixData.emplace_back(placeholder_state->persp_proj);
@@ -633,41 +635,43 @@ void opengl_render (OpenGL *opengl, Camera *curr_camera, u32 cubeVAO,
             #else
             /* animated models */
 
+            for(u32 i = 0; i < instances->count; i++)
+            {
+                if (!woman->mAnimClips.empty() && !instances->mInstanceSettings[i].mBoneMatrices.empty()) {
+                //if (!(model->mAnimClips.empty()) && !modelType.second.at(0)->getBoneMatrices().empty()) {
+                    //size_t numberOfBones = model->getBoneList().size();
+                    size_t numberOfBones = woman->mBoneList.size();
 
-            if (!woman->mAnimClips.empty() && !woman->mBoneMatrices.empty()) {
-            //if (!(model->mAnimClips.empty()) && !modelType.second.at(0)->getBoneMatrices().empty()) {
-                //size_t numberOfBones = model->getBoneList().size();
-                size_t numberOfBones = woman->mBoneList.size();
+                    //mMatrixGenerateTimer.start();
+                    mModelBoneMatrices.clear();
 
-                //mMatrixGenerateTimer.start();
-                mModelBoneMatrices.clear();
+                    //for (unsigned int i = 0; i < numberOfInstances; ++i) 
+                    //for (unsigned int i = 0; i < 1; ++i) 
+                    {
+                        //modelType.second.at(i)->updateAnimation(deltaTime);
+                        instances->mInstanceSettings[i].updateAnimation(dt, woman);
+                        //std::vector<glm::mat4> instanceBoneMatrices = modelType.second.at(i)->getBoneMatrices();
+                        std::vector<glm::mat4> instanceBoneMatrices = instances->mInstanceSettings[i].mBoneMatrices;
+                        mModelBoneMatrices.insert(mModelBoneMatrices.end(), instanceBoneMatrices.begin(), instanceBoneMatrices.end());
+                    }
 
-                //for (unsigned int i = 0; i < numberOfInstances; ++i) 
-                for (unsigned int i = 0; i < 1; ++i) 
-                {
-                    //modelType.second.at(i)->updateAnimation(deltaTime);
-                    woman->updateAnimation(dt);
-                    //std::vector<glm::mat4> instanceBoneMatrices = modelType.second.at(i)->getBoneMatrices();
-                    std::vector<glm::mat4> instanceBoneMatrices = woman->mBoneMatrices;
-                    mModelBoneMatrices.insert(mModelBoneMatrices.end(), instanceBoneMatrices.begin(), instanceBoneMatrices.end());
+                    //mRenderData.rdMatrixGenerateTime += mMatrixGenerateTimer.stop();
+                    //mRenderData.rdMatricesSize += mModelBoneMatrices.size() * sizeof(glm::mat4);
+
+                    //mAssimpSkinningShader.use();
+                    //mUploadToUBOTimer.start();
+
+                    opengl->glUseProgram(placeholder_state->skinned_pid);
+                    opengl->glUniform1i(opengl->glGetUniformLocation(placeholder_state->skinned_pid, "aModelStride"), numberOfBones);
+                    //mAssimpSkinningShader.setUniformValue(numberOfBones);
+                    mShaderBoneMatrixBuffer.uploadSsboData(opengl, mModelBoneMatrices, 1);
+                    //mAssimpSkinningShader.use();
+                    //mAssimpSkinningShader.setUniformValue(numberOfBones);
+                    //mShaderBoneMatrixBuffer.uploadSsboData(opengl, mModelBoneMatrices, 1);
+                    //mRenderData.rdUploadToUBOTime += mUploadToUBOTimer.stop();
+
+                    drawInstanced(woman, opengl, 1);
                 }
-
-                //mRenderData.rdMatrixGenerateTime += mMatrixGenerateTimer.stop();
-                //mRenderData.rdMatricesSize += mModelBoneMatrices.size() * sizeof(glm::mat4);
-
-                //mAssimpSkinningShader.use();
-                //mUploadToUBOTimer.start();
-
-                opengl->glUseProgram(placeholder_state->skinned_pid);
-                opengl->glUniform1i(opengl->glGetUniformLocation(placeholder_state->skinned_pid, "aModelStride"), numberOfBones);
-                //mAssimpSkinningShader.setUniformValue(numberOfBones);
-                mShaderBoneMatrixBuffer.uploadSsboData(opengl, mModelBoneMatrices, 1);
-                //mAssimpSkinningShader.use();
-                //mAssimpSkinningShader.setUniformValue(numberOfBones);
-                //mShaderBoneMatrixBuffer.uploadSsboData(opengl, mModelBoneMatrices, 1);
-                //mRenderData.rdUploadToUBOTime += mUploadToUBOTimer.stop();
-
-                drawInstanced(woman, opengl, 1);
             }
             #endif
             opengl->glUseProgram(0);
@@ -821,8 +825,11 @@ int main() {
     placeholder_state->nonskinned_pid = create_program(opengl, str8("assimp.vert"), str8("assimp.frag"));
     placeholder_state->skinned_pid = create_program(opengl, str8("assimp_skinning.vert"), str8("assimp_skinning.frag"));
     placeholder_state->persp_proj = glm::perspective(glm::radians(curr_camera->zoom), (float)SRC_WIDTH / (float)SRC_HEIGHT, 0.1f, 10000.0f);
-    //placeholder_state->model = load_model(opengl, "C:/Users/marcos/Desktop/Mastering-Cpp-Game-Animation-Programming/chapter01/01_opengl_assimp/assets/woman/Woman.gltf");
-    placeholder_state->model = load_model(opengl, "E:/Mastering-Cpp-Game-Animation-Programming/chapter01/01_opengl_assimp/assets/woman/Woman.gltf");
+    placeholder_state->instances = new InstancesHolder();
+
+    //const char *model_filepath = "C:/Users/marcos/Desktop/Mastering-Cpp-Game-Animation-Programming/chapter01/01_opengl_assimp/assets/woman/Woman.gltf";
+    const char *model_filepath = "E:/Mastering-Cpp-Game-Animation-Programming/chapter01/01_opengl_assimp/assets/woman/Woman.gltf";
+    add_instances(opengl, placeholder_state->instances, model_filepath, 10);
 
     f32 pre_transformed_quad[] = 
     {
@@ -1175,6 +1182,7 @@ int main() {
             f32 yy = global_input.dy;
             curr_camera->process_mouse_movement(xx, yy);
         }
+
         update_and_render(placeholder_state);
 
         //glPolygonMode( GL_FRONT_AND_BACK, GL_LINE);

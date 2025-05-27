@@ -308,17 +308,7 @@ glm::mat4 convertAiToGLM(aiMatrix4x4 inMat) {
   };
 }
 
-struct InstanceSettings
-{
-    glm::vec3 isWorldPosition = glm::vec3(0.0f);
-    glm::vec3 isWorldRotation = glm::vec3(0.0f);
-    float isScale = 1.0f;
-    bool isSwapYZAxis = false;
 
-    unsigned int isAnimClipNr = 0;
-    float isAnimPlayTimePos = 0.0f;
-    float isAnimSpeedFactor = 1.0f;
-};
 
 struct AssimpAnimChannel 
 {
@@ -606,9 +596,19 @@ struct Model
     Texture *mWhiteTexture = nullptr;
 
 
-    /////////// Instancing ////////////
-    // TODO(Marcos): inspect this because they put all this info inside AssimpInstance
-    InstanceSettings mInstanceSettings{};
+
+};
+
+struct InstanceSettings
+{
+    glm::vec3 isWorldPosition = glm::vec3(0.0f);
+    glm::vec3 isWorldRotation = glm::vec3(0.0f);
+    float isScale = 1.0f;
+    bool isSwapYZAxis = false;
+
+    unsigned int isAnimClipNr = 0;
+    float isAnimPlayTimePos = 0.0f;
+    float isAnimSpeedFactor = 1.0f;
 
     glm::mat4 mLocalTranslationMatrix = glm::mat4(1.0f);
     glm::mat4 mLocalRotationMatrix = glm::mat4(1.0f);
@@ -623,65 +623,76 @@ struct Model
     {
         // NOTE(Marcos): This is not neccesary because we are the model
         #if 0
-        if (!mAssimpModel) {
+        if (!model) {
             //Logger::log(1, "%s error: invalid model\n", __FUNCTION__);
             return;
         }
         #endif
 
-        mLocalScaleMatrix = glm::scale(glm::mat4(1.0f), glm::vec3(mInstanceSettings.isScale));
+        mLocalScaleMatrix = glm::scale(glm::mat4(1.0f), glm::vec3(isScale));
 
-        if (mInstanceSettings.isSwapYZAxis) {
+        if (isSwapYZAxis) {
             glm::mat4 flipMatrix = glm::rotate(glm::mat4(1.0f), glm::radians(-90.0f), glm::vec3(0.0f, 0.0f, 1.0f));
             mLocalSwapAxisMatrix = glm::rotate(flipMatrix, glm::radians(-90.0f), glm::vec3(0.0f, 1.0f, 0.0f));
         } else {
             mLocalSwapAxisMatrix = glm::mat4(1.0f);
         }
 
-        mLocalRotationMatrix = glm::mat4_cast(glm::quat(glm::radians(mInstanceSettings.isWorldRotation)));
+        mLocalRotationMatrix = glm::mat4_cast(glm::quat(glm::radians(isWorldRotation)));
 
-        mLocalTranslationMatrix = glm::translate(glm::mat4(1.0f), mInstanceSettings.isWorldPosition);
+        mLocalTranslationMatrix = glm::translate(glm::mat4(1.0f), isWorldPosition);
 
         mLocalTransformMatrix = mLocalTranslationMatrix * mLocalRotationMatrix * mLocalSwapAxisMatrix * mLocalScaleMatrix;
     }
 
 
-    void updateAnimation(float deltaTime) 
+    // TODO this is not going to work for more than 1 instance!
+    void updateAnimation(float deltaTime, Model* model) 
     {
-        mInstanceSettings.isAnimPlayTimePos += deltaTime * mAnimClips.at(mInstanceSettings.isAnimClipNr)->mClipTicksPerSecond * mInstanceSettings.isAnimSpeedFactor;
-        mInstanceSettings.isAnimPlayTimePos = fmod(mInstanceSettings.isAnimPlayTimePos, mAnimClips.at(mInstanceSettings.isAnimClipNr)->mClipDuration);
+        isAnimPlayTimePos += deltaTime * model->mAnimClips.at(isAnimClipNr)->mClipTicksPerSecond * isAnimSpeedFactor;
+        isAnimPlayTimePos = fmod(isAnimPlayTimePos, model->mAnimClips.at(isAnimClipNr)->mClipDuration);
 
-        std::vector<AssimpAnimChannel*> animChannels = mAnimClips.at(mInstanceSettings.isAnimClipNr)->mAnimChannels;
+        std::vector<AssimpAnimChannel*> animChannels = model->mAnimClips.at(isAnimClipNr)->mAnimChannels;
 
         /* animate clip via channels */
         for (const auto& channel : animChannels) {
             std::string nodeNameToAnimate = channel->getTargetNodeName();
-            Node *node = mNodeMap.at(nodeNameToAnimate);
+            Node *node = model->mNodeMap.at(nodeNameToAnimate);
 
-            node->setRotation(channel->getRotation(mInstanceSettings.isAnimPlayTimePos));
-            node->setScaling(channel->getScaling(mInstanceSettings.isAnimPlayTimePos));
-            node->setTranslation(channel->getTranslation(mInstanceSettings.isAnimPlayTimePos));
+            node->setRotation(channel->getRotation(isAnimPlayTimePos));
+            node->setScaling(channel->getScaling(isAnimPlayTimePos));
+            node->setTranslation(channel->getTranslation(isAnimPlayTimePos));
         }
 
         /* set root node transform matrix, enabling instance movement */
-        mRootNode->mRootTransformMatrix = mLocalTransformMatrix * mRootTransformMatrix;
+        model->mRootNode->mRootTransformMatrix = mLocalTransformMatrix * model->mRootTransformMatrix;
 
         /* flat node map contains nodes in parent->child order, starting with root node, update matrices down the skeleton tree */
         mBoneMatrices.clear();
-        for (auto& node : mNodeList) {
+        for (auto& node : model->mNodeList) {
             std::string nodeName = node->nodeName;
             node->updateTRSMatrix();
-            if (mBoneOffsetMatrices.count(nodeName) > 0) {
-                mBoneMatrices.emplace_back(mNodeMap.at(nodeName)->getTRSMatrix() * mBoneOffsetMatrices.at(nodeName));
+            if (model->mBoneOffsetMatrices.count(nodeName) > 0) {
+                mBoneMatrices.emplace_back(model->mNodeMap.at(nodeName)->getTRSMatrix() * model->mBoneOffsetMatrices.at(nodeName));
             }
         }
     }
+};
+
+struct InstancesHolder
+{
+    /////////// Instancing ////////////
+    // TODO(Marcos): inspect this because they put all this info inside AssimpInstance
+
+
+    Model *model;
+    //InstanceSettings *mInstanceSettings;
+    InstanceSettings *mInstanceSettings = new InstanceSettings[4000];
+    u32 count;
+
     /////////// Instancing ////////////
 
 };
-
-
-
 
 Node *createNode(std::string nodeName)
 {
@@ -1089,38 +1100,127 @@ load_model(OpenGL *opengl, const char* model_filepath)
         //Logger::log(1, "%s: - model has a total of %i animation%s\n", __FUNCTION__, numAnims, numAnims == 1 ? "" : "s");
 
         //Logger::log(1, "%s: successfully loaded model '%s' (%s)\n", __FUNCTION__, modelFilename.c_str(), mModelFilename.c_str());
+    
+    return model;
+}
+
+/*
+    Two options:
+    - arrays of model instances of the same type
+        ModelInstance *cubes;
+        ModelInstance *npcs;
+
+        struct ModelInstance
+        {
+            1 model = *Model
+            many configs array of configs
+            count
+        };
+
+    - arrays of model instances of different types
+        array<ModelInstance> instances;
+        struct ModelInstance
+        {
+            *Model
+            config
+        };
 
 
-        /////////////// instancing/////////////
+In the book they can have multiple instances for multiple models! Here I don't give a fuck.
+*/
 
-        // NOTE(Marcos): This is not neccesary because we are the model
-        #if 0
-        if (!model) {
-            //Logger::log(1, "%s error: invalid model given\n", __FUNCTION__);
-            return;
-        }
-        #endif
+internal void 
+add_instances(OpenGL *opengl, InstancesHolder *instance, const char* model_filepath, u32 instances_amount)
+{
+    // TODO for option 1 ModelInstance as a name doesn't have much sense!
+    glm::vec3 position = glm::vec3(0.0f);
+    glm::vec3 rotation = glm::vec3(0.0f);
+    float modelScale = 1.0f;
 
-         
-        // NOTE(Marcos): This are in a constructor by default
-        glm::vec3 position = glm::vec3(0.0f);
-        glm::vec3 rotation = glm::vec3(0.0f);
-        float modelScale = 1.0f;
-        model->mInstanceSettings.isWorldPosition = position;
-        model->mInstanceSettings.isWorldRotation = rotation;
-        model->mInstanceSettings.isScale = modelScale;
-
-        /* we need one 4x4 matrix for every bone */
-        model->mBoneMatrices.resize(model->mBoneList.size());
-        std::fill(model->mBoneMatrices.begin(), model->mBoneMatrices.end(), glm::mat4(1.0f));
-
-        model->updateModelRootMatrix();
-
-        // Note(Marcos): This is just for profiling
-        // updateTriangleCount() 
-
-        /////////////// instancing/////////////
-
-        
-        return model;
+    if(!instance->model)
+    {
+        // if this option 1 then its good, if not its not
+        instance->model = load_model(opengl, model_filepath);
     }
+
+    //if(instances_amount > 1)
+    {
+        size_t animClipNum = instance->model->mAnimClips.size();
+        for (int i = 0; i < instances_amount; ++i) 
+        {
+            int xPos = std::rand() % 50 - 25;
+            int zPos = std::rand() % 50 - 25;
+            int rot = std::rand() % 360 - 180;
+            int clipNr = std::rand() % animClipNum;
+
+            //ModelInstance newInstance = new ModelInstance(model, glm::vec3(xPos, 0.0f, zPos), glm::vec3(0.0f, rotation, 0.0f));
+            //InstanceSettings *curr_settings = instance->mInstanceSettings + instance->count;
+            InstanceSettings *curr_settings = &instance->mInstanceSettings[instance->count];
+            curr_settings->isWorldPosition = glm::vec3(xPos, 0.0f, zPos);
+            curr_settings->isWorldRotation = glm::vec3(0.0f, rot, 0.0f);
+            curr_settings->isScale = modelScale;
+
+
+            if (animClipNum > 0) 
+            {
+                curr_settings->isAnimClipNr = clipNr;
+            }
+
+            /* we need one 4x4 matrix for every bone */
+            curr_settings->mBoneMatrices.resize(instance->model->mBoneList.size());
+            std::fill(curr_settings->mBoneMatrices.begin(), curr_settings->mBoneMatrices.end(), glm::mat4(1.0f));
+            curr_settings->updateModelRootMatrix();
+
+            // TODO esto no anda jajaja o sea incremento el count pero despues el updateAnimation se hace con el ultimo count, que es 1 y esta vacio ahi
+            instance->count++;
+
+            //mModelInstData.miAssimpInstances.emplace_back(newInstance);
+            //mModelInstData.miAssimpInstancesPerModel[model->getModelFileName()].emplace_back(newInstance);
+        }
+    }
+
+    #if 0
+    // NOTE(Marcos): This are in a constructor by default
+    glm::vec3 position = glm::vec3(0.0f);
+    glm::vec3 rotation = glm::vec3(0.0f);
+    float modelScale = 1.0f;
+    instance->mInstanceSettings.isWorldPosition = position;
+    instance->mInstanceSettings.isWorldRotation = rotation;
+    instance->mInstanceSettings.isScale = modelScale;
+
+    /* we need one 4x4 matrix for every bone */
+    instance->mBoneMatrices.resize(instance->model->mBoneList.size());
+    std::fill(instance->mBoneMatrices.begin(), instance->mBoneMatrices.end(), glm::mat4(1.0f));
+
+    curr_settings->updateModelRootMatrix();
+
+    // Note(Marcos): This is just for profiling
+    // updateTriangleCount() 
+
+    #endif
+
+    #if 0
+    size_t animClipNum = model->mAnimClips.size();
+    for (int i = 0; i < instances_amount; ++i) 
+    {
+        int xPos = std::rand() % 50 - 25;
+        int zPos = std::rand() % 50 - 25;
+        int rotation = std::rand() % 360 - 180;
+        int clipNr = std::rand() % animClipNum;
+        instance->mInstanceSettings.isWorldPosition = position;
+        instance->mInstanceSettings.isWorldRotation = rotation;
+        instance->mInstanceSettings.isScale = modelScale;
+
+        ModelInstance newInstance = new ModelInstance(model, glm::vec3(xPos, 0.0f, zPos), glm::vec3(0.0f, rotation, 0.0f));
+        if (animClipNum > 0) 
+        {
+            InstanceSettings instSettings = newInstance->getInstanceSettings();
+            instSettings.isAnimClipNr = clipNr;
+            newInstance->setInstanceSettings(instSettings);
+        }
+        mModelInstData.miAssimpInstances.emplace_back(newInstance);
+        mModelInstData.miAssimpInstancesPerModel[model->getModelFileName()].emplace_back(newInstance);
+    }
+    instance->count += instance_count;
+    #endif
+}

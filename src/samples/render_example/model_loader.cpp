@@ -132,6 +132,13 @@ struct Mesh
 
 };
 
+struct NodeTransformData
+{
+    glm::vec4 translation = glm::vec4(0.0f);
+    glm::vec4 scale = glm::vec4(1.0f);
+    glm::vec4 rotation = glm::vec4(1.0f, 0.0f, 0.0f, 0.0f);
+};
+
 struct Node
 {
     std::string nodeName;
@@ -312,6 +319,24 @@ glm::mat4 convertAiToGLM(aiMatrix4x4 inMat) {
 
 struct AssimpAnimChannel 
 {
+    std::string mNodeName;
+    /* use separate timinigs vectors, just in case not all keys have the same time */
+    std::vector<float> mTranslationTiminngs{};
+    std::vector<float> mInverseTranslationTimeDiffs{};
+    std::vector<float> mRotationTiminigs{};
+    std::vector<float> mInverseRotationTimeDiffs{};
+    std::vector<float> mScaleTimings{};
+    std::vector<float> mInverseScaleTimeDiffs{};
+
+    /* every entry here has the same index as the timing for that key type */
+    std::vector<glm::vec3> mTranslations{};
+    std::vector<glm::vec3> mScalings{};
+    std::vector<glm::quat> mRotations{};
+
+    unsigned int mPreState = 0;
+    unsigned int mPostState = 0;
+    i32 mBoneId = -1;
+
     void loadChannelData(aiNodeAnim* nodeAnim)
     {
         mNodeName = nodeAnim->mNodeName.C_Str();
@@ -367,15 +392,16 @@ struct AssimpAnimChannel
         return Max(Max(maxRotationTime, maxTranslationTime), maxScaleTime);
     }
 
+    // GPU: this gets taken out from here and done in the compute shader!
     /* precalculate TRS matrix */
-    glm::mat4 getTRSMatrix(float time) {
-        return glm::translate(glm::mat4_cast(getRotation(time)) * glm::scale(glm::mat4(1.0f), getScaling(time)), getTranslation(time));
-    }
+    //glm::mat4 getTRSMatrix(float time) {
+    //    return glm::translate(glm::rotation(getRotation(time)) * glm::scale(glm::mat4(1.0f), getScaling(time)), getTranslation(time));
+    //}
 
-    glm::vec3 getTranslation(float time) 
+    glm::vec4 getTranslation(float time) 
     {
         if (mTranslations.empty()) {
-            return glm::vec3(0.0f);
+            return glm::vec4(0.0f);
         }
 
         /* handle time before and after */
@@ -383,13 +409,13 @@ struct AssimpAnimChannel
             case 0:
             /* do not change vertex position-> aiAnimBehaviour_DEFAULT */
             if (time < mTranslationTiminngs.at(0)) {
-                return glm::vec3(0.0f);
+                return glm::vec4(0.0f);
             }
             break;
             case 1:
             /* use value at zero time "aiAnimBehaviour_CONSTANT" */
             if (time < mTranslationTiminngs.at(0)) {
-                return mTranslations.at(0);
+                return glm::vec4(mTranslations.at(0), 1.0f);
             }
             break;
             default:
@@ -400,12 +426,12 @@ struct AssimpAnimChannel
         switch(mPostState) {
             case 0:
             if (time > mTranslationTiminngs.at(mTranslationTiminngs.size() - 1)) {
-                return glm::vec3(0.0f);
+                return glm::vec4(0.0f);
             }
             break;
             case 1:
             if (time >= mTranslationTiminngs.at(mTranslationTiminngs.size() - 1)) {
-                return mTranslations.at(mTranslations.size() - 1);
+                return glm::vec4(mTranslations.at(mTranslations.size() - 1), 1.0f);
             }
             break;
             default:
@@ -419,13 +445,13 @@ struct AssimpAnimChannel
 
         float interpolatedTime = (time - mTranslationTiminngs.at(timeIndex)) * mInverseTranslationTimeDiffs.at(timeIndex);
 
-        return glm::mix(mTranslations.at(timeIndex), mTranslations.at(timeIndex + 1), interpolatedTime);
+        return glm::vec4(glm::mix(mTranslations.at(timeIndex), mTranslations.at(timeIndex + 1), interpolatedTime), 1.0f);
     }
 
-    glm::vec3 getScaling(float time) 
+    glm::vec4 getScaling(float time) 
     {
         if (mScalings.empty()) {
-            return glm::vec3(1.0f);
+            return glm::vec4(1.0f);
         }
 
         /* handle time before and after */
@@ -433,13 +459,13 @@ struct AssimpAnimChannel
             case 0:
             /* do not change vertex position-> aiAnimBehaviour_DEFAULT */
             if (time < mScaleTimings.at(0)) {
-                return glm::vec3(0.0f);
+                return glm::vec4(0.0f);
             }
             break;
             case 1:
             /* use value at zero time "aiAnimBehaviour_CONSTANT" */
             if (time < mScaleTimings.at(0)) {
-                return mScalings.at(0);
+                return glm::vec4(mScalings.at(0), 1.0f);
             }
             break;
             default:
@@ -450,12 +476,12 @@ struct AssimpAnimChannel
         switch(mPostState) {
             case 0:
             if (time > mScaleTimings.at(mScaleTimings.size() - 1)) {
-                return glm::vec3(0.0f);
+                return glm::vec4(0.0f);
             }
             break;
             case 1:
             if (time >= mScaleTimings.at(mScaleTimings.size() - 1)) {
-                return mScalings.at(mScalings.size() - 1);
+                return glm::vec4(mScalings.at(mScalings.size() - 1), 1.0f);
             }
             break;
             default:
@@ -468,14 +494,14 @@ struct AssimpAnimChannel
 
         float interpolatedTime = (time - mScaleTimings.at(timeIndex)) * mInverseScaleTimeDiffs.at(timeIndex);
 
-        return glm::mix(mScalings.at(timeIndex), mScalings.at(timeIndex + 1), interpolatedTime);
+        return glm::vec4(glm::mix(mScalings.at(timeIndex), mScalings.at(timeIndex + 1), interpolatedTime), 1.0f);
     }
 
-    glm::quat getRotation(float time) 
+    glm::vec4 getRotation(float time) 
     {
         if (mRotations.empty()) 
         {
-            return glm::identity<glm::quat>();
+            return glm::vec4(1.0f, 0.0f, 0.0f, 0.0f);
         }
 
         /* handle time before and after */
@@ -483,13 +509,14 @@ struct AssimpAnimChannel
             case 0:
             /* do not change vertex position-> aiAnimBehaviour_DEFAULT */
             if (time < mRotationTiminigs.at(0)) {
-                return glm::identity<glm::quat>();
+                return glm::vec4(1.0f, 0.0f, 0.0f, 0.0f);
             }
             break;
             case 1:
             /* use value at zero time "aiAnimBehaviour_CONSTANT" */
             if (time < mRotationTiminigs.at(0)) {
-                return mRotations.at(0);
+                glm::quat rotation = mRotations.at(0);
+                return glm::vec4(rotation.x, rotation.y, rotation.z, rotation.w);
             }
             break;
             default:
@@ -500,12 +527,13 @@ struct AssimpAnimChannel
         switch(mPostState) {
             case 0:
             if (time > mRotationTiminigs.at(mRotationTiminigs.size() - 1)) {
-                return glm::identity<glm::quat>();
+                return glm::vec4(1.0f, 0.0f, 0.0f, 0.0f);
             }
             break;
             case 1:
             if (time >= mRotationTiminigs.at(mRotationTiminigs.size() - 1)) {
-                return mRotations.at(mRotations.size() - 1);
+                glm::quat rotation =  mRotations.at(mRotations.size() - 1);
+                return glm::vec4(rotation.x, rotation.y, rotation.z, rotation.w);
             }
             break;
             default:
@@ -521,32 +549,14 @@ struct AssimpAnimChannel
         float interpolatedTime = (time - mRotationTiminigs.at(timeIndex)) * mInverseRotationTimeDiffs.at(timeIndex);
 
         /* roiations are interpolated via SLERP */
-        return glm::normalize(glm::slerp(mRotations.at(timeIndex), mRotations.at(timeIndex + 1), interpolatedTime));
+        glm::quat rotation = glm::normalize(glm::slerp(mRotations.at(timeIndex), mRotations.at(timeIndex + 1), interpolatedTime));
+        return glm::vec4(rotation.x, rotation.y, rotation.z, rotation.w);
     }
-
-
-    std::string mNodeName;
-
-    /* use separate timinigs vectors, just in case not all keys have the same time */
-    std::vector<float> mTranslationTiminngs{};
-    std::vector<float> mInverseTranslationTimeDiffs{};
-    std::vector<float> mRotationTiminigs{};
-    std::vector<float> mInverseRotationTimeDiffs{};
-    std::vector<float> mScaleTimings{};
-    std::vector<float> mInverseScaleTimeDiffs{};
-
-    /* every entry here has the same index as the timing for that key type */
-    std::vector<glm::vec3> mTranslations{};
-    std::vector<glm::vec3> mScalings{};
-    std::vector<glm::quat> mRotations{};
-
-    unsigned int mPreState = 0;
-    unsigned int mPostState = 0;
 };
 
 struct AssimpAnimClip 
 {
-    void addChannels(aiAnimation* animation) 
+    void addChannels(aiAnimation* animation, std::vector<Bone*> boneList) 
     {
         mClipName = animation->mName.C_Str();
         mClipDuration = animation->mDuration;
@@ -554,12 +564,24 @@ struct AssimpAnimClip
 
         //Logger::log(1, "%s: - loading clip %s, duration %lf (%lf ticks per second)\n", __FUNCTION__, mClipName.c_str(), mClipDuration, mClipTicksPerSecond);
 
-        for (unsigned int i = 0; i < animation->mNumChannels; ++i) {
-        AssimpAnimChannel *channel = new AssimpAnimChannel();
+        for (unsigned int i = 0; i < animation->mNumChannels; ++i) 
+        {
+            // TODO(new) remove
+            AssimpAnimChannel *channel = new AssimpAnimChannel();
 
-        //Logger::log(1, "%s: -- loading channel %i for node '%s'\n", __FUNCTION__, i, animation->mChannels[i]->mNodeName.C_Str());
-        channel->loadChannelData(animation->mChannels[i]);
-        mAnimChannels.emplace_back(channel);
+            //Logger::log(1, "%s: -- loading channel %i for node '%s'\n", __FUNCTION__, i, animation->mChannels[i]->mNodeName.C_Str());
+            channel->loadChannelData(animation->mChannels[i]);
+
+            std::string targetNodeName = channel->getTargetNodeName();
+            const auto bonePos = std::find_if(boneList.begin(), boneList.end(),
+                [targetNodeName](Bone* bone) { return bone->mNodeName == targetNodeName; } );
+
+            if (bonePos != boneList.end()) 
+            {
+                channel->mBoneId = (*bonePos)->mBoneId;
+            }
+
+            mAnimChannels.emplace_back(channel);
         }
     }
 
@@ -581,22 +603,24 @@ struct Model
     std::vector<Node*> mNodeList{};
 
     std::vector<Bone*> mBoneList{};
-    std::unordered_map<std::string, glm::mat4> mBoneOffsetMatrices{};
 
     std::vector<AssimpAnimClip*> mAnimClips{};
+
 
     std::vector<OGLMesh> mModelMeshes;
     std::vector<VertexIndexBuffer> mVertexBuffers{};
 
-    glm::mat4 mRootTransformMatrix = glm::mat4(1.0f);
+
+    ShaderStorageBuffer mShaderBoneParentBuffer{};
+    ShaderStorageBuffer mShaderBoneMatrixOffsetBuffer{};
+
 
     // map textures to external or internal texture names
     std::unordered_map<std::string, Texture *> mTextures{};
     Texture *mPlaceholderTexture = nullptr;
     Texture *mWhiteTexture = nullptr;
 
-
-
+    glm::mat4 mRootTransformMatrix = glm::mat4(1.0f);
 };
 
 struct InstanceSettings
@@ -617,18 +641,19 @@ struct InstanceSettings
 
     glm::mat4 mLocalTransformMatrix = glm::mat4(1.0f);
 
-    std::vector<glm::mat4> mBoneMatrices{};
+    // gpu: agrega
+    glm::mat4 mInstanceRootMatrix = glm::mat4(1.0f);
+    glm::mat4 mModelRootMatrix = glm::mat4(1.0f);
 
+
+    // gpu: saca
+    //std::vector<glm::mat4> mBoneMatrices{};
+
+    std::vector<NodeTransformData> mNodeTransformData{};
+
+    //NOTE careful with this, its seems to have to be updated every time a transform changes
     void updateModelRootMatrix() 
     {
-        // NOTE(Marcos): This is not neccesary because we are the model
-        #if 0
-        if (!model) {
-            //Logger::log(1, "%s error: invalid model\n", __FUNCTION__);
-            return;
-        }
-        #endif
-
         mLocalScaleMatrix = glm::scale(glm::mat4(1.0f), glm::vec3(isScale));
 
         if (isSwapYZAxis) {
@@ -643,6 +668,7 @@ struct InstanceSettings
         mLocalTranslationMatrix = glm::translate(glm::mat4(1.0f), isWorldPosition);
 
         mLocalTransformMatrix = mLocalTranslationMatrix * mLocalRotationMatrix * mLocalSwapAxisMatrix * mLocalScaleMatrix;
+        mInstanceRootMatrix = mLocalTransformMatrix * mModelRootMatrix;
     }
 
 
@@ -654,16 +680,34 @@ struct InstanceSettings
 
         std::vector<AssimpAnimChannel*> animChannels = model->mAnimClips.at(isAnimClipNr)->mAnimChannels;
 
+        std::fill(mNodeTransformData.begin(), mNodeTransformData.end(), NodeTransformData{});
+
         /* animate clip via channels */
         for (const auto& channel : animChannels) {
             std::string nodeNameToAnimate = channel->getTargetNodeName();
-            Node *node = model->mNodeMap.at(nodeNameToAnimate);
+            #if 1
+            // GPU
+            NodeTransformData nodeTransform;
+            nodeTransform.translation = channel->getTranslation(isAnimPlayTimePos);
+            nodeTransform.scale = channel->getScaling(isAnimPlayTimePos);
+            nodeTransform.rotation = channel->getRotation(isAnimPlayTimePos);
 
+            int boneId = channel->mBoneId;
+            if (boneId >= 0) {
+                mNodeTransformData.at(boneId) = nodeTransform;
+            }
+
+            #else
+            // CPU
+            Node *node = model->mNodeMap.at(nodeNameToAnimate);
             node->setRotation(channel->getRotation(isAnimPlayTimePos));
             node->setScaling(channel->getScaling(isAnimPlayTimePos));
             node->setTranslation(channel->getTranslation(isAnimPlayTimePos));
+            #endif
         }
 
+        // CPU
+        #if 0
         /* set root node transform matrix, enabling instance movement */
         model->mRootNode->mRootTransformMatrix = mLocalTransformMatrix * model->mRootTransformMatrix;
 
@@ -676,6 +720,8 @@ struct InstanceSettings
                 mBoneMatrices.emplace_back(model->mNodeMap.at(nodeName)->getTRSMatrix() * model->mBoneOffsetMatrices.at(nodeName));
             }
         }
+        #endif
+        updateModelRootMatrix();
     }
 };
 
@@ -687,6 +733,7 @@ struct InstancesHolder
 
     Model *model;
     //InstanceSettings *mInstanceSettings;
+    // TODO(new): remove
     InstanceSettings *mInstanceSettings = new InstanceSettings[4000];
     u32 count;
 
@@ -696,6 +743,7 @@ struct InstancesHolder
 
 Node *createNode(std::string nodeName)
 {
+    // TODO(new): remove
     Node* node = new Node();
     node->nodeName = nodeName;
     node->mParentNode = {};
@@ -762,6 +810,7 @@ bool processMesh(OpenGL *opengl, Mesh *myMesh, aiMesh* mesh, const aiScene* scen
 
             // do not try to load internal textures
             if (!texName.empty() && texName.find("*") != 0) {
+    // TODO(new): remove
               Texture *newTex = new Texture();
               std::string texNameWithPath = assetDirectory + '/' + texName;
               if (!newTex->loadTexture(opengl, texNameWithPath)) {
@@ -838,6 +887,7 @@ bool processMesh(OpenGL *opengl, Mesh *myMesh, aiMesh* mesh, const aiScene* scen
       unsigned int numWeights = mesh->mBones[boneId]->mNumWeights;
       //Logger::log(1, "%s: --- bone nr. %i has name %s, contains %i weights\n", __FUNCTION__, boneId, boneName.c_str(), numWeights);
 
+    // TODO(new): remove
       Bone *newBone = new Bone(boneId, boneName, convertAiToGLM(mesh->mBones[boneId]->mOffsetMatrix));
       myMesh->mBoneList.push_back(newBone);
 
@@ -923,9 +973,9 @@ void processNode(OpenGL *opengl, Model *model, Node* node, aiNode* aNode, const 
 }
 
 internal void
-drawInstanced(Model *model, OpenGL *opengl, u32 instanceCount)
+drawInstanced(Model *model, OpenGL *opengl, u32 instance_count)
 {
-    // TODO por que cuando tenia comentadas las texturas defaulteaba a las otras texturas? en algun lado se cargaron, donde?
+    // NOTE por que cuando tenia comentadas las texturas defaulteaba a las otras texturas? en algun lado se cargaron, donde?
     // This was happening because I forgot to unbind the texture I use for UI and also I got confused because the woman and the ui
     // was using similar colors, or the same, but not quite so I thought it was using the woman's texture but it was not, it was using the cube.
     // So the fix was to unbind the texture in end_ui_frame
@@ -962,7 +1012,7 @@ drawInstanced(Model *model, OpenGL *opengl, u32 instanceCount)
         #if 0
             glDrawElements(GL_TRIANGLES, mesh.indices.size(), GL_UNSIGNED_INT, 0);
         #else
-            opengl->glDrawElementsInstanced(GL_TRIANGLES, mesh.indices.size(), GL_UNSIGNED_INT, 0, 1);
+            opengl->glDrawElementsInstanced(GL_TRIANGLES, mesh.indices.size(), GL_UNSIGNED_INT, 0, instance_count);
         #endif
         model_buffer.unbind(opengl);
 
@@ -981,6 +1031,7 @@ drawInstanced(Model *model, OpenGL *opengl, u32 instanceCount)
 internal Model *
 load_model(OpenGL *opengl, const char* model_filepath)
 {
+    // TODO(new): remove
         Model *model = new Model(); //placeholder_state->model;
         // w1 models
         Assimp::Importer importer;
@@ -1012,6 +1063,7 @@ load_model(OpenGL *opengl, const char* model_filepath)
                 i32 width = scene->mTextures[t]->mWidth;
                 aiTexel *data = scene->mTextures[t]->pcData;
 
+    // TODO(new): remove
                 Texture *newTex = new Texture();
                 if(!newTex->loadTexture(opengl, texName, data, width, height))
                 {
@@ -1025,6 +1077,7 @@ load_model(OpenGL *opengl, const char* model_filepath)
         // ... yunk
         // ... yunk
         /* add a white texture in case there is no diffuse tex but colors */
+    // TODO(new): remove
         model->mWhiteTexture = new Texture();
         std::string whiteTexName = "src/samples/render_example/textures/white.png";
         if (!model->mWhiteTexture->loadTexture(opengl, whiteTexName)) {
@@ -1034,6 +1087,7 @@ load_model(OpenGL *opengl, const char* model_filepath)
         }
 
         /* add a placeholder texture in case there is no diffuse tex */
+    // TODO(new): remove
         model->mPlaceholderTexture = new Texture();
         std::string placeholderTexName = "src/samples/render_example/textures/missing_tex.png";
         if (!model->mPlaceholderTexture->loadTexture(opengl, placeholderTexName)) {
@@ -1054,6 +1108,7 @@ load_model(OpenGL *opengl, const char* model_filepath)
 
         //Logger::log(1, "%s: ... processing nodes finished...\n", __FUNCTION__);
 
+        #if 0
         for (const auto& node : model->mNodeList) {
             std::string nodeName = node->nodeName;
             int x = 1;
@@ -1063,6 +1118,39 @@ load_model(OpenGL *opengl, const char* model_filepath)
                 model->mBoneOffsetMatrices.insert({nodeName, model->mBoneList.at(std::distance(model->mBoneList.begin(), boneIter))->mOffsetMatrix});
             }
         }
+        #endif
+
+        std::vector<glm::mat4> boneOffsetMatricesList{};
+        std::vector<int32_t> boneParentIndexList{};
+
+        for (const auto& bone : model->mBoneList) {
+            boneOffsetMatricesList.emplace_back(bone->mOffsetMatrix);
+
+            std::string parentNodeName = "(invalid)";
+            Node *parentNode = model->mNodeMap.at(bone->mNodeName)->mParentNode;
+            if(parentNode)
+            {
+                parentNodeName = parentNode->nodeName;
+            }
+            const auto boneIter = std::find_if(model->mBoneList.begin(), model->mBoneList.end(), [parentNodeName](Bone* bone) { return bone->mNodeName == parentNodeName; });
+            if (boneIter == model->mBoneList.end()) {
+                boneParentIndexList.emplace_back(-1); // root node gets a -1 to identify
+            } else {
+                boneParentIndexList.emplace_back(std::distance(model->mBoneList.begin(), boneIter));
+            }
+        }
+
+        //Logger::log(1, "%s: -- bone parents --\n", __FUNCTION__);
+        for (unsigned int i = 0; i < model->mBoneList.size(); ++i) {
+        //Logger::log(1, "%s: bone %i (%s) has parent %i (%s)\n",
+        //  __FUNCTION__,
+        //  i,
+        //  mBoneList.at(i)->getBoneName().c_str(),
+        //  boneParentIndexList.at(i),
+        //  boneParentIndexList.at(i) < 0 ? "invalid" : model->mBoneList.at(boneParentIndexList.at(i))->mNodeName.c_str();
+        }
+        //Logger::log(1, "%s: -- bone parents --\n", __FUNCTION__);
+
 
         /* create vertex buffers for the meshes */
         for (const auto& mesh : model->mModelMeshes) {
@@ -1072,6 +1160,10 @@ load_model(OpenGL *opengl, const char* model_filepath)
             model->mVertexBuffers.emplace_back(buffer);
         }
 
+        model->mShaderBoneMatrixOffsetBuffer.uploadSsboData(opengl, boneOffsetMatricesList);
+        model->mShaderBoneParentBuffer.uploadSsboData(opengl, boneParentIndexList);
+
+
         /* animations */
         u32 num_anims = scene->mNumAnimations;
         for (u32 anim = 0; anim < num_anims; ++anim) {
@@ -1079,8 +1171,9 @@ load_model(OpenGL *opengl, const char* model_filepath)
 
             //Logger::log(1, "%s: -- animation clip %i has %i skeletal channels, %i mesh channels, and %i morph mesh channels\n", __FUNCTION__, i, animation->mNumChannels, animation->mNumMeshChannels, animation->mNumMorphMeshChannels);
 
+            // TODO(new): remove
             AssimpAnimClip *animClip = new AssimpAnimClip();
-            animClip->addChannels(animation);
+            animClip->addChannels(animation, model->mBoneList);
             if (animClip->mClipName.empty()) {
                 animClip->mClipName = std::to_string(anim);
             }
@@ -1166,12 +1259,19 @@ add_instances(OpenGL *opengl, InstancesHolder *instance, const char* model_filep
                 curr_settings->isAnimClipNr = clipNr;
             }
 
+            // gpu agrego esto
+            // avoid resizes during fill!
+            curr_settings->mNodeTransformData.resize(instance->model->mBoneList.size());
+            /* save model root matrix */
+            curr_settings->mModelRootMatrix = instance->model->mRootTransformMatrix;
+
             /* we need one 4x4 matrix for every bone */
-            curr_settings->mBoneMatrices.resize(instance->model->mBoneList.size());
-            std::fill(curr_settings->mBoneMatrices.begin(), curr_settings->mBoneMatrices.end(), glm::mat4(1.0f));
+            // la gpu lo saca
+            //curr_settings->mBoneMatrices.resize(instance->model->mBoneList.size());
+            //std::fill(curr_settings->mBoneMatrices.begin(), curr_settings->mBoneMatrices.end(), glm::mat4(1.0f));
+
             curr_settings->updateModelRootMatrix();
 
-            // TODO esto no anda jajaja o sea incremento el count pero despues el updateAnimation se hace con el ultimo count, que es 1 y esta vacio ahi
             instance->count++;
 
             //mModelInstData.miAssimpInstances.emplace_back(newInstance);
@@ -1211,6 +1311,7 @@ add_instances(OpenGL *opengl, InstancesHolder *instance, const char* model_filep
         instance->mInstanceSettings.isWorldRotation = rotation;
         instance->mInstanceSettings.isScale = modelScale;
 
+        // TODO(new): remove
         ModelInstance newInstance = new ModelInstance(model, glm::vec3(xPos, 0.0f, zPos), glm::vec3(0.0f, rotation, 0.0f));
         if (animClipNum > 0) 
         {

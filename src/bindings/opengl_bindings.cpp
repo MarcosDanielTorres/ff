@@ -59,6 +59,7 @@
 #define GL_R8                             0x8229
 typedef ptrdiff_t GLsizeiptr;
 typedef ptrdiff_t GLintptr;
+typedef unsigned int GLbitfield;
 typedef char GLchar;
 typedef void (APIENTRY  *GLDEBUGPROC)(GLenum source,GLenum type,GLuint id,GLenum severity,GLsizei length,const GLchar *message,const void *userParam);
 
@@ -115,9 +116,12 @@ OpenGLDefineFunction(glGenerateMipmap, void, GLenum target);
 OpenGLDefineFunction(glDrawElementsInstanced, void, GLenum mode, GLsizei count, GLenum type, const void *indices, GLsizei instancecount);
 OpenGLDefineFunction(glBufferSubData, void, GLenum target, GLintptr offset, GLsizeiptr size, const void *data);
 OpenGLDefineFunction(glBindBufferRange, void, GLenum target, GLuint index, GLuint buffer, GLintptr offset, GLsizeiptr size);
+OpenGLDefineFunction(glBindBufferBase, void, GLenum target, GLuint index, GLuint buffer);
 
 OpenGLDefineFunction(glDebugMessageCallback, void, GLDEBUGPROC callback, const void *userParam);
 OpenGLDefineFunction(glDebugMessageControl, void, GLenum source, GLenum type, GLenum severity, GLsizei count, const GLuint *ids, GLboolean enabled);
 
+OpenGLDefineFunction(glDispatchCompute, void, GLuint num_groups_x, GLuint num_groups_y, GLuint num_groups_z);
+OpenGLDefineFunction(glMemoryBarrier, void, GLbitfield barriers);
 
 #define OpenGLGetFunction(name) (OpenGLType_##name) wglGetProcAddress(#name)

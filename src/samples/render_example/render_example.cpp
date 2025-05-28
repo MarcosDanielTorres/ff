@@ -85,11 +85,8 @@ struct UIState
     UIRenderGroup *render_group;
 };
 
-#include "renderer.cpp"
 #include "renderer/opengl_renderer.cpp"
-#include "model_loader.cpp"
-
-#include "shader.h"
+#include "renderer.cpp"
 
 ///////// TODO cleanup ////////////
 // global state
@@ -144,13 +141,15 @@ struct ShaderStorageBuffer
         opengl->glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
     }
 
-    void uploadSsboData(OpenGL* opengl, std::vector<glm::mat4> bufferData, int bindingPoint) 
+    // uploads and bind
+    template <typename T>
+    void uploadSsboData(OpenGL *opengl, std::vector<T> bufferData, int bindingPoint) 
     {
         if (bufferData.empty()) {
             return;
         }
 
-        size_t bufferSize = bufferData.size() * sizeof(glm::mat4);
+        size_t bufferSize = bufferData.size() * sizeof(T);
         if (bufferSize > mBufferSize) {
             //Logger::log(1, "%s: resizing SSBO %i from %i to %i bytes\n", __FUNCTION__, mShaderStorageBuffer, mBufferSize, bufferSize);
             printf("%s: resizing SSBO %i from %zi to %zi bytes\n", __FUNCTION__, mShaderStorageBuffer, mBufferSize, bufferSize);
@@ -165,11 +164,57 @@ struct ShaderStorageBuffer
         opengl->glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
     }
 
+    // just upalods, no bind
+    template <typename T> 
+    void uploadSsboData(OpenGL *opengl, std::vector<T> bufferData) 
+    {
+        if (bufferData.empty()) {
+            return;
+        }
+
+        size_t bufferSize = bufferData.size() * sizeof(T);
+        if (bufferSize > mBufferSize) {
+            //Logger::log(1, "%s: resizing SSBO %i from %i to %i bytes\n", __FUNCTION__, mShaderStorageBuffer, mBufferSize, bufferSize);
+            printf("%s: resizing SSBO %i from %zi to %zi bytes\n", __FUNCTION__, mShaderStorageBuffer, mBufferSize, bufferSize);
+            cleanup(opengl);
+            init(opengl, bufferSize);
+        }
+
+        opengl->glBindBuffer(GL_SHADER_STORAGE_BUFFER, mShaderStorageBuffer);
+        opengl->glBufferSubData(GL_SHADER_STORAGE_BUFFER, 0, bufferSize, bufferData.data());
+        opengl->glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
+    }
+
+    void bind(OpenGL *opengl, int bindingPoint) 
+    {
+        if (mBufferSize == 0) 
+        {
+            return;
+        }
+
+        opengl->glBindBuffer(GL_SHADER_STORAGE_BUFFER, mShaderStorageBuffer);
+        opengl->glBindBufferBase(GL_SHADER_STORAGE_BUFFER, bindingPoint, mShaderStorageBuffer);
+        opengl->glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
+    }
+
+    void checkForResize(OpenGL *opengl, size_t newBufferSize) 
+    {
+        if (newBufferSize > mBufferSize) 
+        {
+            printf:("%s: resizing SSBO %i from %i to %i bytes\n", __FUNCTION__, mShaderStorageBuffer, mBufferSize, newBufferSize);
+            cleanup(opengl);
+            init(opengl, newBufferSize);
+        }
+    }
+
     void cleanup(OpenGL *opengl)
     {
         opengl->glDeleteBuffers(1, &mShaderStorageBuffer);
     }
 };
+#include "model_loader.cpp"
+
+#include "shader.h"
 
 global_variable OS_Window global_w32_window;
 global_variable u32 os_modifiers;
@@ -179,11 +224,18 @@ global_variable UniformBuffer mUniformBuffer{};
 
 /* for non-animated models */
 global_variable std::vector<glm::mat4> mWorldPosMatrices{};
-global_variable ShaderStorageBuffer mWorldPosBuffer{};
+
+// removido se mete por mShaderModelRootMatrixBuffer
+// global_variable ShaderStorageBuffer mWorldPosBuffer{};
 
 /* for animated models */
-global_variable std::vector<glm::mat4> mModelBoneMatrices{};
 global_variable ShaderStorageBuffer mShaderBoneMatrixBuffer{};
+
+/* for compute shaders */
+ShaderStorageBuffer mShaderTRSMatrixBuffer{};
+ShaderStorageBuffer mNodeTransformBuffer{};
+std::vector<NodeTransformData> mNodeTransFormData{};
+
 
 // mAssimpShader.use();
 
@@ -530,8 +582,11 @@ struct PlaceholderState
     glm::mat4 persp_proj;
     //ModelInstance *instances;
     InstancesHolder *instances;
+
     u32 nonskinned_pid;
     u32 skinned_pid;
+    u32 transform_compute_shader;
+    u32 matrix_compute_shader;
 };
 
 internal
@@ -634,44 +689,71 @@ void opengl_render (OpenGL *opengl, Camera *curr_camera, u32 cubeVAO,
             drawInstanced(woman, opengl, 1);
             #else
             /* animated models */
+            //if (!woman->mAnimClips.empty()  && !instances->mInstanceSettings[0].mBoneMatrices.empty()) {
+            if (!woman->mAnimClips.empty()  && !woman->mBoneList.empty()) {
+                size_t numberOfBones = woman->mBoneList.size();
+                mNodeTransFormData.resize(instances->count * numberOfBones);
+                mWorldPosMatrices.resize(instances->count);
 
-            for(u32 i = 0; i < instances->count; i++)
-            {
-                if (!woman->mAnimClips.empty() && !instances->mInstanceSettings[i].mBoneMatrices.empty()) {
-                //if (!(model->mAnimClips.empty()) && !modelType.second.at(0)->getBoneMatrices().empty()) {
-                    //size_t numberOfBones = model->getBoneList().size();
-                    size_t numberOfBones = woman->mBoneList.size();
-
-                    //mMatrixGenerateTimer.start();
-                    mModelBoneMatrices.clear();
-
-                    //for (unsigned int i = 0; i < numberOfInstances; ++i) 
-                    //for (unsigned int i = 0; i < 1; ++i) 
-                    {
-                        //modelType.second.at(i)->updateAnimation(deltaTime);
-                        instances->mInstanceSettings[i].updateAnimation(dt, woman);
-                        //std::vector<glm::mat4> instanceBoneMatrices = modelType.second.at(i)->getBoneMatrices();
-                        std::vector<glm::mat4> instanceBoneMatrices = instances->mInstanceSettings[i].mBoneMatrices;
-                        mModelBoneMatrices.insert(mModelBoneMatrices.end(), instanceBoneMatrices.begin(), instanceBoneMatrices.end());
-                    }
-
-                    //mRenderData.rdMatrixGenerateTime += mMatrixGenerateTimer.stop();
-                    //mRenderData.rdMatricesSize += mModelBoneMatrices.size() * sizeof(glm::mat4);
-
-                    //mAssimpSkinningShader.use();
-                    //mUploadToUBOTimer.start();
-
-                    opengl->glUseProgram(placeholder_state->skinned_pid);
-                    opengl->glUniform1i(opengl->glGetUniformLocation(placeholder_state->skinned_pid, "aModelStride"), numberOfBones);
-                    //mAssimpSkinningShader.setUniformValue(numberOfBones);
-                    mShaderBoneMatrixBuffer.uploadSsboData(opengl, mModelBoneMatrices, 1);
-                    //mAssimpSkinningShader.use();
-                    //mAssimpSkinningShader.setUniformValue(numberOfBones);
-                    //mShaderBoneMatrixBuffer.uploadSsboData(opengl, mModelBoneMatrices, 1);
-                    //mRenderData.rdUploadToUBOTime += mUploadToUBOTimer.stop();
-
-                    drawInstanced(woman, opengl, 1);
+                for(u32 i = 0; i < instances->count; i++)
+                {
+                    InstanceSettings *settings = &instances->mInstanceSettings[i];
+                    settings->updateAnimation(dt, woman);
+                    #if 1
+                    std::vector<NodeTransformData> instanceNodeTransform = settings->mNodeTransformData;
+                    std::copy(
+                        instanceNodeTransform.begin(),
+                        instanceNodeTransform.end(),
+                        mNodeTransFormData.begin() + i * numberOfBones
+                    );
+                    // Al mInstanceRootMatrix la llama a traves de getWorldTransformMatrix()
+                    mWorldPosMatrices.at(i) = settings->mInstanceRootMatrix;
+                    #else
+                    std::vector<glm::mat4> instanceBoneMatrices = settings->mBoneMatrices;
+                    mModelBoneMatrices.insert(mModelBoneMatrices.end(), instanceBoneMatrices.begin(), instanceBoneMatrices.end());
+                    #endif
                 }
+
+                size_t trsMatrixSize = numberOfBones * instances->count * sizeof(glm::mat4);
+
+                /* we may have to resize the buffers (uploadSsboData() checks for the size automatically, bind() not)*/
+                mShaderBoneMatrixBuffer.checkForResize(opengl, trsMatrixSize);
+                mShaderTRSMatrixBuffer.checkForResize(opengl, trsMatrixSize);
+
+                /* calculate TRS matrices from node transforms*/
+                // use compute shader
+                //mAssimpTransformComputeShader.use();
+                opengl->glUseProgram(placeholder_state->transform_compute_shader);
+                mNodeTransformBuffer.uploadSsboData(opengl, mNodeTransFormData, 0);
+                mShaderTRSMatrixBuffer.bind(opengl, 1);
+
+                opengl->glDispatchCompute(numberOfBones, std::ceil(instances->count / 32.0f), 1);
+                opengl->glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
+
+                /* multiply every bone TRS matrix with its parent bones TRS matrices, until the root bone has been reached
+                * also, multiply the bone TRS and the bone offset matrix */
+                //mAssimpMatrixComputeShader.use();
+                opengl->glUseProgram(placeholder_state->matrix_compute_shader);
+
+                mShaderTRSMatrixBuffer.bind(opengl, 0);
+                woman->mShaderBoneParentBuffer.bind(1);
+                woman->mShaderBoneMatrixOffsetBuffer.bind(2);
+                mShaderBoneMatrixBuffer.bind(opengl, 3);
+
+                /* do the computation - in groups of 32 invocations */
+                glDispatchCompute(numberOfBones, std::ceil(numberOfInstances / 32.0f), 1);
+                glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
+
+                /* now bind the final bone transforms to the vertex skinning shader */
+                opengl->glUseProgram(placeholder_state->skinned_pid);
+                opengl->glUniform1i(opengl->glGetUniformLocation(placeholder_state->skinned_pid, "aModelStride"), numberOfBones);
+
+                mShaderBoneMatrixBuffer.uploadSsboData(opengl, mModelBoneMatrices, 1);
+                mShaderBoneMatrixBuffer.bind(opengl, 1);
+                mShaderModelRootMatrixBuffer.uploadSsboData(opengl, mWorldPosMatrices, 2);
+
+
+                drawInstanced(woman, opengl, instances->count);
             }
             #endif
             opengl->glUseProgram(0);
@@ -813,7 +895,9 @@ int main() {
 
     // ssbo init!
     mShaderBoneMatrixBuffer.init(opengl, 256);
-    mWorldPosBuffer.init(opengl, 256);
+    mShaderModelRootMatrixBuffer.init(opengl, 256);
+    mShaderTRSMatrixBuffer.init(opengl, 256);
+    mNodeTransformBuffer.init(opengl, 256);
 
     // TODO see todos
     Shader skinning_shader{};
@@ -824,6 +908,8 @@ int main() {
     PlaceholderState *placeholder_state = arena_push_size(&g_arena, PlaceholderState, 1);
     placeholder_state->nonskinned_pid = create_program(opengl, str8("assimp.vert"), str8("assimp.frag"));
     placeholder_state->skinned_pid = create_program(opengl, str8("assimp_skinning.vert"), str8("assimp_skinning.frag"));
+    placeholder_state->transform_compute_shader = create_program(opengl, str8(0, 0), str8(0, 0), str8("assimp_instance_transform.comp"));
+    placeholder_state->matrix_compute_shader = create_program(opengl, str8(0, 0), str8(0, 0), str8("assimp_instance_matrix_mult.comp"));
     placeholder_state->persp_proj = glm::perspective(glm::radians(curr_camera->zoom), (float)SRC_WIDTH / (float)SRC_HEIGHT, 0.1f, 10000.0f);
     placeholder_state->instances = new InstancesHolder();
 

@@ -162,3 +162,11 @@ for (auto& node : mNodeList) {
 
 
 `locPos = model * nodeMatrix * skinMat * vec4(aPos, 1.0);`
+
+# Moving data from CPU to GPU
+updateAnimation y 
+
+
+se va
+- ssbo mModelBoneMatrices
+- TRS

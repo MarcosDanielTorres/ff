@@ -17,6 +17,7 @@ struct OpenGL
 	OpenGLDeclareMemberFunction(glGenBuffers);
 	OpenGLDeclareMemberFunction(glBindBuffer);
 	OpenGLDeclareMemberFunction(glBufferData);
+    OpenGLDeclareMemberFunction(glBindBufferBase);
     OpenGLDeclareMemberFunction(glDeleteBuffers);
 	OpenGLDeclareMemberFunction(glVertexAttribPointer);
 	OpenGLDeclareMemberFunction(glVertexAttribIPointer);
@@ -200,7 +201,7 @@ create_shader(OpenGL *opengl, Str8 shader_filename, GLenum shader_type)
 }
 
 internal u32
-create_program(OpenGL* opengl, Str8 vertex_shader_filename, Str8 fragment_shader_filename, Str8 compute_shader_filename = str8(0, 0))
+create_program(OpenGL* opengl, Str8 vertex_shader_filename = str8(0, 0), Str8 fragment_shader_filename = str8(0, 0), Str8 compute_shader_filename = str8(0, 0))
 {
     u32 program_id = 0;
     u32 vertex = create_shader(opengl, vertex_shader_filename, GL_VERTEX_SHADER);
@@ -678,6 +679,7 @@ void opengl_init(OpenGL *opengl, OS_Window window)
 	OpenGLSetFunction(glGenBuffers);
 	OpenGLSetFunction(glBindBuffer);
 	OpenGLSetFunction(glBufferData);
+    OpenGLSetFunction(glBindBufferBase);
     OpenGLSetFunction(glDeleteBuffers);
 	OpenGLSetFunction(glVertexAttribPointer);
 	OpenGLSetFunction(glVertexAttribIPointer);

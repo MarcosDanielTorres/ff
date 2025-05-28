@@ -8,10 +8,9 @@ struct Bone
 };
 
 struct OGLVertex {
-  glm::vec3 position = glm::vec3(0.0f);
+  glm::vec4 position = glm::vec4(0.0f);
   glm::vec4 color = glm::vec4(1.0f);
-  glm::vec3 normal = glm::vec3(0.0f);
-  glm::vec2 uv = glm::vec2(0.0f);
+  glm::vec4 normal = glm::vec4(0.0f);
   glm::uvec4 boneNumber = glm::uvec4(0);
   glm::vec4 boneWeight = glm::vec4(0.0f);
 };
@@ -136,7 +135,7 @@ struct NodeTransformData
 {
     glm::vec4 translation = glm::vec4(0.0f);
     glm::vec4 scale = glm::vec4(1.0f);
-    glm::vec4 rotation = glm::vec4(1.0f, 0.0f, 0.0f, 0.0f);
+    glm::vec4 rotation = glm::vec4(0.0f, 0.0f, 0.0f, 1.0f);
 };
 
 struct Node
@@ -210,19 +209,17 @@ struct VertexIndexBuffer
 
         opengl->glBindBuffer(GL_ARRAY_BUFFER, mVertexVBO);
 
-        opengl->glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(OGLVertex), (void*) offsetof(OGLVertex, position));
+        opengl->glVertexAttribPointer(0, 4, GL_FLOAT, GL_FALSE, sizeof(OGLVertex), (void*) offsetof(OGLVertex, position));
         opengl->glVertexAttribPointer(1, 4, GL_FLOAT, GL_FALSE, sizeof(OGLVertex), (void*) offsetof(OGLVertex, color));
-        opengl->glVertexAttribPointer(2, 3, GL_FLOAT, GL_FALSE, sizeof(OGLVertex), (void*) offsetof(OGLVertex, normal));
-        opengl->glVertexAttribPointer(3, 2, GL_FLOAT, GL_FALSE, sizeof(OGLVertex), (void*) offsetof(OGLVertex, uv));
-        opengl->glVertexAttribIPointer(4, 4, GL_UNSIGNED_INT,   sizeof(OGLVertex), (void*) offsetof(OGLVertex, boneNumber));
-        opengl->glVertexAttribPointer(5, 4, GL_FLOAT, GL_FALSE, sizeof(OGLVertex), (void*) offsetof(OGLVertex, boneWeight));
+        opengl->glVertexAttribPointer(2, 4, GL_FLOAT, GL_FALSE, sizeof(OGLVertex), (void*) offsetof(OGLVertex, normal));
+        opengl->glVertexAttribIPointer(3, 4, GL_UNSIGNED_INT, sizeof(OGLVertex), (void*) offsetof(OGLVertex, boneNumber));
+        opengl->glVertexAttribPointer(4, 4, GL_FLOAT,   GL_FALSE, sizeof(OGLVertex), (void*) offsetof(OGLVertex, boneWeight));
 
         opengl->glEnableVertexAttribArray(0);
         opengl->glEnableVertexAttribArray(1);
         opengl->glEnableVertexAttribArray(2);
         opengl->glEnableVertexAttribArray(3);
         opengl->glEnableVertexAttribArray(4);
-        opengl->glEnableVertexAttribArray(5);
 
         opengl->glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, mIndexVBO);
         /* do NOT unbind index buffer here!*/
@@ -335,7 +332,7 @@ struct AssimpAnimChannel
 
     unsigned int mPreState = 0;
     unsigned int mPostState = 0;
-    i32 mBoneId = -1;
+    int mBoneId = -1;
 
     void loadChannelData(aiNodeAnim* nodeAnim)
     {
@@ -672,7 +669,6 @@ struct InstanceSettings
     }
 
 
-    // TODO this is not going to work for more than 1 instance!
     void updateAnimation(float deltaTime, Model* model) 
     {
         isAnimPlayTimePos += deltaTime * model->mAnimClips.at(isAnimClipNr)->mClipTicksPerSecond * isAnimSpeedFactor;
@@ -857,14 +853,15 @@ bool processMesh(OpenGL *opengl, Mesh *myMesh, aiMesh* mesh, const aiScene* scen
       vertex.normal.y = mesh->mNormals[i].y;
       vertex.normal.z = mesh->mNormals[i].z;
     } else {
-      vertex.normal = glm::vec3(0.0f);
+      vertex.normal = glm::vec4(0.0f);
     }
 
     if (mesh->HasTextureCoords(0)) {
-      vertex.uv.x = mesh->mTextureCoords[0][i].x;
-      vertex.uv.y = mesh->mTextureCoords[0][i].y;
+      vertex.position.w = mesh->mTextureCoords[0][i].x;
+      vertex.normal.w = mesh->mTextureCoords[0][i].y;
     } else {
-      vertex.uv = glm::vec2(0.0f);
+      vertex.position.w = 0.0f;
+      vertex.normal.w = 0.0f;
     }
 
     myMesh->mMesh.vertices.emplace_back(vertex);
@@ -1121,7 +1118,7 @@ load_model(OpenGL *opengl, const char* model_filepath)
         #endif
 
         std::vector<glm::mat4> boneOffsetMatricesList{};
-        std::vector<int32_t> boneParentIndexList{};
+        std::vector<i32> boneParentIndexList{};
 
         for (const auto& bone : model->mBoneList) {
             boneOffsetMatricesList.emplace_back(bone->mOffsetMatrix);
@@ -1136,7 +1133,7 @@ load_model(OpenGL *opengl, const char* model_filepath)
             if (boneIter == model->mBoneList.end()) {
                 boneParentIndexList.emplace_back(-1); // root node gets a -1 to identify
             } else {
-                boneParentIndexList.emplace_back(std::distance(model->mBoneList.begin(), boneIter));
+                boneParentIndexList.emplace_back((i32)std::distance(model->mBoneList.begin(), boneIter));
             }
         }
 
@@ -1159,6 +1156,8 @@ load_model(OpenGL *opengl, const char* model_filepath)
             buffer.uploadData(opengl, mesh.vertices, mesh.indices);
             model->mVertexBuffers.emplace_back(buffer);
         }
+        model->mShaderBoneMatrixOffsetBuffer.init(opengl, 256);
+        model->mShaderBoneParentBuffer.init(opengl, 256);
 
         model->mShaderBoneMatrixOffsetBuffer.uploadSsboData(opengl, boneOffsetMatricesList);
         model->mShaderBoneParentBuffer.uploadSsboData(opengl, boneParentIndexList);

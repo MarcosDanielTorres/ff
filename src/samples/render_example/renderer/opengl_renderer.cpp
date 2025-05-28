@@ -59,6 +59,9 @@ struct OpenGL
 
     OpenGLDeclareMemberFunction(glDebugMessageCallback);
     OpenGLDeclareMemberFunction(glDebugMessageControl);
+
+    OpenGLDeclareMemberFunction(glDispatchCompute);
+    OpenGLDeclareMemberFunction(glMemoryBarrier);
 };
 
 
@@ -211,8 +214,21 @@ create_program(OpenGL* opengl, Str8 vertex_shader_filename = str8(0, 0), Str8 fr
     u32 ID = opengl->glCreateProgram();
     program_id = ID;
 
-    opengl->glAttachShader(ID, vertex);
-    opengl->glAttachShader(ID, fragment);
+    if (vertex)
+    {
+        opengl->glAttachShader(ID, vertex);
+    }
+
+    if (fragment)
+    {
+        opengl->glAttachShader(ID, fragment);
+    }
+
+    if (compute)
+    {
+        opengl->glAttachShader(ID, compute);
+    }
+
     opengl->glLinkProgram(ID);
     if(!opengl_shader_check_compile_errors(opengl, ID, GL_PROGRAM))
     {
@@ -722,6 +738,8 @@ void opengl_init(OpenGL *opengl, OS_Window window)
     OpenGLSetFunction(glDebugMessageCallback);
     OpenGLSetFunction(glDebugMessageControl);
 
+    OpenGLSetFunction(glDispatchCompute);
+    OpenGLSetFunction(glMemoryBarrier);
     opengl_enable_debug(opengl);
 
 }

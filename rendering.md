@@ -7,6 +7,103 @@ struct OpenGL has many things interesting:
 
 
 
+I have to check who uses this. Because all render groups have a *commands but it seems like is the same for all debug, ui, and game rendergroups
+
+
+
+
+game_render_commands *Frame = 0;
+if(RendererCode.IsValid)
+{
+    Frame = RendererFunctions.BeginFrame(
+        Renderer, Dimension, RenderDim, DrawRegion);
+}
+
+...
+if(Game.UpdateAndRender)
+{
+    Game.UpdateAndRender(&GameMemory, NewInput, Frame);
+    if(NewInput->QuitRequested)
+    {
+        GlobalRunning = false;
+    }
+}
+
+...
+ if(Game.DEBUGFrameEnd)
+{
+    Game.DEBUGFrameEnd(&GameMemory, NewInput, Frame);
+}
+...
+BEGIN_BLOCK("Frame Display");
+
+if(RendererCode.IsValid)
+{
+    if(RendererWasReloaded)
+    {
+        ++Frame->Settings.Version;
+        RendererWasReloaded = false;
+    }
+    RendererFunctions.EndFrame(Renderer, Frame);
+}
+
+
+
+
+
+---------------------------
+
+Esto esta en el GameUpdateAndRender!
+
+    b32 Rerun = false;
+    do
+    {
+        switch(GameState->GameMode)
+        {
+            case GameMode_TitleScreen:
+            {
+                Rerun = UpdateAndRenderTitleScreen(GameState, RenderCommands,
+                                                   Input, GameState->TitleScreen);
+            } break;
+
+            case GameMode_CutScene:
+            {
+                Rerun = UpdateAndRenderCutScene(GameState, RenderCommands,
+                                                Input, GameState->CutScene);
+            } break;
+
+            case GameMode_World:
+            {
+                Rerun = UpdateAndRenderWorld(GameState, GameState->WorldMode,
+                                             Input, RenderCommands, &HitTest);
+            } break;
+
+            InvalidDefaultCase;
+        }
+    } while(Rerun);
+
+    EndHitTest(&GameState->Editor, Input, &HitTest);
+        
+    BeginUIFrame(&GameState->DevUI, GameState->Assets, RenderCommands, Input);
+    UpdateAndRenderEditor(&GameState->Editor, &GameState->DevUI, GameState);
+    EditorInteract(&GameState->Editor, &GameState->DevUI, Input);
+    EndUIFrame(&GameState->DevUI);
+    
+    DIAGRAM_Reset();
+
+
+
+
+
+TODO poner 90 breakpoints y chequear que sea el mismo address!
+
+
+
+////////.........................///////////////
+
+
+
+
 
 internal game_render_commands *
 OpenGLBeginFrame(open_gl *OpenGL, v2u OSWindowDim, v2u RenderDim, rectangle2i DrawRegion)

@@ -284,7 +284,7 @@ static bool fps_mode = false;
 Camera free_camera(FREE_CAMERA, glm::vec3(0.0f, 5.0f, 19.0f));
 Camera fps_camera(FPS_CAMERA, glm::vec3(0.0f, 8.0f, 3.0f));
 
-Camera* curr_camera = &free_camera;
+global_variable Camera* curr_camera = &free_camera;
 ///////// TODO cleanup ////////////
 
 struct MeshBox {
@@ -623,8 +623,12 @@ void opengl_render (OpenGL *opengl, Camera *curr_camera, u32 cubeVAO,
         glDepthFunc(GL_LESS);
         glClearColor(0.1f, 0.1f, 0.1f, 1.0f);
 		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
+        #if 0
+        glDisable(GL_CULL_FACE);
+        #else
         glEnable(GL_CULL_FACE);
         glCullFace(GL_BACK);
+        #endif
 
         glm::mat4 view = curr_camera->GetViewMatrix();
 
@@ -758,6 +762,8 @@ void opengl_render (OpenGL *opengl, Camera *curr_camera, u32 cubeVAO,
             // TODO this should only be done at resizes
             begin_ui_frame(opengl, ui_state, ui_render_group);
             opengl->glUniformMatrix4fv(ui_state->ortho_proj, 1, GL_FALSE, &ui_state->ortho_proj_mat[0][0]);
+            opengl->glUniformMatrix4fv(ui_state->ortho_proj, 1, GL_FALSE, &placeholder_state->persp_proj[0][0]);
+            opengl->glUniformMatrix4fv(opengl->glGetUniformLocation(ui_state->program_id, "view_matrix"), 1, GL_FALSE, &view[0][0]);
             // TODO see wtf is a 0 there? Why is the texture sampler for?
             opengl->glUniform1i(ui_state->texture_sampler, 0);
             // TODO investigate if i have to set this value for the uniforms again or not!. 
@@ -878,7 +884,7 @@ int main() {
 
         glm::vec3 tri_points[3] = {glm::vec3(500.0f, 500.0f, 0.0f), glm::vec3(600.0f, 500.0f, 0.0f), glm::vec3(450.0f, 300.0f, 0.0f)};
         u16 tri_indices[3] = {0, 1, 2};
-        //push_triangle(ui_render_group, tri_points, tri_indices);
+        push_triangle(ui_render_group, tri_points, tri_indices);
     }
     #endif
 
@@ -1218,6 +1224,7 @@ int main() {
     HDC hdc = GetDC(global_w32_window.handle);
     while (global_w32_window.is_running)
 	{
+
         LONGLONG now = aim_timer_get_os_time();
         LONGLONG dt_long = now - last_frame;
         last_frame = now;
@@ -1225,6 +1232,7 @@ int main() {
         f32 dt_ms = aim_timer_ticks_to_ms(dt_long, frequency);
         TempArena per_frame = temp_begin(&g_transient_arena);
 
+        // begin render group
         UIRenderGroup *ui_render_group = arena_push_size(per_frame.arena, UIRenderGroup, 1);
         ui_state->render_group = ui_render_group;
         ui_render_group->vertex_array = arena_push_size(per_frame.arena, UIVertex, max_vertex_per_batch);
@@ -1239,8 +1247,17 @@ int main() {
             char *end = buf + sizeof(buf);
             const char* c  = "Frame time: %.4fms";
             _snprintf_s(at, (size_t)(end - at), (size_t)(end - at), c, dt_ms);
-            push_text(ui_state, at, 200, 400);
+            push_text(ui_state, at, 50, 100);
         }
+        {
+            char buf[100];
+            char *at = buf;
+            char *end = buf + sizeof(buf);
+            const char* c  = "cam pos : %.4f, %.4f, %.4f";
+            _snprintf_s(at, (size_t)(end - at), (size_t)(end - at), c, curr_camera->position.x, curr_camera->position.y, curr_camera->position.z);
+            push_text(ui_state, at, 50, 150);
+        }
+        push_line(ui_state);
 
         win32_process_pending_msgs();
         if (input_is_key_pressed(&global_input, Keys_W))

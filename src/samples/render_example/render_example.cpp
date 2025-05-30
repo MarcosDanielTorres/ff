@@ -53,11 +53,24 @@ typedef Input GameInput;
 #include "components.h"
 using namespace aim::Components;
 
+struct TestFB
+{
+    GLuint handle;
+    GLuint handle_rotated;
+    GLuint textureColorbuffer;
+    GLuint textureColorbuffer_rot;
+    GLuint vbo, vao, ebo;
+    GLuint vbo_rot, vao_rot, ebo_rot;
+    u32 pid;
+};
+
+global_variable TestFB test_fb;
+
 static Arena g_arena;
 static Arena g_transient_arena;
 
 // TODO move away from here!
-struct UIVertex
+struct TextureQuadVertex
 {
     glm::vec3 p;
     glm::vec2 uv;
@@ -66,18 +79,19 @@ struct UIVertex
 
 struct UIRenderGroup
 {
-    UIVertex *vertex_array;
+    TextureQuadVertex *vertex_array;
     u32 vertex_count;
     u16 *index_array;
     u32 index_count;
 };
+
 struct UIState
 {
-    GLint ortho_proj;
+    GLint proj;
     GLint texture_sampler;
     u32 program_id; 
 
-    u32 vbo, vao, ebo;
+    GLuint vbo, vao, ebo;
     GLuint tex;
     // TODO probably should have its own memory. After I remove std first!
     FontInfo font_info;
@@ -85,12 +99,31 @@ struct UIState
     UIRenderGroup *render_group;
 };
 
-#include "renderer/opengl_renderer.cpp"
-#include "renderer.cpp"
 
-///////// TODO cleanup ////////////
-// global state
-// window size
+struct InstancesHolder;
+struct PlaceholderState
+{
+    // TODO probably should have its own memory. After I remove std first!
+    glm::mat4 persp_proj;
+    //ModelInstance *instances;
+    InstancesHolder *instances;
+
+
+    // program ids
+    u32 nonskinned_pid;
+    u32 skinned_pid;
+    u32 transform_compute_shader_pid;
+    u32 matrix_compute_shader_pid;
+
+    u32 static_mesh_pid;
+    UIRenderGroup *static_mesh_render_group;
+    u32 vbo, vao, ebo;
+    GLint proj_loc;
+    GLint view_loc;
+    GLint texture_sampler_loc;
+};
+
+#include "renderer/opengl_renderer.cpp"
 
 struct UniformBuffer
 {
@@ -213,6 +246,12 @@ struct ShaderStorageBuffer
     }
 };
 #include "model_loader.cpp"
+#include "renderer.cpp"
+
+///////// TODO cleanup ////////////
+// global state
+// window size
+
 
 #include "shader.h"
 
@@ -269,7 +308,7 @@ float manny_scale(0.07f);
 
 // model
 glm::vec3 floor_pos(0.0f, 0.0f, -2.2f);
-glm::vec3 floor_scale(30.0f, 1.0f, 30.0f);
+glm::vec3 floor_scale(80.0f, 1.0f, 80.0f);
 glm::vec3 model_bounding_box(floor_scale * 1.0f); 
 
 // model materials
@@ -576,18 +615,6 @@ LRESULT CALLBACK win32_main_callback(HWND Window, UINT Message, WPARAM wParam, L
 
 
 
-struct PlaceholderState
-{
-    // TODO probably should have its own memory. After I remove std first!
-    glm::mat4 persp_proj;
-    //ModelInstance *instances;
-    InstancesHolder *instances;
-
-    u32 nonskinned_pid;
-    u32 skinned_pid;
-    u32 transform_compute_shader;
-    u32 matrix_compute_shader;
-};
 
 internal
 void update_and_render(PlaceholderState *state)
@@ -614,11 +641,98 @@ for each entry:
 */
 
 
+internal
+void fb_fuckery(OpenGL *opengl, TestFB *fb, GLsizei width, GLsizei height)
+{
+
+    /*
+    Now that we know how framebuffers (sort of) work it's time to put them to good use.
+    We're going to render the scene into a color texture attached to a framebuffer object 
+    we created and then draw this texture over a simple quad that spans the whole screen.
+    */
+    opengl->glGenFramebuffers(1, &fb->handle);
+    opengl->glBindFramebuffer(GL_FRAMEBUFFER, fb->handle);
+
+    // generate texture
+    glGenTextures(1, &fb->textureColorbuffer);
+    glBindTexture(GL_TEXTURE_2D, fb->textureColorbuffer);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, width, height, 0, GL_RGB, GL_UNSIGNED_BYTE, NULL);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR );
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glBindTexture(GL_TEXTURE_2D, 0);
+
+    // attach it to currently bound framebuffer object
+    opengl->glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, fb->textureColorbuffer, 0); 
+
+    /*
+    We also want to make sure OpenGL is able to do depth testing (and optionally stencil testing)
+    so we have to make sure to add a depth (and stencil) attachment to the framebuffer.
+    Since we'll only be sampling the color buffer and not the other buffers we can create a renderbuffer object
+    for this purpose.
+    */
+    GLuint rbo;
+    opengl->glGenRenderbuffers(1, &rbo);
+    opengl->glBindRenderbuffer(GL_RENDERBUFFER, rbo);
+    opengl->glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH24_STENCIL8, width, height);
+    opengl->glBindRenderbuffer(GL_RENDERBUFFER, 0);
+
+    opengl->glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_RENDERBUFFER, rbo);
+    if(opengl->glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
+        printf("ERROR::FRAMEBUFFER:: Framebuffer is not complete!\n");
+    opengl->glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
+
+
+
+
+
+
+
+
+    /*
+    Now that we know how framebuffers (sort of) work it's time to put them to good use.
+    We're going to render the scene into a color texture attached to a framebuffer object 
+    we created and then draw this texture over a simple quad that spans the whole screen.
+    */
+    opengl->glGenFramebuffers(1, &fb->handle_rotated);
+    opengl->glBindFramebuffer(GL_FRAMEBUFFER, fb->handle_rotated);
+
+    int mirrorWidth = 320;
+    int mirrorHeight = 180;
+    // generate texture
+    glGenTextures(1, &fb->textureColorbuffer_rot);
+    glBindTexture(GL_TEXTURE_2D, fb->textureColorbuffer_rot);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, mirrorWidth, mirrorHeight, 0, GL_RGB, GL_UNSIGNED_BYTE, NULL);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR );
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glBindTexture(GL_TEXTURE_2D, 0);
+
+    // attach it to currently bound framebuffer object
+    opengl->glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, fb->textureColorbuffer_rot, 0); 
+
+    /*
+    We also want to make sure OpenGL is able to do depth testing (and optionally stencil testing)
+    so we have to make sure to add a depth (and stencil) attachment to the framebuffer.
+    Since we'll only be sampling the color buffer and not the other buffers we can create a renderbuffer object
+    for this purpose.
+    */
+    GLuint rbo_rot;
+    opengl->glGenRenderbuffers(1, &rbo_rot);
+    opengl->glBindRenderbuffer(GL_RENDERBUFFER, rbo_rot);
+    opengl->glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH24_STENCIL8, mirrorWidth, mirrorHeight);
+    opengl->glBindRenderbuffer(GL_RENDERBUFFER, 0);
+
+    opengl->glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_RENDERBUFFER, rbo_rot);
+    if(opengl->glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
+        printf("ERROR::FRAMEBUFFER:: Framebuffer is not complete!\n");
+    opengl->glBindFramebuffer(GL_FRAMEBUFFER, 0);
+}
 
 // NOTE before pulling them out I have to sort out the globals being used here!
-void opengl_render (OpenGL *opengl, Camera *curr_camera, u32 cubeVAO,
+void opengl_render(OpenGL *opengl, Camera *curr_camera, u32 cubeVAO,
     Shader skinning_shader, MeshBox floor_meshbox, std::vector<MeshBox> boxes, PlaceholderState *placeholder_state, UIState *ui_state, f32 dt)
 {
+    #if 0
         glEnable(GL_DEPTH_TEST);
         glDepthFunc(GL_LESS);
         glClearColor(0.1f, 0.1f, 0.1f, 1.0f);
@@ -629,8 +743,36 @@ void opengl_render (OpenGL *opengl, Camera *curr_camera, u32 cubeVAO,
         glEnable(GL_CULL_FACE);
         glCullFace(GL_BACK);
         #endif
+    #endif
 
         glm::mat4 view = curr_camera->GetViewMatrix();
+
+        glm::vec3 rear_forward = -curr_camera->forward;
+        glm::mat4 view_rotated_180 = glm::lookAt(curr_camera->position, curr_camera->position + rear_forward, curr_camera->up);
+        int mirrorWidth = 320;
+        int mirrorHeight = 180;
+        //{
+        //    char buf[100];
+        //    char *at = buf;
+        //    char *end = buf + sizeof(buf);
+        //    const char* c  = "Mouse screen coordinates: (%.2f, %.2f)!";
+        //    
+        //    f32 mouse_p_x = global_input.curr_mouse_state.x;
+        //    f32 mouse_p_y = global_input.curr_mouse_state.y;
+        //    _snprintf_s(at, (size_t)(end - at), (size_t)(end - at), c, mouse_p_x, mouse_p_y);
+        //    push_text(ui_state, at, 200, 400);
+        //}
+    {
+
+        // first pass
+        opengl->glBindFramebuffer(GL_FRAMEBUFFER, test_fb.handle);
+        glViewport(0, 0, SRC_WIDTH, SRC_HEIGHT);
+        glClearColor(0.1f, 0.1f, 0.1f, 1.0f);
+		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
+        glEnable(GL_DEPTH_TEST);
+        glDepthFunc(GL_LESS);
+        glEnable(GL_CULL_FACE);
+        glCullFace(GL_BACK);
 
 	    opengl->glBindVertexArray(cubeVAO);
         shader_use(skinning_shader);
@@ -722,7 +864,7 @@ void opengl_render (OpenGL *opengl, Camera *curr_camera, u32 cubeVAO,
                 /* calculate TRS matrices from node transforms*/
                 // use compute shader
                 //mAssimpTransformComputeShader.use();
-                opengl->glUseProgram(placeholder_state->transform_compute_shader);
+                opengl->glUseProgram(placeholder_state->transform_compute_shader_pid);
                 mNodeTransformBuffer.uploadSsboData(opengl, mNodeTransFormData, 0);
                 mShaderTRSMatrixBuffer.bind(opengl, 1);
 
@@ -732,7 +874,7 @@ void opengl_render (OpenGL *opengl, Camera *curr_camera, u32 cubeVAO,
                 /* multiply every bone TRS matrix with its parent bones TRS matrices, until the root bone has been reached
                 * also, multiply the bone TRS and the bone offset matrix */
                 //mAssimpMatrixComputeShader.use();
-                opengl->glUseProgram(placeholder_state->matrix_compute_shader);
+                opengl->glUseProgram(placeholder_state->matrix_compute_shader_pid);
 
                 mShaderTRSMatrixBuffer.bind(opengl, 0);
                 woman->mShaderBoneParentBuffer.bind(opengl, 1);
@@ -757,13 +899,24 @@ void opengl_render (OpenGL *opengl, Camera *curr_camera, u32 cubeVAO,
         }
 
         {
+            UIRenderGroup *render_group = placeholder_state->static_mesh_render_group;
+            // render ui
+            begin_static_mesh_frame(opengl, placeholder_state, render_group);
+            opengl->glUniformMatrix4fv(placeholder_state->proj_loc, 1, GL_FALSE, &placeholder_state->persp_proj[0][0]);
+            opengl->glUniformMatrix4fv(placeholder_state->view_loc, 1, GL_FALSE, &view[0][0]);
+
+            opengl->glUniform1i(placeholder_state->texture_sampler_loc, 0);
+
+            glDrawElements(GL_TRIANGLES, render_group->index_count, GL_UNSIGNED_SHORT, 0); //era 18
+            end_static_mesh_frame(opengl);
+        }
+
+                {
             UIRenderGroup *ui_render_group = ui_state->render_group;
             // render ui
             // TODO this should only be done at resizes
             begin_ui_frame(opengl, ui_state, ui_render_group);
-            opengl->glUniformMatrix4fv(ui_state->ortho_proj, 1, GL_FALSE, &ui_state->ortho_proj_mat[0][0]);
-            opengl->glUniformMatrix4fv(ui_state->ortho_proj, 1, GL_FALSE, &placeholder_state->persp_proj[0][0]);
-            opengl->glUniformMatrix4fv(opengl->glGetUniformLocation(ui_state->program_id, "view_matrix"), 1, GL_FALSE, &view[0][0]);
+            opengl->glUniformMatrix4fv(ui_state->proj, 1, GL_FALSE, &ui_state->ortho_proj_mat[0][0]);
             // TODO see wtf is a 0 there? Why is the texture sampler for?
             opengl->glUniform1i(ui_state->texture_sampler, 0);
             // TODO investigate if i have to set this value for the uniforms again or not!. 
@@ -772,6 +925,198 @@ void opengl_render (OpenGL *opengl, Camera *curr_camera, u32 cubeVAO,
             end_ui_frame(opengl);
         }
 
+        #if 0
+        // second pass
+        opengl->glBindFramebuffer(GL_FRAMEBUFFER, 0);
+        glClearColor(1.0f, 1.0f, 1.0f, 1.0f);
+		glClear(GL_COLOR_BUFFER_BIT);
+
+        opengl->glUseProgram(test_fb.pid);
+
+        opengl->glBindVertexArray(test_fb.vao);
+        glDisable(GL_DEPTH_TEST);
+        glBindTexture(GL_TEXTURE_2D, test_fb.textureColorbuffer);
+        glDrawArrays(GL_TRIANGLES, 0, 6); 
+        opengl->glBindVertexArray(0);
+        #endif
+    }
+        
+
+        // rear view mirror!!!!!!!!!
+
+
+        // second pass
+        opengl->glBindFramebuffer(GL_FRAMEBUFFER, test_fb.handle_rotated);
+        glViewport(0, 0, mirrorWidth, mirrorHeight);
+        glClearColor(0.1f, 0.1f, 0.1f, 1.0f);
+		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
+        glEnable(GL_DEPTH_TEST);
+        glDepthFunc(GL_LESS);
+        glEnable(GL_CULL_FACE);
+        glCullFace(GL_BACK);
+
+
+
+	    opengl->glBindVertexArray(cubeVAO);
+        shader_use(skinning_shader);
+
+        shader_set_mat4(skinning_shader, "nodeMatrix", glm::mat4(1.0f));
+		shader_set_mat4(skinning_shader, "view", view_rotated_180);
+        shader_set_vec3(skinning_shader, "viewPos", curr_camera->position);
+        shader_set_vec3(skinning_shader, "spotLight.position", curr_camera->position);
+        shader_set_vec3(skinning_shader, "spotLight.direction", curr_camera->forward);
+
+		glm::mat4 model_mat = glm::translate(glm::mat4(1.0f), floor_meshbox.transform.pos) *
+			glm::mat4_cast(floor_meshbox.transform.rot) *
+			glm::scale(glm::mat4(1.0f), floor_meshbox.transform.scale);
+
+		shader_set_mat4(skinning_shader, "model", model_mat);
+        // NOTE glDrawArrays takes the amount of vertices, not points (vertex is pos, norm, tex, ... so on, a combination of things!!)
+        glDrawArrays(GL_TRIANGLES, 0, 36);
+        for (u32 i = 3; i < boxes.size(); i++)
+        {
+            glm::mat4 model = glm::translate(glm::mat4(1.0f), boxes[i].transform.pos) *
+                glm::mat4_cast(boxes[i].transform.rot) *
+                glm::scale(glm::mat4(1.0f), boxes[i].transform.scale);
+            shader_set_mat4(skinning_shader, "model", model);
+            glDrawArrays(GL_TRIANGLES, 0, 36);
+        }
+
+        // render model
+        {
+            InstancesHolder *instances = placeholder_state->instances;
+            Model *woman = instances->model;
+            std::vector<glm::mat4> matrixData;
+            matrixData.emplace_back(view_rotated_180);
+            matrixData.emplace_back(placeholder_state->persp_proj);
+            mUniformBuffer.uploadUboData(opengl, matrixData, 0);
+
+            #if 0
+            opengl->glUseProgram(placeholder_state->nonskinned_pid);
+            // generic data for all models!
+            //std::vector<glm::mat4> matrixData;
+            //matrixData.emplace_back(view);
+            //matrixData.emplace_back(placeholder_state->persp_proj);
+
+            //mUniformBuffer.uploadUboData(opengl, matrixData, 0);
+
+            /* non-animated models */
+            mWorldPosMatrices.clear();
+            glm::mat4 experiment = 
+            {
+                1.0f, 0.0f, 0.0f, 0.0f, 
+                0.0f, 1.0f, 0.0f, 0.0f, 
+                0.0f, 0.0f, 1.0f, 0.0f, 
+                10.0f, 10.0f, -3.0f, 1.0f, 
+            };
+            mWorldPosMatrices.emplace_back(experiment);
+            mWorldPosMatrices.emplace_back(glm::mat4(1.0f));
+
+
+            //mAssimpShader.use();
+            mWorldPosBuffer.uploadSsboData(opengl, mWorldPosMatrices, 1);
+            drawInstanced(woman, opengl, 1);
+            #else
+            /* animated models */
+            //if (!woman->mAnimClips.empty()  && !instances->mInstanceSettings[0].mBoneMatrices.empty()) {
+            if (!woman->mAnimClips.empty()  && !woman->mBoneList.empty()) {
+                size_t numberOfBones = woman->mBoneList.size();
+                mNodeTransFormData.resize(instances->count * numberOfBones);
+                mWorldPosMatrices.resize(instances->count);
+
+                for(u32 i = 0; i < instances->count; i++)
+                {
+                    InstanceSettings *settings = &instances->mInstanceSettings[i];
+                    settings->updateAnimation(dt, woman);
+                    std::vector<NodeTransformData> instanceNodeTransform = settings->mNodeTransformData;
+                    std::copy(
+                        instanceNodeTransform.begin(),
+                        instanceNodeTransform.end(),
+                        mNodeTransFormData.begin() + i * numberOfBones
+                    );
+                    // Al mInstanceRootMatrix la llama a traves de getWorldTransformMatrix()
+                    mWorldPosMatrices.at(i) = settings->mInstanceRootMatrix;
+                }
+
+                size_t trsMatrixSize = numberOfBones * instances->count * sizeof(glm::mat4);
+
+                /* we may have to resize the buffers (uploadSsboData() checks for the size automatically, bind() not)*/
+                mShaderBoneMatrixBuffer.checkForResize(opengl, trsMatrixSize);
+                mShaderTRSMatrixBuffer.checkForResize(opengl, trsMatrixSize);
+
+                /* calculate TRS matrices from node transforms*/
+                // use compute shader
+                //mAssimpTransformComputeShader.use();
+                opengl->glUseProgram(placeholder_state->transform_compute_shader_pid);
+                mNodeTransformBuffer.uploadSsboData(opengl, mNodeTransFormData, 0);
+                mShaderTRSMatrixBuffer.bind(opengl, 1);
+
+                opengl->glDispatchCompute(numberOfBones, std::ceil(instances->count / 32.0f), 1);
+                opengl->glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
+
+                /* multiply every bone TRS matrix with its parent bones TRS matrices, until the root bone has been reached
+                * also, multiply the bone TRS and the bone offset matrix */
+                //mAssimpMatrixComputeShader.use();
+                opengl->glUseProgram(placeholder_state->matrix_compute_shader_pid);
+
+                mShaderTRSMatrixBuffer.bind(opengl, 0);
+                woman->mShaderBoneParentBuffer.bind(opengl, 1);
+                woman->mShaderBoneMatrixOffsetBuffer.bind(opengl, 2);
+                mShaderBoneMatrixBuffer.bind(opengl, 3);
+
+                /* do the computation - in groups of 32 invocations */
+                opengl->glDispatchCompute(numberOfBones, std::ceil(instances->count / 32.0f), 1);
+                opengl->glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
+
+                /* now bind the final bone transforms to the vertex skinning shader */
+                opengl->glUseProgram(placeholder_state->skinned_pid);
+                opengl->glUniform1i(opengl->glGetUniformLocation(placeholder_state->skinned_pid, "aModelStride"), numberOfBones);
+
+                mShaderBoneMatrixBuffer.bind(opengl, 1);
+                mShaderModelRootMatrixBuffer.uploadSsboData(opengl, mWorldPosMatrices, 2);
+
+                drawInstanced(woman, opengl, instances->count);
+            }
+            #endif
+            opengl->glUseProgram(0);
+        }
+
+        {
+            UIRenderGroup *render_group = placeholder_state->static_mesh_render_group;
+            // render ui
+            begin_static_mesh_frame(opengl, placeholder_state, render_group);
+            opengl->glUniformMatrix4fv(placeholder_state->proj_loc, 1, GL_FALSE, &placeholder_state->persp_proj[0][0]);
+            opengl->glUniformMatrix4fv(placeholder_state->view_loc, 1, GL_FALSE, &view_rotated_180[0][0]);
+
+            opengl->glUniform1i(placeholder_state->texture_sampler_loc, 0);
+
+            glDrawElements(GL_TRIANGLES, render_group->index_count, GL_UNSIGNED_SHORT, 0); //era 18
+            end_static_mesh_frame(opengl);
+        }
+
+
+        opengl->glUseProgram(0);
+
+        #if 1
+        // composition pass (fb 1 + fb 2)
+        opengl->glBindFramebuffer(GL_FRAMEBUFFER, 0);
+        glViewport(0, 0, SRC_WIDTH, SRC_HEIGHT);
+        glClearColor(1.0f, 1.0f, 1.0f, 1.0f);
+		glClear(GL_COLOR_BUFFER_BIT);
+        opengl->glUseProgram(test_fb.pid);
+
+        opengl->glBindVertexArray(test_fb.vao);
+        glDisable(GL_DEPTH_TEST);
+        glBindTexture(GL_TEXTURE_2D, test_fb.textureColorbuffer);
+        glDrawArrays(GL_TRIANGLES, 0, 6); 
+        opengl->glBindVertexArray(0);
+
+        opengl->glBindVertexArray(test_fb.vao_rot);
+        glDisable(GL_DEPTH_TEST);
+        glBindTexture(GL_TEXTURE_2D, test_fb.textureColorbuffer_rot);
+        glDrawArrays(GL_TRIANGLES, 0, 6); 
+        opengl->glBindVertexArray(0);
+        #endif
         opengl->glUseProgram(0);
 }
 
@@ -902,15 +1247,117 @@ int main() {
     Shader skinning_shader{};
     shader_init(&skinning_shader, opengl, str8("skel_shader-2.vs.glsl"), str8("6.multiple_lights.fs.glsl"));
 
+    {
+        // test framebuffer!
+        test_fb.pid = create_program(opengl, str8("tests/basic.vs.glsl"), str8("tests/basic.fs.glsl"));
+
+        float vertices_rot[] = 
+        {
+            -0.5f, 0.7f, 	0.0f,  0.0f,    // Bottom-left
+            0.5f, 0.7f, 	1.0f,  0.0f, 	// bottom-right         
+            0.5f,  1.0f, 	1.0f,  1.0f, 	// top-right 
+
+            0.5f,  1.0f, 	1.0f,  1.0f, 	// top-right
+            -0.5f,  1.0f, 	0.0f,  1.0f, 	// top-left
+            -0.5f,  0.7f, 	0.0f,  0.0f, 	// bottom-left
+        };
+        float vertices[] = 
+        {
+            -1.0f, -1.0f, 	0.0f,  0.0f,    // Bottom-left
+            1.0f, -1.0f, 	1.0f,  0.0f, 	// bottom-right         
+            1.0f,  1.0f, 	1.0f,  1.0f, 	// top-right 
+
+            1.0f,  1.0f, 	1.0f,  1.0f, 	// top-right
+            -1.0f,  1.0f, 	0.0f,  1.0f, 	// top-left
+            -1.0f,  -1.0f, 	0.0f,  0.0f, 	// bottom-left
+        };
+
+        // this is part of `fb_fuckery`
+        opengl->glGenVertexArrays(1, &test_fb.vao);
+        opengl->glGenBuffers(1, &test_fb.vbo);
+        opengl->glGenBuffers(1, &test_fb.ebo);
+
+        opengl->glBindBuffer(GL_ARRAY_BUFFER, test_fb.vbo);
+        opengl->glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_STATIC_DRAW);
+
+        opengl->glBindVertexArray(test_fb.vao);
+
+        // position attribute
+        opengl->glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), (void*)0);
+        opengl->glEnableVertexAttribArray(0);
+
+        // texture attribute
+        opengl->glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), (void*)(2 * sizeof(float)));
+        opengl->glEnableVertexAttribArray(1);
+
+        opengl->glBindVertexArray(0);
+
+        // rear view mirror!
+        opengl->glGenVertexArrays(1, &test_fb.vao_rot);
+        opengl->glGenBuffers(1, &test_fb.vbo_rot);
+        opengl->glGenBuffers(1, &test_fb.ebo_rot);
+
+        opengl->glBindBuffer(GL_ARRAY_BUFFER, test_fb.vbo_rot);
+        opengl->glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices_rot, GL_STATIC_DRAW);
+
+        opengl->glBindVertexArray(test_fb.vao_rot);
+
+        // position attribute
+        opengl->glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), (void*)0);
+        opengl->glEnableVertexAttribArray(0);
+
+        // texture attribute
+        opengl->glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), (void*)(2 * sizeof(float)));
+        opengl->glEnableVertexAttribArray(1);
+
+        opengl->glBindVertexArray(0);
+    }
     
     // placeholder state init
     PlaceholderState *placeholder_state = arena_push_size(&g_arena, PlaceholderState, 1);
     placeholder_state->nonskinned_pid = create_program(opengl, str8("assimp.vert"), str8("assimp.frag"));
     placeholder_state->skinned_pid = create_program(opengl, str8("assimp_skinning.vert"), str8("assimp_skinning.frag"));
-    placeholder_state->transform_compute_shader = create_program(opengl, str8(0, 0), str8(0, 0), str8("assimp_instance_transform.comp"));
-    placeholder_state->matrix_compute_shader = create_program(opengl, str8(0, 0), str8(0, 0), str8("assimp_instance_matrix_mult.comp"));
+    placeholder_state->transform_compute_shader_pid = create_program(opengl, str8(0, 0), str8(0, 0), str8("assimp_instance_transform.comp"));
+    placeholder_state->matrix_compute_shader_pid = create_program(opengl, str8(0, 0), str8(0, 0), str8("assimp_instance_matrix_mult.comp"));
     placeholder_state->persp_proj = glm::perspective(glm::radians(curr_camera->zoom), (float)SRC_WIDTH / (float)SRC_HEIGHT, 0.1f, 10000.0f);
     placeholder_state->instances = new InstancesHolder();
+    {
+        // basically the same as init_ui but i havent decided what the fuck to do yet!
+        u32 static_mesh_pid = create_program(opengl, str8("static_mesh.vert.glsl"), str8("static_mesh.frag.glsl"));
+        if(static_mesh_pid)
+        {
+            placeholder_state->static_mesh_pid = static_mesh_pid;
+
+            opengl->glGenVertexArrays(1, &placeholder_state->vao);
+            opengl->glGenBuffers(1, &placeholder_state->vbo);
+            opengl->glGenBuffers(1, &placeholder_state->ebo);
+
+            opengl->glBindVertexArray(placeholder_state->vao);
+
+            opengl->glBindBuffer(GL_ARRAY_BUFFER, placeholder_state->vbo);
+            opengl->glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, placeholder_state->ebo);
+
+            // position attribute
+            opengl->glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(TextureQuadVertex), (void*)OffsetOf(TextureQuadVertex, p));
+            // uv attribute
+            opengl->glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, sizeof(TextureQuadVertex), (void*)OffsetOf(TextureQuadVertex, uv));
+            // color attribute
+            opengl->glVertexAttribPointer(2, 4, GL_FLOAT, GL_FALSE, sizeof(TextureQuadVertex), (void*)OffsetOf(TextureQuadVertex, c));
+
+            opengl->glEnableVertexAttribArray(0);
+            opengl->glEnableVertexAttribArray(1);
+            opengl->glEnableVertexAttribArray(2);
+
+            placeholder_state->proj_loc = opengl->glGetUniformLocation(placeholder_state->static_mesh_pid, "proj");
+            placeholder_state->view_loc= opengl->glGetUniformLocation(placeholder_state->static_mesh_pid, "view");
+            placeholder_state->texture_sampler_loc = opengl->glGetUniformLocation(placeholder_state->static_mesh_pid, "texture_sampler");
+
+            opengl->glBindVertexArray(0);
+
+        }
+    }
+
+
 
     //const char *model_filepath = "C:/Users/marcos/Desktop/Mastering-Cpp-Game-Animation-Programming/chapter01/01_opengl_assimp/assets/woman/Woman.gltf";
     const char *model_filepath = "E:/Mastering-Cpp-Game-Animation-Programming/chapter01/01_opengl_assimp/assets/woman/Woman.gltf";
@@ -1222,6 +1669,7 @@ int main() {
     glViewport(0, 0, SRC_WIDTH, SRC_HEIGHT);
 
     HDC hdc = GetDC(global_w32_window.handle);
+    fb_fuckery(opengl, &test_fb, SRC_WIDTH, SRC_HEIGHT);
     while (global_w32_window.is_running)
 	{
 
@@ -1235,10 +1683,17 @@ int main() {
         // begin render group
         UIRenderGroup *ui_render_group = arena_push_size(per_frame.arena, UIRenderGroup, 1);
         ui_state->render_group = ui_render_group;
-        ui_render_group->vertex_array = arena_push_size(per_frame.arena, UIVertex, max_vertex_per_batch);
+        ui_render_group->vertex_array = arena_push_size(per_frame.arena, TextureQuadVertex, max_vertex_per_batch);
         ui_render_group->index_array = arena_push_size(per_frame.arena, u16, max_index_per_batch);
         ui_render_group->vertex_count = 0;
         ui_render_group->index_count  = 0;
+
+        UIRenderGroup *placeholder_render_group = arena_push_size(per_frame.arena, UIRenderGroup, 1);
+        placeholder_state->static_mesh_render_group = placeholder_render_group;
+        placeholder_render_group->vertex_array = arena_push_size(per_frame.arena, TextureQuadVertex, max_vertex_per_batch);
+        placeholder_render_group->index_array = arena_push_size(per_frame.arena, u16, max_index_per_batch);
+        placeholder_render_group->vertex_count = 0;
+        placeholder_render_group->index_count  = 0;
 
         global_input.dt = dt;
         {
@@ -1257,7 +1712,8 @@ int main() {
             _snprintf_s(at, (size_t)(end - at), (size_t)(end - at), c, curr_camera->position.x, curr_camera->position.y, curr_camera->position.z);
             push_text(ui_state, at, 50, 150);
         }
-        push_line(ui_state);
+
+        push_line(placeholder_state->static_mesh_render_group);
 
         win32_process_pending_msgs();
         if (input_is_key_pressed(&global_input, Keys_W))

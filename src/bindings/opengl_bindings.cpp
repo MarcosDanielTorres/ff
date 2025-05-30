@@ -13,6 +13,45 @@
 #define ERROR_INVALID_PROFILE_ARB               0x2096
 #define WGL_CONTEXT_LAYER_PLANE_ARB             0x2093
 
+#define GL_MAX_COLOR_ATTACHMENTS          0x8CDF
+#define GL_COLOR_ATTACHMENT0              0x8CE0
+#define GL_COLOR_ATTACHMENT1              0x8CE1
+#define GL_COLOR_ATTACHMENT2              0x8CE2
+#define GL_COLOR_ATTACHMENT3              0x8CE3
+#define GL_COLOR_ATTACHMENT4              0x8CE4
+#define GL_COLOR_ATTACHMENT5              0x8CE5
+#define GL_COLOR_ATTACHMENT6              0x8CE6
+#define GL_COLOR_ATTACHMENT7              0x8CE7
+#define GL_COLOR_ATTACHMENT8              0x8CE8
+#define GL_COLOR_ATTACHMENT9              0x8CE9
+#define GL_COLOR_ATTACHMENT10             0x8CEA
+#define GL_COLOR_ATTACHMENT11             0x8CEB
+#define GL_COLOR_ATTACHMENT12             0x8CEC
+#define GL_COLOR_ATTACHMENT13             0x8CED
+#define GL_COLOR_ATTACHMENT14             0x8CEE
+#define GL_COLOR_ATTACHMENT15             0x8CEF
+#define GL_COLOR_ATTACHMENT16             0x8CF0
+#define GL_COLOR_ATTACHMENT17             0x8CF1
+#define GL_COLOR_ATTACHMENT18             0x8CF2
+#define GL_COLOR_ATTACHMENT19             0x8CF3
+#define GL_COLOR_ATTACHMENT20             0x8CF4
+#define GL_COLOR_ATTACHMENT21             0x8CF5
+#define GL_COLOR_ATTACHMENT22             0x8CF6
+#define GL_COLOR_ATTACHMENT23             0x8CF7
+#define GL_COLOR_ATTACHMENT24             0x8CF8
+#define GL_COLOR_ATTACHMENT25             0x8CF9
+#define GL_COLOR_ATTACHMENT26             0x8CFA
+#define GL_COLOR_ATTACHMENT27             0x8CFB
+#define GL_COLOR_ATTACHMENT28             0x8CFC
+#define GL_COLOR_ATTACHMENT29             0x8CFD
+#define GL_COLOR_ATTACHMENT30             0x8CFE
+#define GL_COLOR_ATTACHMENT31             0x8CFF
+#define GL_FRAMEBUFFER                    0x8D40
+#define GL_RENDERBUFFER                   0x8D41
+#define GL_DEPTH24_STENCIL8               0x88F0
+#define GL_DEPTH_STENCIL_ATTACHMENT       0x821A
+#define GL_FRAMEBUFFER_COMPLETE           0x8CD5
+
 #define GL_FRAGMENT_SHADER                0x8B30
 #define GL_VERTEX_SHADER                  0x8B31
 #define GL_COMPUTE_SHADER                 0x91B9
@@ -59,6 +98,7 @@
 #define GL_SHADER_STORAGE_BARRIER_BIT     0x00002000
 
 #define GL_R8                             0x8229
+
 typedef ptrdiff_t GLsizeiptr;
 typedef ptrdiff_t GLintptr;
 typedef unsigned int GLbitfield;
@@ -125,5 +165,14 @@ OpenGLDefineFunction(glDebugMessageControl, void, GLenum source, GLenum type, GL
 
 OpenGLDefineFunction(glDispatchCompute, void, GLuint num_groups_x, GLuint num_groups_y, GLuint num_groups_z);
 OpenGLDefineFunction(glMemoryBarrier, void, GLbitfield barriers);
+
+OpenGLDefineFunction(glGenFramebuffers, void, GLsizei n, GLuint *framebuffers);
+OpenGLDefineFunction(glBindFramebuffer, void, GLenum target, GLuint framebuffer);
+OpenGLDefineFunction(glBindRenderbuffer, void, GLenum target, GLuint renderbuffer);
+OpenGLDefineFunction(glFramebufferRenderbuffer, void, GLenum target, GLenum attachment, GLenum renderbuffertarget, GLuint renderbuffer);
+OpenGLDefineFunction(glFramebufferTexture2D, void, GLenum target, GLenum attachment, GLenum textarget, GLuint texture, GLint level);
+OpenGLDefineFunction(glGenRenderbuffers, void, GLsizei n, GLuint *renderbuffers);
+OpenGLDefineFunction(glRenderbufferStorage, void, GLenum target, GLenum internalformat, GLsizei width, GLsizei height);
+OpenGLDefineFunction(glCheckFramebufferStatus, GLenum ,GLenum target);
 
 #define OpenGLGetFunction(name) (OpenGLType_##name) wglGetProcAddress(#name)

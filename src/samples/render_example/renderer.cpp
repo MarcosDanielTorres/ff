@@ -15,7 +15,7 @@ void push_triangle(UIRenderGroup *render_group, glm::vec3 tri_points[3], u16 tri
 {
     check_bounds(3 + render_group->vertex_count, 3 + render_group->index_count);
 
-    UIVertex *v = render_group->vertex_array + render_group->vertex_count;
+    TextureQuadVertex *v = render_group->vertex_array + render_group->vertex_count;
     glm::vec2 uv0 = glm::vec2(0.0f, 0.0f);
     glm::vec2 uv1 = glm::vec2(0.0f, 0.0f);
     glm::vec2 uv2 = glm::vec2(0.0f, 0.0f);
@@ -46,7 +46,7 @@ void push_rect(UIRenderGroup *render_group, const glm::vec3 quad_points[4],
 {
     check_bounds(4 + render_group->vertex_count, 6 + render_group->index_count);
 
-    UIVertex *v = render_group->vertex_array + render_group->vertex_count;
+    TextureQuadVertex *v = render_group->vertex_array + render_group->vertex_count;
     v[0] = {quad_points[0], uv0, c};
     v[1] = {quad_points[1], uv1, c};
     v[2] = {quad_points[2], uv2, c};
@@ -111,7 +111,7 @@ push_glyph(UIRenderGroup *render_group, FontGlyph *glyph, f32 x, f32 baseline)
 }
 
 internal void
-push_line(UIState *ui_state)
+push_line(UIRenderGroup *render_group)
 {
     f32 thickness = 0.05f;
     glm::vec3 from = glm::vec3(0.0f, 0.0f, 0.0f);
@@ -149,7 +149,7 @@ push_line(UIState *ui_state)
     {
         P0, P1, P2, P3
     };
-    push_rect(ui_state->render_group, quad_points, UV0, UV1, UV2, UV3);
+    push_rect(render_group, quad_points, UV0, UV1, UV2, UV3);
 }
 
 
@@ -185,7 +185,7 @@ void push_quad(UIRenderGroup *render_group, glm::vec3 center, glm::vec2 radius, 
     glm::vec2 uv2 = glm::vec2(1, 1);
     glm::vec2 uv3 = glm::vec2(0, 1);
 
-    UIVertex *v = render_group->vertex_array + render_group->vertex_count;
+    TextureQuadVertex *v = render_group->vertex_array + render_group->vertex_count;
     v[0] = {p0, uv0, c};
     v[1] = {p1, uv1, c};
     v[2] = {p2, uv2, c};

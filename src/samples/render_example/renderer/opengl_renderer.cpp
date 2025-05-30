@@ -3,7 +3,6 @@
 
 struct OpenGL
 {
-
     i32 vsynch;
     
     OpenGLDeclareMemberFunction(wglCreateContextAttribsARB);
@@ -62,8 +61,18 @@ struct OpenGL
 
     OpenGLDeclareMemberFunction(glDispatchCompute);
     OpenGLDeclareMemberFunction(glMemoryBarrier);
-};
 
+    OpenGLDeclareMemberFunction(glGenFramebuffers);
+    OpenGLDeclareMemberFunction(glBindFramebuffer);
+    OpenGLDeclareMemberFunction(glFramebufferTexture2D);
+    OpenGLDeclareMemberFunction(glGenRenderbuffers);
+    OpenGLDeclareMemberFunction(glBindRenderbuffer);
+    OpenGLDeclareMemberFunction(glRenderbufferStorage);
+    OpenGLDeclareMemberFunction(glCheckFramebufferStatus);
+
+    OpenGLDeclareMemberFunction(glFramebufferRenderbuffer);
+
+};
 
 
 internal
@@ -491,11 +500,11 @@ init_ui(OpenGL *opengl, UIState *ui_state)
         opengl->glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ui_state->ebo);
 
         // position attribute
-        opengl->glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(UIVertex), (void*)OffsetOf(UIVertex, p));
+        opengl->glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(TextureQuadVertex), (void*)OffsetOf(TextureQuadVertex, p));
         // uv attribute
-        opengl->glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, sizeof(UIVertex), (void*)OffsetOf(UIVertex, uv));
+        opengl->glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, sizeof(TextureQuadVertex), (void*)OffsetOf(TextureQuadVertex, uv));
         // color attribute
-        opengl->glVertexAttribPointer(2, 4, GL_FLOAT, GL_FALSE, sizeof(UIVertex), (void*)OffsetOf(UIVertex, c));
+        opengl->glVertexAttribPointer(2, 4, GL_FLOAT, GL_FALSE, sizeof(TextureQuadVertex), (void*)OffsetOf(TextureQuadVertex, c));
 
         opengl->glEnableVertexAttribArray(0);
         opengl->glEnableVertexAttribArray(1);
@@ -527,33 +536,11 @@ init_ui(OpenGL *opengl, UIState *ui_state)
             glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
             glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S,     GL_CLAMP_TO_EDGE);
             glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T,     GL_CLAMP_TO_EDGE);
-
-            #if 0
-            glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
-            FontGlyph glyph = ui_state->font_info.font_table[u32('A')];
-            int W = glyph.bitmap.width, H = glyph.bitmap.height;
-            glTexImage2D(GL_TEXTURE_2D,
-                        0,                // mip level
-                        //GL_RGBA8,         // internal format
-                        GL_RED,
-                        W, H,
-                        0,                // border
-                        GL_RED,          // data format
-                        //GL_RED,          // data format
-                        GL_UNSIGNED_BYTE, // data type
-                        glyph.bitmap.buffer);
-
-            // set filtering & wrap modes
-            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S,     GL_CLAMP_TO_EDGE);
-            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T,     GL_CLAMP_TO_EDGE);
-            #endif
         }
         glBindTexture(GL_TEXTURE_2D, 0);
         glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
 
-        ui_state->ortho_proj = opengl->glGetUniformLocation(ui_state->program_id, "ortho_proj");
+        ui_state->proj = opengl->glGetUniformLocation(ui_state->program_id, "ortho_proj");
         ui_state->texture_sampler = opengl->glGetUniformLocation(ui_state->program_id, "texture_sampler");
 
         opengl->glBindVertexArray(0);
@@ -570,7 +557,7 @@ begin_ui_frame(OpenGL *opengl, UIState *ui_state, UIRenderGroup *render_group)
 	opengl->glBindVertexArray(ui_state->vao);
 
 	opengl->glBindBuffer(GL_ARRAY_BUFFER, ui_state->vbo);
-	opengl->glBufferData(GL_ARRAY_BUFFER, render_group->vertex_count * sizeof(UIVertex), render_group->vertex_array, GL_STATIC_DRAW);
+	opengl->glBufferData(GL_ARRAY_BUFFER, render_group->vertex_count * sizeof(TextureQuadVertex), render_group->vertex_array, GL_STATIC_DRAW);
 
     opengl->glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ui_state->ebo);
     opengl->glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(u16) * render_group->index_count, render_group->index_array, GL_STATIC_DRAW);
@@ -587,6 +574,27 @@ end_ui_frame(OpenGL* opengl)
     glDisable(GL_BLEND);
     glEnable(GL_DEPTH_TEST);
     glBindTexture(GL_TEXTURE_2D, 0);
+    opengl->glBindVertexArray(0);
+    opengl->glUseProgram(0);
+}
+
+// TODO no textures! Do texture handling like ui frame
+internal void
+begin_static_mesh_frame(OpenGL *opengl, PlaceholderState *state, UIRenderGroup *render_group)
+{
+    opengl->glUseProgram(state->static_mesh_pid);
+	opengl->glBindVertexArray(state->vao);
+
+	opengl->glBindBuffer(GL_ARRAY_BUFFER, state->vbo);
+	opengl->glBufferData(GL_ARRAY_BUFFER, render_group->vertex_count * sizeof(TextureQuadVertex), render_group->vertex_array, GL_STATIC_DRAW);
+
+    opengl->glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, state->ebo);
+    opengl->glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(u16) * render_group->index_count, render_group->index_array, GL_STATIC_DRAW);
+}
+
+internal void
+end_static_mesh_frame(OpenGL* opengl)
+{
     opengl->glBindVertexArray(0);
     opengl->glUseProgram(0);
 }
@@ -740,8 +748,18 @@ void opengl_init(OpenGL *opengl, OS_Window window)
 
     OpenGLSetFunction(glDispatchCompute);
     OpenGLSetFunction(glMemoryBarrier);
-    opengl_enable_debug(opengl);
 
+    OpenGLSetFunction(glGenFramebuffers);
+    OpenGLSetFunction(glBindFramebuffer);
+    OpenGLSetFunction(glBindRenderbuffer);
+    OpenGLSetFunction(glFramebufferTexture2D);
+    OpenGLSetFunction(glGenRenderbuffers);
+    OpenGLSetFunction(glRenderbufferStorage);
+    OpenGLSetFunction(glCheckFramebufferStatus);
+
+    OpenGLSetFunction(glFramebufferRenderbuffer);
+
+    opengl_enable_debug(opengl);
 }
 
 // TODO

@@ -439,3 +439,7 @@ return:
 
 ...
 The UseProgramBegin sets the uniform getting their values from the setup
+
+
+TODO How is he choosing what texture to bind. Is this information on each entry?
+        Where are the textures?

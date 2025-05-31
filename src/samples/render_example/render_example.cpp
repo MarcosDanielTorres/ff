@@ -756,7 +756,7 @@ void opengl_render(OpenGL *opengl, Camera *curr_camera, u32 cubeVAO,
     glm::mat4 view_rotated_180 = glm::lookAt(curr_camera->position, curr_camera->position + rear_forward, curr_camera->up);
     int mirrorWidth = 320;
     int mirrorHeight = 180;
-    f32 pixelColor =  21.0f;
+    local_persist f32 pixelColor =  21.0f;
 
     {
         char buf[100];
@@ -790,10 +790,6 @@ void opengl_render(OpenGL *opengl, Camera *curr_camera, u32 cubeVAO,
 		//glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
         glEnable(GL_DEPTH_TEST);
         glDepthFunc(GL_LESS);
-        glEnable(GL_STENCIL_TEST);
-        glStencilMask(0x00);
-        glStencilFunc(GL_ALWAYS, 0, 0xFF);
-        glStencilOp(GL_KEEP, GL_KEEP, GL_REPLACE);
         glEnable(GL_CULL_FACE);
         glCullFace(GL_BACK);
 
@@ -806,7 +802,6 @@ void opengl_render(OpenGL *opengl, Camera *curr_camera, u32 cubeVAO,
         shader_set_vec3(skinning_shader, "spotLight.position", curr_camera->position);
         shader_set_vec3(skinning_shader, "spotLight.direction", curr_camera->forward);
 
-        #if 1
 		glm::mat4 model_mat = glm::translate(glm::mat4(1.0f), floor_meshbox.transform.pos) *
 			glm::mat4_cast(floor_meshbox.transform.rot) *
 			glm::scale(glm::mat4(1.0f), floor_meshbox.transform.scale);
@@ -826,73 +821,12 @@ void opengl_render(OpenGL *opengl, Camera *curr_camera, u32 cubeVAO,
             glDrawArrays(GL_TRIANGLES, 0, 36);
         }
 
-        //entities_ids.uploadSsboData(opengl, ent_ids_data, 0);
-
-        const GLenum only_color[] = {GL_COLOR_ATTACHMENT0};
-        opengl->glDrawBuffers(1, only_color);
-
-        // Enable stencil test
-        glStencilMask(0xFF);                       // Enable writing to stencil
-        glStencilFunc(GL_ALWAYS, 1, 0xFF);       // Always pass the stencil test
-        {
-            //opengl->glUniform1f(opengl->glGetUniformLocation(skinning_shader.id, "u_EntityID"), (f32)4);
-
-        if (pixelColor > 1 && pixelColor < boxes.size())
-        {
-                u32 entity_id_to_draw = u32(pixelColor);
-                glm::mat4 model = glm::translate(glm::mat4(1.0f), boxes[entity_id_to_draw].transform.pos) *
-                    glm::mat4_cast(boxes[entity_id_to_draw].transform.rot) *
-                    glm::scale(glm::mat4(1.0f), boxes[entity_id_to_draw].transform.scale );
-                shader_set_mat4(skinning_shader, "model", model);
-                glDrawArrays(GL_TRIANGLES, 0, 36);
-
-        }
-        }
-
-        // draw outline
-
-        glStencilMask(0x00); // Disable stencil writes
-        glStencilFunc(GL_NOTEQUAL, 1, 0xFF);
-        glDisable(GL_DEPTH_TEST);
-
-        {
-        // Use a solid outline color, simple shader
-        shader_use(outline_shader);
-	    opengl->glBindVertexArray(cubeVAO);
-
-        shader_set_mat4(outline_shader, "nodeMatrix", glm::mat4(1.0f));
-		shader_set_mat4(outline_shader, "view", view);
-        shader_set_vec3(outline_shader, "viewPos", curr_camera->position);
-        shader_set_vec3(outline_shader, "spotLight.position", curr_camera->position);
-        shader_set_vec3(outline_shader, "spotLight.direction", curr_camera->forward);
-        shader_set_mat4(outline_shader, "projection", placeholder_state->persp_proj);
-
-        if (pixelColor > 1 && pixelColor < boxes.size())
-        {
-                u32 entity_id_to_draw = u32(pixelColor);
-                glm::mat4 model = glm::translate(glm::mat4(1.0f), boxes[entity_id_to_draw].transform.pos) *
-                    glm::mat4_cast(boxes[entity_id_to_draw].transform.rot) *
-                    glm::scale(glm::mat4(1.0f), boxes[entity_id_to_draw].transform.scale );
-                shader_set_mat4(outline_shader, "model", model);
-                glDrawArrays(GL_TRIANGLES, 0, 36);
-
-        }
-        }
-
-        // reset states
-        glEnable(GL_DEPTH_TEST);
-        glStencilMask(0xFF);
-        glStencilFunc(GL_ALWAYS, 0, 0xFF);
-        glDisable(GL_STENCIL_TEST);
-
-
-
-
-        #endif
 
         opengl->glUseProgram(0);
 
 
+        const GLenum only_color[] = {GL_COLOR_ATTACHMENT0};
+        opengl->glDrawBuffers(1, only_color);
         // IMPORTANT because I only care about the selection for the cubes i have to disable the other color_attachment
         // otherwise if the next shaders dont specifically write to location 1 then whats written its undefined behaviour
         // render model
@@ -1189,6 +1123,77 @@ void opengl_render(OpenGL *opengl, Camera *curr_camera, u32 cubeVAO,
     glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
     glReadPixels(xPos, yPos, 1, 1, GL_RED, GL_FLOAT, &pixelColor);
     glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
+
+
+
+
+    // stencil pass
+    {
+        #if 1
+
+        glEnable(GL_STENCIL_TEST);
+        glStencilMask(0x00);
+        glStencilFunc(GL_ALWAYS, 0, 0xFF);
+        glStencilOp(GL_KEEP, GL_KEEP, GL_REPLACE);
+
+        // Enable stencil test
+        glStencilMask(0xFF);                       // Enable writing to stencil
+        glStencilFunc(GL_ALWAYS, 1, 0xFF);       // Always pass the stencil test
+        {
+            //opengl->glUniform1f(opengl->glGetUniformLocation(skinning_shader.id, "u_EntityID"), (f32)4);
+
+        shader_use(skinning_shader);
+	    opengl->glBindVertexArray(cubeVAO);
+        if (pixelColor > 1 && pixelColor < boxes.size())
+        {
+                u32 entity_id_to_draw = u32(pixelColor);
+                glm::mat4 model = glm::translate(glm::mat4(1.0f), boxes[entity_id_to_draw].transform.pos) *
+                    glm::mat4_cast(boxes[entity_id_to_draw].transform.rot) *
+                    glm::scale(glm::mat4(1.0f), boxes[entity_id_to_draw].transform.scale );
+                shader_set_mat4(skinning_shader, "model", model);
+                glDrawArrays(GL_TRIANGLES, 0, 36);
+
+        }
+        }
+
+        // draw outline
+        glStencilMask(0x00); // Disable stencil writes
+        glStencilFunc(GL_NOTEQUAL, 1, 0xFF);
+        glDisable(GL_DEPTH_TEST);
+
+        {
+        // Use a solid outline color, simple shader
+        shader_use(outline_shader);
+	    opengl->glBindVertexArray(cubeVAO);
+
+        shader_set_mat4(outline_shader, "nodeMatrix", glm::mat4(1.0f));
+		shader_set_mat4(outline_shader, "view", view);
+        shader_set_vec3(outline_shader, "viewPos", curr_camera->position);
+        shader_set_vec3(outline_shader, "spotLight.position", curr_camera->position);
+        shader_set_vec3(outline_shader, "spotLight.direction", curr_camera->forward);
+        shader_set_mat4(outline_shader, "projection", placeholder_state->persp_proj);
+
+        if (pixelColor > 1 && pixelColor < boxes.size())
+        {
+                u32 entity_id_to_draw = u32(pixelColor);
+                glm::mat4 model = glm::translate(glm::mat4(1.0f), boxes[entity_id_to_draw].transform.pos) *
+                    glm::mat4_cast(boxes[entity_id_to_draw].transform.rot) *
+                    glm::scale(glm::mat4(1.0f), boxes[entity_id_to_draw].transform.scale  * 1.2f);
+                shader_set_mat4(outline_shader, "model", model);
+                glDrawArrays(GL_TRIANGLES, 0, 36);
+        }
+        }
+
+        // reset states
+        glEnable(GL_DEPTH_TEST);
+        glStencilMask(0xFF);
+        glStencilFunc(GL_ALWAYS, 0, 0xFF);
+        glDisable(GL_STENCIL_TEST);
+
+        #endif
+
+    }
+
     glReadBuffer(GL_COLOR_ATTACHMENT0);
     opengl->glBindFramebuffer(GL_READ_FRAMEBUFFER, 0);
 

@@ -780,6 +780,15 @@ void opengl_render(OpenGL *opengl, Camera *curr_camera, u32 cubeVAO,
         push_text(ui_state, at, 600, 120, glm::vec4(1.0f, 0.0f, 0.0f, 1.0f));
         
     }
+    {
+        char buf[100];
+        char *at = buf;
+        char *end = buf + sizeof(buf);
+        const char* c  = "fbo bound: %d";
+        _snprintf_s(at, (size_t)(end - at), (size_t)(end - at), c, test_fb.handle);
+        push_text(ui_state, at, 600, 130) ;
+        
+    }
 
 
 
@@ -1145,13 +1154,24 @@ void opengl_render(OpenGL *opengl, Camera *curr_camera, u32 cubeVAO,
     glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
     glReadPixels(xPos, yPos, 1, 1, GL_RED, GL_FLOAT, &pixelColor);
     glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
-
-
+    opengl->glBindFramebuffer(GL_FRAMEBUFFER, test_fb.handle);
 
 
     // stencil pass
     {
         #if 1
+
+        GLint fbo;
+        glGetIntegerv(GL_FRAMEBUFFER_BINDING, &fbo);
+        printf("FBO at stencil pass: %d\n", fbo);
+
+        GLint stencil_mask;
+        glGetIntegerv(GL_STENCIL_WRITEMASK, &stencil_mask);
+        printf("Stencil mask at stencil pass: %x\n", stencil_mask);
+
+        GLboolean depth;
+        glGetBooleanv(GL_DEPTH_TEST, &depth);
+        printf("Depth test at stencil pass: %d\n", depth);
 
 
         // Enable stencil test
@@ -1179,7 +1199,9 @@ void opengl_render(OpenGL *opengl, Camera *curr_camera, u32 cubeVAO,
         glStencilMask(0x00); // Disable stencil writes
         glDisable(GL_DEPTH_TEST);
 
-            glReadPixels(xPos, yPos, 1, 1, GL_STENCIL_INDEX, GL_UNSIGNED_BYTE, &stencil_val);
+    glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+        glReadPixels(xPos, yPos, 1, 1, GL_STENCIL_INDEX, GL_UNSIGNED_BYTE, &stencil_val);
+    glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
 
         {
         // Use a solid outline color, simple shader

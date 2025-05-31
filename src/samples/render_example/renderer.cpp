@@ -66,7 +66,7 @@ void push_rect(UIRenderGroup *render_group, const glm::vec3 quad_points[4],
 }
 
 internal void
-push_glyph(UIRenderGroup *render_group, FontGlyph *glyph, f32 x, f32 baseline)
+push_glyph(UIRenderGroup *render_group, FontGlyph *glyph, f32 x, f32 baseline, glm::vec4 color)
 {
     // TODO ver si esto tiene sentido going forward!
     // Por ahora voy a meter el estado de la table en el UIRenderGroup... probablemente
@@ -107,15 +107,13 @@ push_glyph(UIRenderGroup *render_group, FontGlyph *glyph, f32 x, f32 baseline)
         glm::vec3(x + glyph_left, baseline - glyph_top, 0)
     };
     
-    push_rect(render_group, quad_points, uv0, uv1, uv2, uv3);
+    push_rect(render_group, quad_points, uv0, uv1, uv2, uv3, color);
 }
 
 internal void
-push_line(UIRenderGroup *render_group)
+push_line(UIRenderGroup *render_group, glm::vec3 from, glm::vec3 to, glm::vec4 color = glm::vec4(1.0f, 1.0f, 1.0f, 1.0f))
 {
     f32 thickness = 0.05f;
-    glm::vec3 from = glm::vec3(0.0f, 0.0f, 0.0f);
-    glm::vec3 to = glm::vec3(10.0f, 2.0f, 10.0f);
 
     glm::vec3 line = to - from;
     glm::vec3 dir = glm::normalize(line);
@@ -149,12 +147,12 @@ push_line(UIRenderGroup *render_group)
     {
         P0, P1, P2, P3
     };
-    push_rect(render_group, quad_points, UV0, UV1, UV2, UV3);
+    push_rect(render_group, quad_points, UV0, UV1, UV2, UV3, color);
 }
 
 
 internal void
-push_text(UIState *ui_state, char *text, f32 x, f32 baseline)
+push_text(UIState *ui_state, char *text, f32 x, f32 baseline, glm::vec4 color = glm::vec4(1.0f, 1.0f, 1.0f, 1.0f))
 {
     f32 pen_x = x;
     f32 pen_y = baseline;
@@ -164,7 +162,7 @@ push_text(UIState *ui_state, char *text, f32 x, f32 baseline)
     {
         u32 codepoint = u32(*c);
         FontGlyph *glyph = &font_table[codepoint];
-        push_glyph(ui_state->render_group, glyph, pen_x, pen_y);
+        push_glyph(ui_state->render_group, glyph, pen_x, pen_y, color);
         pen_x += glyph->advance_x >> 6;
 
     }

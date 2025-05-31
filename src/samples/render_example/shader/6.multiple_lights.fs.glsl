@@ -1,5 +1,6 @@
 #version 330 core
-out vec4 FragColor;
+layout(location = 0) out vec4 FragColor;
+layout(location = 1) out float o_EntityID;
 
 struct Material {
     sampler2D diffuse;
@@ -56,6 +57,8 @@ uniform SpotLight spotLight;
 uniform Material material;
 uniform vec4 baseColorFactor;
 
+uniform float u_EntityID; 
+
 vec3 CalcDirLight(DirectionalLight light, vec3 normal, vec3 viewDir);
 vec3 CalcPointLight(PointLight light, vec3 normal, vec3 fragPos, vec3 viewDir);
 vec3 CalcSpotLight(SpotLight light, vec3 normal, vec3 fragPos, vec3 viewDir);
@@ -90,6 +93,7 @@ void main()
 
     // standard behaviour
     FragColor = vec4(result, 1.0);
+    o_EntityID = u_EntityID;
 }
 
 // calculates the color when using a directional light.

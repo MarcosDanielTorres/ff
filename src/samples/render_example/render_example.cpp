@@ -280,6 +280,11 @@ global_variable ShaderStorageBuffer mShaderTRSMatrixBuffer;
 global_variable ShaderStorageBuffer mNodeTransformBuffer;
 std::vector<NodeTransformData> mNodeTransFormData{};
 
+/* for selection */
+std::vector<u32> ent_ids_data{};
+global_variable ShaderStorageBuffer entities_ids;
+global_variable Shader outline_shader;
+
 
 // mAssimpShader.use();
 
@@ -687,7 +692,6 @@ void fb_fuckery(OpenGL *opengl, TestFB *fb, GLsizei width, GLsizei height)
 
 
     // selection texture
-    opengl->glGenFramebuffers(1, &fb->handle_selection);
     // generate texture
     glGenTextures(1, &fb->selection_tex);
     glBindTexture(GL_TEXTURE_2D, fb->selection_tex);
@@ -752,7 +756,8 @@ void opengl_render(OpenGL *opengl, Camera *curr_camera, u32 cubeVAO,
     glm::mat4 view_rotated_180 = glm::lookAt(curr_camera->position, curr_camera->position + rear_forward, curr_camera->up);
     int mirrorWidth = 320;
     int mirrorHeight = 180;
-    local_persist f32 pixelColor =  -444.0f;
+    f32 pixelColor =  21.0f;
+
     {
         char buf[100];
         char *at = buf;
@@ -762,25 +767,33 @@ void opengl_render(OpenGL *opengl, Camera *curr_camera, u32 cubeVAO,
         f32 mouse_p_x = global_input.curr_mouse_state.x;
         f32 mouse_p_y = global_input.curr_mouse_state.y;
         _snprintf_s(at, (size_t)(end - at), (size_t)(end - at), c, pixelColor);
-        push_text(ui_state, at, 200, 100);
+        push_text(ui_state, at, 500, 100, glm::vec4(1.0f, 1.0f, 0.0f, 1.0f));
     }
     {
         // first pass
         opengl->glBindFramebuffer(GL_FRAMEBUFFER, test_fb.handle);
         glViewport(0, 0, SRC_WIDTH, SRC_HEIGHT);
 
+        const GLenum all_colors[] = {GL_COLOR_ATTACHMENT0, GL_COLOR_ATTACHMENT1};
+        opengl->glDrawBuffers(2, all_colors);
+
         //static GLfloat colorClear[] = { 0.25f, 0.25f, 0.25f, 1.0f };
         static GLfloat colorClear[] = { 0.1f, 0.1f, 0.1f, 1.0f };
         opengl->glClearBufferfv(GL_COLOR, 0, colorClear);
-        static GLfloat selectionClearColor = 10.0f;
+        static GLfloat selectionClearColor = 0xFFFFFFFF;
         opengl->glClearBufferfv(GL_COLOR, 1, &selectionClearColor);
         static GLfloat depthValue = 1.0f;
         opengl->glClearBufferfv(GL_DEPTH, 0, &depthValue);
+        glClear(GL_STENCIL_BUFFER_BIT);            // Clear stencil
 
         //glClearColor(0.1f, 0.1f, 0.1f, 1.0f);
 		//glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
         glEnable(GL_DEPTH_TEST);
         glDepthFunc(GL_LESS);
+        glEnable(GL_STENCIL_TEST);
+        glStencilMask(0x00);
+        glStencilFunc(GL_ALWAYS, 0, 0xFF);
+        glStencilOp(GL_KEEP, GL_KEEP, GL_REPLACE);
         glEnable(GL_CULL_FACE);
         glCullFace(GL_BACK);
 
@@ -793,15 +806,19 @@ void opengl_render(OpenGL *opengl, Camera *curr_camera, u32 cubeVAO,
         shader_set_vec3(skinning_shader, "spotLight.position", curr_camera->position);
         shader_set_vec3(skinning_shader, "spotLight.direction", curr_camera->forward);
 
+        #if 1
 		glm::mat4 model_mat = glm::translate(glm::mat4(1.0f), floor_meshbox.transform.pos) *
 			glm::mat4_cast(floor_meshbox.transform.rot) *
 			glm::scale(glm::mat4(1.0f), floor_meshbox.transform.scale);
 
+        opengl->glUniform1f(opengl->glGetUniformLocation(skinning_shader.id, "u_EntityID"), (f32)1);
 		shader_set_mat4(skinning_shader, "model", model_mat);
         // NOTE glDrawArrays takes the amount of vertices, not points (vertex is pos, norm, tex, ... so on, a combination of things!!)
         glDrawArrays(GL_TRIANGLES, 0, 36);
+
         for (u32 i = 3; i < boxes.size(); i++)
         {
+            opengl->glUniform1f(opengl->glGetUniformLocation(skinning_shader.id, "u_EntityID"), (f32)i);
             glm::mat4 model = glm::translate(glm::mat4(1.0f), boxes[i].transform.pos) *
                 glm::mat4_cast(boxes[i].transform.rot) *
                 glm::scale(glm::mat4(1.0f), boxes[i].transform.scale);
@@ -809,6 +826,75 @@ void opengl_render(OpenGL *opengl, Camera *curr_camera, u32 cubeVAO,
             glDrawArrays(GL_TRIANGLES, 0, 36);
         }
 
+        //entities_ids.uploadSsboData(opengl, ent_ids_data, 0);
+
+        const GLenum only_color[] = {GL_COLOR_ATTACHMENT0};
+        opengl->glDrawBuffers(1, only_color);
+
+        // Enable stencil test
+        glStencilMask(0xFF);                       // Enable writing to stencil
+        glStencilFunc(GL_ALWAYS, 1, 0xFF);       // Always pass the stencil test
+        {
+            //opengl->glUniform1f(opengl->glGetUniformLocation(skinning_shader.id, "u_EntityID"), (f32)4);
+
+        if (pixelColor > 1 && pixelColor < boxes.size())
+        {
+                u32 entity_id_to_draw = u32(pixelColor);
+                glm::mat4 model = glm::translate(glm::mat4(1.0f), boxes[entity_id_to_draw].transform.pos) *
+                    glm::mat4_cast(boxes[entity_id_to_draw].transform.rot) *
+                    glm::scale(glm::mat4(1.0f), boxes[entity_id_to_draw].transform.scale );
+                shader_set_mat4(skinning_shader, "model", model);
+                glDrawArrays(GL_TRIANGLES, 0, 36);
+
+        }
+        }
+
+        // draw outline
+
+        glStencilMask(0x00); // Disable stencil writes
+        glStencilFunc(GL_NOTEQUAL, 1, 0xFF);
+        glDisable(GL_DEPTH_TEST);
+
+        {
+        // Use a solid outline color, simple shader
+        shader_use(outline_shader);
+	    opengl->glBindVertexArray(cubeVAO);
+
+        shader_set_mat4(outline_shader, "nodeMatrix", glm::mat4(1.0f));
+		shader_set_mat4(outline_shader, "view", view);
+        shader_set_vec3(outline_shader, "viewPos", curr_camera->position);
+        shader_set_vec3(outline_shader, "spotLight.position", curr_camera->position);
+        shader_set_vec3(outline_shader, "spotLight.direction", curr_camera->forward);
+        shader_set_mat4(outline_shader, "projection", placeholder_state->persp_proj);
+
+        if (pixelColor > 1 && pixelColor < boxes.size())
+        {
+                u32 entity_id_to_draw = u32(pixelColor);
+                glm::mat4 model = glm::translate(glm::mat4(1.0f), boxes[entity_id_to_draw].transform.pos) *
+                    glm::mat4_cast(boxes[entity_id_to_draw].transform.rot) *
+                    glm::scale(glm::mat4(1.0f), boxes[entity_id_to_draw].transform.scale );
+                shader_set_mat4(outline_shader, "model", model);
+                glDrawArrays(GL_TRIANGLES, 0, 36);
+
+        }
+        }
+
+        // reset states
+        glEnable(GL_DEPTH_TEST);
+        glStencilMask(0xFF);
+        glStencilFunc(GL_ALWAYS, 0, 0xFF);
+        glDisable(GL_STENCIL_TEST);
+
+
+
+
+        #endif
+
+        opengl->glUseProgram(0);
+
+
+        // IMPORTANT because I only care about the selection for the cubes i have to disable the other color_attachment
+        // otherwise if the next shaders dont specifically write to location 1 then whats written its undefined behaviour
         // render model
         {
             InstancesHolder *instances = placeholder_state->instances;
@@ -1247,6 +1333,8 @@ int main() {
     Shader skinning_shader{};
     shader_init(&skinning_shader, opengl, str8("skel_shader-2.vs.glsl"), str8("6.multiple_lights.fs.glsl"));
 
+    shader_init(&outline_shader, opengl, str8("skel_shader-2.vs.glsl"), str8("outline.fs.glsl"));
+
     {
         // test framebuffer!
         test_fb.pid = create_program(opengl, str8("tests/basic.vs.glsl"), str8("tests/basic.fs.glsl"));
@@ -1359,8 +1447,8 @@ int main() {
 
 
 
-    //const char *model_filepath = "C:/Users/marcos/Desktop/Mastering-Cpp-Game-Animation-Programming/chapter01/01_opengl_assimp/assets/woman/Woman.gltf";
-    const char *model_filepath = "E:/Mastering-Cpp-Game-Animation-Programming/chapter01/01_opengl_assimp/assets/woman/Woman.gltf";
+    const char *model_filepath = "C:/Users/marcos/Desktop/Mastering-Cpp-Game-Animation-Programming/chapter01/01_opengl_assimp/assets/woman/Woman.gltf";
+    //const char *model_filepath = "E:/Mastering-Cpp-Game-Animation-Programming/chapter01/01_opengl_assimp/assets/woman/Woman.gltf";
     add_instances(opengl, placeholder_state->instances, model_filepath, 10);
 
     f32 pre_transformed_quad[] = 
@@ -1725,7 +1813,11 @@ int main() {
         }
 
 
-        push_line(placeholder_state->static_mesh_render_group);
+        {
+            glm::vec3 from = glm::vec3(0.0f, 0.0f, 0.0f);
+            glm::vec3 to = glm::vec3(10.0f, 2.0f, 10.0f);
+            push_line(placeholder_state->static_mesh_render_group, from, to);
+        }
 
         win32_process_pending_msgs();
         if (input_is_key_pressed(&global_input, Keys_W))

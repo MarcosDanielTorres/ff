@@ -6,6 +6,10 @@ layout(location = 3) in uvec4 inJointIndices; // esto no andaba si lo dejaba com
 // en realidad anda con uvec4 pero por alguna razon me hizo confundir esto. creo que no guarde y pense que no andaba con uvec4
 layout(location = 4) in vec4 inJointWeights;
 
+//layout (std430, binding = 0) readonly buffer EntitiesIDS {
+//  uint ids[];
+//};
+
 out vec2 TexCoords;
 out vec3 Normal;
 out vec3 FragPos;
@@ -35,7 +39,6 @@ void main() {
 		locPos = model * nodeMatrix * vec4(aPos, 1.0);
 		Normal = normalize(transpose(inverse(mat3(model * nodeMatrix))) * aNormal);
 	}
-
 
 	vec4 outWorldPos = locPos;
 	gl_Position = projection * view * outWorldPos;

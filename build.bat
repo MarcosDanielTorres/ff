@@ -10,7 +10,7 @@ set glm_root=%root%\thirdparty\glm
 
 set pc="C:\Program Files"
 set notebook="C:\Archivos de programa"
-set assimp_root=%notebook%
+set assimp_root=%pc%
 
 set assimp_root=%assimp_root%\assimp
 set assimp_lib_path=%assimp_root%\lib

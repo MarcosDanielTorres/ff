@@ -757,6 +757,7 @@ void opengl_render(OpenGL *opengl, Camera *curr_camera, u32 cubeVAO,
     int mirrorWidth = 320;
     int mirrorHeight = 180;
     local_persist f32 pixelColor =  21.0f;
+    local_persist unsigned char stencil_val;
 
     {
         char buf[100];
@@ -769,10 +770,32 @@ void opengl_render(OpenGL *opengl, Camera *curr_camera, u32 cubeVAO,
         _snprintf_s(at, (size_t)(end - at), (size_t)(end - at), c, pixelColor);
         push_text(ui_state, at, 500, 100, glm::vec4(1.0f, 1.0f, 0.0f, 1.0f));
     }
+
+    {
+        char buf[100];
+        char *at = buf;
+        char *end = buf + sizeof(buf);
+        const char* c  = "stencil value at mouse: %u";
+        _snprintf_s(at, (size_t)(end - at), (size_t)(end - at), c, stencil_val);
+        push_text(ui_state, at, 600, 120, glm::vec4(1.0f, 0.0f, 0.0f, 1.0f));
+        
+    }
+
+
+
+
     {
         // first pass
         opengl->glBindFramebuffer(GL_FRAMEBUFFER, test_fb.handle);
         glViewport(0, 0, SRC_WIDTH, SRC_HEIGHT);
+        glEnable(GL_DEPTH_TEST);
+        glDepthFunc(GL_LESS);
+        glEnable(GL_CULL_FACE);
+        glCullFace(GL_BACK);
+
+        glEnable(GL_STENCIL_TEST);
+        glStencilFunc(GL_NOTEQUAL, 1, 0xFF);
+        glStencilOp(GL_KEEP, GL_KEEP, GL_REPLACE);
 
         const GLenum all_colors[] = {GL_COLOR_ATTACHMENT0, GL_COLOR_ATTACHMENT1};
         opengl->glDrawBuffers(2, all_colors);
@@ -784,14 +807,13 @@ void opengl_render(OpenGL *opengl, Camera *curr_camera, u32 cubeVAO,
         opengl->glClearBufferfv(GL_COLOR, 1, &selectionClearColor);
         static GLfloat depthValue = 1.0f;
         opengl->glClearBufferfv(GL_DEPTH, 0, &depthValue);
+        glStencilMask(0xFF);
         glClear(GL_STENCIL_BUFFER_BIT);            // Clear stencil
 
         //glClearColor(0.1f, 0.1f, 0.1f, 1.0f);
 		//glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
-        glEnable(GL_DEPTH_TEST);
-        glDepthFunc(GL_LESS);
-        glEnable(GL_CULL_FACE);
-        glCullFace(GL_BACK);
+
+        glStencilMask(0x00);
 
 	    opengl->glBindVertexArray(cubeVAO);
         shader_use(skinning_shader);
@@ -1131,14 +1153,10 @@ void opengl_render(OpenGL *opengl, Camera *curr_camera, u32 cubeVAO,
     {
         #if 1
 
-        glEnable(GL_STENCIL_TEST);
-        glStencilMask(0x00);
-        glStencilFunc(GL_ALWAYS, 0, 0xFF);
-        glStencilOp(GL_KEEP, GL_KEEP, GL_REPLACE);
 
         // Enable stencil test
-        glStencilMask(0xFF);                       // Enable writing to stencil
         glStencilFunc(GL_ALWAYS, 1, 0xFF);       // Always pass the stencil test
+        glStencilMask(0xFF);                       // Enable writing to stencil
         {
             //opengl->glUniform1f(opengl->glGetUniformLocation(skinning_shader.id, "u_EntityID"), (f32)4);
 
@@ -1156,10 +1174,12 @@ void opengl_render(OpenGL *opengl, Camera *curr_camera, u32 cubeVAO,
         }
         }
 
+        glStencilFunc(GL_NOTEQUAL, 1, 0xFF);       // Always pass the stencil test
         // draw outline
         glStencilMask(0x00); // Disable stencil writes
-        glStencilFunc(GL_NOTEQUAL, 1, 0xFF);
         glDisable(GL_DEPTH_TEST);
+
+            glReadPixels(xPos, yPos, 1, 1, GL_STENCIL_INDEX, GL_UNSIGNED_BYTE, &stencil_val);
 
         {
         // Use a solid outline color, simple shader
@@ -1185,10 +1205,9 @@ void opengl_render(OpenGL *opengl, Camera *curr_camera, u32 cubeVAO,
         }
 
         // reset states
-        glEnable(GL_DEPTH_TEST);
         glStencilMask(0xFF);
         glStencilFunc(GL_ALWAYS, 0, 0xFF);
-        glDisable(GL_STENCIL_TEST);
+        glEnable(GL_DEPTH_TEST);
 
         #endif
 
@@ -1452,8 +1471,8 @@ int main() {
 
 
 
-    const char *model_filepath = "C:/Users/marcos/Desktop/Mastering-Cpp-Game-Animation-Programming/chapter01/01_opengl_assimp/assets/woman/Woman.gltf";
-    //const char *model_filepath = "E:/Mastering-Cpp-Game-Animation-Programming/chapter01/01_opengl_assimp/assets/woman/Woman.gltf";
+    //const char *model_filepath = "C:/Users/marcos/Desktop/Mastering-Cpp-Game-Animation-Programming/chapter01/01_opengl_assimp/assets/woman/Woman.gltf";
+    const char *model_filepath = "E:/Mastering-Cpp-Game-Animation-Programming/chapter01/01_opengl_assimp/assets/woman/Woman.gltf";
     add_instances(opengl, placeholder_state->instances, model_filepath, 10);
 
     f32 pre_transformed_quad[] = 

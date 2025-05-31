@@ -49,6 +49,8 @@ POSTPONED Replace STD
 TODO Replace old 'skinning_shader' im using. Beware of lighting, take it away from it!
 TODO change ui ortho matrix for 2D alternative (my own)
 
+TODO FIX The camera seems to be bound to frame time
+
 Some ambitious things:
 DONE Maybe I should just do assimp as a DLL and build only the gltf and fbx loader
     - So I managed to create the DLL and sped up quite a lot, although wasn't able to only let the importers for gltf and fbx

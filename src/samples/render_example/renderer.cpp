@@ -1,6 +1,6 @@
 
-static u32 max_index_per_batch = 600;
-static u32 max_vertex_per_batch = 600;
+static u32 max_index_per_batch = 9000;
+static u32 max_vertex_per_batch = 9000;
 
 // Vertex ordering
 // x+ right, y+ up, z- into the screen
@@ -15,7 +15,7 @@ void push_triangle(UIRenderGroup *render_group, glm::vec3 tri_points[3], u16 tri
 {
     check_bounds(3 + render_group->vertex_count, 3 + render_group->index_count);
 
-    UIVertex *v = render_group->vertex_array + render_group->vertex_count;
+    TextureQuadVertex *v = render_group->vertex_array + render_group->vertex_count;
     glm::vec2 uv0 = glm::vec2(0.0f, 0.0f);
     glm::vec2 uv1 = glm::vec2(0.0f, 0.0f);
     glm::vec2 uv2 = glm::vec2(0.0f, 0.0f);
@@ -46,7 +46,7 @@ void push_rect(UIRenderGroup *render_group, const glm::vec3 quad_points[4],
 {
     check_bounds(4 + render_group->vertex_count, 6 + render_group->index_count);
 
-    UIVertex *v = render_group->vertex_array + render_group->vertex_count;
+    TextureQuadVertex *v = render_group->vertex_array + render_group->vertex_count;
     v[0] = {quad_points[0], uv0, c};
     v[1] = {quad_points[1], uv1, c};
     v[2] = {quad_points[2], uv2, c};
@@ -110,6 +110,48 @@ push_glyph(UIRenderGroup *render_group, FontGlyph *glyph, f32 x, f32 baseline)
     push_rect(render_group, quad_points, uv0, uv1, uv2, uv3);
 }
 
+internal void
+push_line(UIRenderGroup *render_group)
+{
+    f32 thickness = 0.05f;
+    glm::vec3 from = glm::vec3(0.0f, 0.0f, 0.0f);
+    glm::vec3 to = glm::vec3(10.0f, 2.0f, 10.0f);
+
+    glm::vec3 line = to - from;
+    glm::vec3 dir = glm::normalize(line);
+
+    // Pick a stable world-space up vector that's NOT parallel to the line
+    glm::vec3 up = glm::vec3(0.0f, 1.0f, 0.0f);
+    if (fabs(glm::dot(dir, up)) > 0.99f) {
+        up = glm::vec3(1.0f, 0.0f, 0.0f);
+    }
+      // Compute a perpendicular direction to make the quad thickness
+    glm::vec3 thicknessdir = glm::normalize(glm::cross(dir, up));
+    glm::vec3 halfoffset = 0.5f * thickness * thicknessdir;
+
+    glm::vec2 UV0 = glm::vec2{0, 0};
+    glm::vec2 UV1 = glm::vec2{1, 0};
+    glm::vec2 UV2 = glm::vec2{1, 1};
+    glm::vec2 UV3 = glm::vec2{0, 1};
+
+    // Construct quad around the line
+    //glm::vec3 P0 = from - halfoffset;
+    //glm::vec3 P1 = to   - halfoffset;
+    //glm::vec3 P2 = to   + halfoffset;
+    //glm::vec3 P3 = from + halfoffset;
+
+    glm::vec3 P0 = from + halfoffset;
+    glm::vec3 P1 = to   + halfoffset;
+    glm::vec3 P2 = to   - halfoffset;
+    glm::vec3 P3 = from - halfoffset;
+
+    const glm::vec3 quad_points[4] = 
+    {
+        P0, P1, P2, P3
+    };
+    push_rect(render_group, quad_points, UV0, UV1, UV2, UV3);
+}
+
 
 internal void
 push_text(UIState *ui_state, char *text, f32 x, f32 baseline)
@@ -143,7 +185,7 @@ void push_quad(UIRenderGroup *render_group, glm::vec3 center, glm::vec2 radius, 
     glm::vec2 uv2 = glm::vec2(1, 1);
     glm::vec2 uv3 = glm::vec2(0, 1);
 
-    UIVertex *v = render_group->vertex_array + render_group->vertex_count;
+    TextureQuadVertex *v = render_group->vertex_array + render_group->vertex_count;
     v[0] = {p0, uv0, c};
     v[1] = {p1, uv1, c};
     v[2] = {p2, uv2, c};

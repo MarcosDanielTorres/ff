@@ -1,13 +1,12 @@
 #version 460 core
-layout (location = 0) in vec3 aPos;
+layout (location = 0) in vec4 aPos; // last float is uv.x
 layout (location = 1) in vec4 aColor;
-layout (location = 2) in vec3 aNormal;
-layout (location = 3) in vec2 aTexCoord;
-layout (location = 4) in uvec4 aBoneNum; // ignored
-layout (location = 5) in vec4 aBoneWeight; // ignored
+layout (location = 2) in vec4 aNormal; // last float is uv.y
+layout (location = 3) in uvec4 aBoneNum; // ignored
+layout (location = 4) in vec4 aBoneWeight; // ignored
 
 layout (location = 0) out vec4 color;
-layout (location = 1) out vec3 normal;
+layout (location = 1) out vec4 normal;
 layout (location = 2) out vec2 texCoord;
 
 layout (std140, binding = 0) uniform Matrices {
@@ -22,8 +21,8 @@ layout (std430, binding = 1) readonly restrict buffer WorldPosMatrices {
 void main() {
 
   mat4 modelMat = worldPosMat[gl_InstanceID];
-  gl_Position = projection * view * modelMat * vec4(aPos, 1.0);
+  gl_Position = projection * view * modelMat * vec4(aPos.x, aPos.y, aPos.z, 1.0);
   color = aColor;
-  normal = vec3(transpose(inverse(modelMat)) * vec4(aNormal, 1.0));
-  texCoord = aTexCoord;
+  normal = transpose(inverse(modelMat)) * vec4(aNormal.x, aNormal.y, aNormal.z, 1.0);
+  texCoord = vec2(aPos.w, aNormal.w);
 }

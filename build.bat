@@ -41,7 +41,7 @@ if "%vulkan%"=="1" set vulkan_lib_path=%VULKAN_SDK%\Lib
 
 @rem TODO see why I have /EHsc
 set compile_flags=
-set compile_flags=-diagnostics:column -WL -std:c++20 -nologo -Gm- /EHa %inc_files% -Zi -Od 
+set compile_flags=-diagnostics:column -WL -std:c++20 -nologo -Gm- /EHa %inc_files% -Zi -Od
 @ rem try with /Zc:nrvo instead of -Zi
 
 set compile=call cl %compile_flags% 

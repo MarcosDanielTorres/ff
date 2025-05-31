@@ -1,6 +1,6 @@
 
-static u32 max_index_per_batch = 600;
-static u32 max_vertex_per_batch = 600;
+static u32 max_index_per_batch = 9000;
+static u32 max_vertex_per_batch = 9000;
 
 // Vertex ordering
 // x+ right, y+ up, z- into the screen
@@ -134,7 +134,7 @@ push_line(UIRenderGroup *render_group)
     glm::vec2 UV2 = glm::vec2{1, 1};
     glm::vec2 UV3 = glm::vec2{0, 1};
 
-     // Construct quad around the line
+    // Construct quad around the line
     //glm::vec3 P0 = from - halfoffset;
     //glm::vec3 P1 = to   - halfoffset;
     //glm::vec3 P2 = to   + halfoffset;

@@ -53,6 +53,7 @@ struct OpenGL
     OpenGLDeclareMemberFunction(glGenerateMipmap);
 
     OpenGLDeclareMemberFunction(glDrawElementsInstanced);
+    OpenGLDeclareMemberFunction(glDrawBuffers);
     OpenGLDeclareMemberFunction(glBufferSubData);
     OpenGLDeclareMemberFunction(glBindBufferRange);
 
@@ -72,6 +73,7 @@ struct OpenGL
 
     OpenGLDeclareMemberFunction(glFramebufferRenderbuffer);
 
+    OpenGLDeclareMemberFunction(glClearBufferfv);
 };
 
 
@@ -740,6 +742,7 @@ void opengl_init(OpenGL *opengl, OS_Window window)
     OpenGLSetFunction(glGenerateMipmap);
 
     OpenGLSetFunction(glDrawElementsInstanced);
+    OpenGLSetFunction(glDrawBuffers);
     OpenGLSetFunction(glBufferSubData);
     OpenGLSetFunction(glBindBufferRange);
 
@@ -758,6 +761,8 @@ void opengl_init(OpenGL *opengl, OS_Window window)
     OpenGLSetFunction(glCheckFramebufferStatus);
 
     OpenGLSetFunction(glFramebufferRenderbuffer);
+
+    OpenGLSetFunction(glClearBufferfv);
 
     opengl_enable_debug(opengl);
 }

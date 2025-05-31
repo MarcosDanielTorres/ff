@@ -57,10 +57,15 @@ struct TestFB
 {
     GLuint handle;
     GLuint handle_rotated;
+    GLuint handle_selection;
+
     GLuint textureColorbuffer;
     GLuint textureColorbuffer_rot;
+    GLuint selection_tex;
+
     GLuint vbo, vao, ebo;
     GLuint vbo_rot, vao_rot, ebo_rot;
+
     u32 pid;
 };
 
@@ -657,7 +662,7 @@ void fb_fuckery(OpenGL *opengl, TestFB *fb, GLsizei width, GLsizei height)
     glGenTextures(1, &fb->textureColorbuffer);
     glBindTexture(GL_TEXTURE_2D, fb->textureColorbuffer);
     glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, width, height, 0, GL_RGB, GL_UNSIGNED_BYTE, NULL);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR );
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
     glBindTexture(GL_TEXTURE_2D, 0);
 
@@ -679,15 +684,21 @@ void fb_fuckery(OpenGL *opengl, TestFB *fb, GLsizei width, GLsizei height)
     opengl->glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_RENDERBUFFER, rbo);
     if(opengl->glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
         printf("ERROR::FRAMEBUFFER:: Framebuffer is not complete!\n");
-    opengl->glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
 
+    // selection texture
+    opengl->glGenFramebuffers(1, &fb->handle_selection);
+    // generate texture
+    glGenTextures(1, &fb->selection_tex);
+    glBindTexture(GL_TEXTURE_2D, fb->selection_tex);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_R32F, width, height, 0, GL_RED, GL_FLOAT, NULL);
+    glBindTexture(GL_TEXTURE_2D, 0);
 
+    // attach it to currently bound framebuffer object
+    opengl->glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT1, GL_TEXTURE_2D, fb->selection_tex, 0); 
 
-
-
-
-
+    const GLenum buffers[] = {GL_COLOR_ATTACHMENT0, GL_COLOR_ATTACHMENT1};
+    opengl->glDrawBuffers(2, buffers);
 
     /*
     Now that we know how framebuffers (sort of) work it's time to put them to good use.
@@ -725,6 +736,7 @@ void fb_fuckery(OpenGL *opengl, TestFB *fb, GLsizei width, GLsizei height)
     opengl->glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_RENDERBUFFER, rbo_rot);
     if(opengl->glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
         printf("ERROR::FRAMEBUFFER:: Framebuffer is not complete!\n");
+
     opengl->glBindFramebuffer(GL_FRAMEBUFFER, 0);
 }
 
@@ -732,43 +744,41 @@ void fb_fuckery(OpenGL *opengl, TestFB *fb, GLsizei width, GLsizei height)
 void opengl_render(OpenGL *opengl, Camera *curr_camera, u32 cubeVAO,
     Shader skinning_shader, MeshBox floor_meshbox, std::vector<MeshBox> boxes, PlaceholderState *placeholder_state, UIState *ui_state, f32 dt)
 {
-    #if 0
-        glEnable(GL_DEPTH_TEST);
-        glDepthFunc(GL_LESS);
-        glClearColor(0.1f, 0.1f, 0.1f, 1.0f);
-		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
-        #if 0
-        glDisable(GL_CULL_FACE);
-        #else
-        glEnable(GL_CULL_FACE);
-        glCullFace(GL_BACK);
-        #endif
-    #endif
+    glm::mat4 view = curr_camera->GetViewMatrix();
+    f32 mouse_p_x = global_input.curr_mouse_state.x;
+    f32 mouse_p_y = global_input.curr_mouse_state.y;
 
-        glm::mat4 view = curr_camera->GetViewMatrix();
-
-        glm::vec3 rear_forward = -curr_camera->forward;
-        glm::mat4 view_rotated_180 = glm::lookAt(curr_camera->position, curr_camera->position + rear_forward, curr_camera->up);
-        int mirrorWidth = 320;
-        int mirrorHeight = 180;
-        //{
-        //    char buf[100];
-        //    char *at = buf;
-        //    char *end = buf + sizeof(buf);
-        //    const char* c  = "Mouse screen coordinates: (%.2f, %.2f)!";
-        //    
-        //    f32 mouse_p_x = global_input.curr_mouse_state.x;
-        //    f32 mouse_p_y = global_input.curr_mouse_state.y;
-        //    _snprintf_s(at, (size_t)(end - at), (size_t)(end - at), c, mouse_p_x, mouse_p_y);
-        //    push_text(ui_state, at, 200, 400);
-        //}
+    glm::vec3 rear_forward = -curr_camera->forward;
+    glm::mat4 view_rotated_180 = glm::lookAt(curr_camera->position, curr_camera->position + rear_forward, curr_camera->up);
+    int mirrorWidth = 320;
+    int mirrorHeight = 180;
+    local_persist f32 pixelColor =  -444.0f;
     {
-
+        char buf[100];
+        char *at = buf;
+        char *end = buf + sizeof(buf);
+        const char* c  = "ID: %2.f";
+        
+        f32 mouse_p_x = global_input.curr_mouse_state.x;
+        f32 mouse_p_y = global_input.curr_mouse_state.y;
+        _snprintf_s(at, (size_t)(end - at), (size_t)(end - at), c, pixelColor);
+        push_text(ui_state, at, 200, 100);
+    }
+    {
         // first pass
         opengl->glBindFramebuffer(GL_FRAMEBUFFER, test_fb.handle);
         glViewport(0, 0, SRC_WIDTH, SRC_HEIGHT);
-        glClearColor(0.1f, 0.1f, 0.1f, 1.0f);
-		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
+
+        //static GLfloat colorClear[] = { 0.25f, 0.25f, 0.25f, 1.0f };
+        static GLfloat colorClear[] = { 0.1f, 0.1f, 0.1f, 1.0f };
+        opengl->glClearBufferfv(GL_COLOR, 0, colorClear);
+        static GLfloat selectionClearColor = 10.0f;
+        opengl->glClearBufferfv(GL_COLOR, 1, &selectionClearColor);
+        static GLfloat depthValue = 1.0f;
+        opengl->glClearBufferfv(GL_DEPTH, 0, &depthValue);
+
+        //glClearColor(0.1f, 0.1f, 0.1f, 1.0f);
+		//glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
         glEnable(GL_DEPTH_TEST);
         glDepthFunc(GL_LESS);
         glEnable(GL_CULL_FACE);
@@ -925,31 +935,18 @@ void opengl_render(OpenGL *opengl, Camera *curr_camera, u32 cubeVAO,
             end_ui_frame(opengl);
         }
 
-        #if 0
-        // second pass
-        opengl->glBindFramebuffer(GL_FRAMEBUFFER, 0);
-        glClearColor(1.0f, 1.0f, 1.0f, 1.0f);
-		glClear(GL_COLOR_BUFFER_BIT);
-
-        opengl->glUseProgram(test_fb.pid);
-
-        opengl->glBindVertexArray(test_fb.vao);
-        glDisable(GL_DEPTH_TEST);
-        glBindTexture(GL_TEXTURE_2D, test_fb.textureColorbuffer);
-        glDrawArrays(GL_TRIANGLES, 0, 6); 
-        opengl->glBindVertexArray(0);
-        #endif
     }
         
 
         // rear view mirror!!!!!!!!!
 
-
+    #if REAR_VIEW
+    {
         // second pass
         opengl->glBindFramebuffer(GL_FRAMEBUFFER, test_fb.handle_rotated);
         glViewport(0, 0, mirrorWidth, mirrorHeight);
         glClearColor(0.1f, 0.1f, 0.1f, 1.0f);
-		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
+        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
         glEnable(GL_DEPTH_TEST);
         glDepthFunc(GL_LESS);
         glEnable(GL_CULL_FACE);
@@ -957,20 +954,20 @@ void opengl_render(OpenGL *opengl, Camera *curr_camera, u32 cubeVAO,
 
 
 
-	    opengl->glBindVertexArray(cubeVAO);
+        opengl->glBindVertexArray(cubeVAO);
         shader_use(skinning_shader);
 
         shader_set_mat4(skinning_shader, "nodeMatrix", glm::mat4(1.0f));
-		shader_set_mat4(skinning_shader, "view", view_rotated_180);
+        shader_set_mat4(skinning_shader, "view", view_rotated_180);
         shader_set_vec3(skinning_shader, "viewPos", curr_camera->position);
         shader_set_vec3(skinning_shader, "spotLight.position", curr_camera->position);
         shader_set_vec3(skinning_shader, "spotLight.direction", curr_camera->forward);
 
-		glm::mat4 model_mat = glm::translate(glm::mat4(1.0f), floor_meshbox.transform.pos) *
-			glm::mat4_cast(floor_meshbox.transform.rot) *
-			glm::scale(glm::mat4(1.0f), floor_meshbox.transform.scale);
+        glm::mat4 model_mat = glm::translate(glm::mat4(1.0f), floor_meshbox.transform.pos) *
+            glm::mat4_cast(floor_meshbox.transform.rot) *
+            glm::scale(glm::mat4(1.0f), floor_meshbox.transform.scale);
 
-		shader_set_mat4(skinning_shader, "model", model_mat);
+        shader_set_mat4(skinning_shader, "model", model_mat);
         // NOTE glDrawArrays takes the amount of vertices, not points (vertex is pos, norm, tex, ... so on, a combination of things!!)
         glDrawArrays(GL_TRIANGLES, 0, 36);
         for (u32 i = 3; i < boxes.size(); i++)
@@ -1094,30 +1091,46 @@ void opengl_render(OpenGL *opengl, Camera *curr_camera, u32 cubeVAO,
             end_static_mesh_frame(opengl);
         }
 
+    }
+    #endif
 
-        opengl->glUseProgram(0);
+    opengl->glUseProgram(0);
 
-        #if 1
-        // composition pass (fb 1 + fb 2)
-        opengl->glBindFramebuffer(GL_FRAMEBUFFER, 0);
-        glViewport(0, 0, SRC_WIDTH, SRC_HEIGHT);
-        glClearColor(1.0f, 1.0f, 1.0f, 1.0f);
-		glClear(GL_COLOR_BUFFER_BIT);
-        opengl->glUseProgram(test_fb.pid);
+    u32 xPos = (u32)mouse_p_x;
+    u32 yPos = (u32)mouse_p_y;
+    opengl->glBindFramebuffer(GL_READ_FRAMEBUFFER, test_fb.handle);
+    glReadBuffer(GL_COLOR_ATTACHMENT1);
+    glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+    glReadPixels(xPos, yPos, 1, 1, GL_RED, GL_FLOAT, &pixelColor);
+    glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
+    glReadBuffer(GL_COLOR_ATTACHMENT0);
+    opengl->glBindFramebuffer(GL_READ_FRAMEBUFFER, 0);
 
-        opengl->glBindVertexArray(test_fb.vao);
-        glDisable(GL_DEPTH_TEST);
-        glBindTexture(GL_TEXTURE_2D, test_fb.textureColorbuffer);
-        glDrawArrays(GL_TRIANGLES, 0, 6); 
-        opengl->glBindVertexArray(0);
+    // composition pass (fb 1 + fb 2)
+    // The final buffer doesn't have to get clean because im rendering a quad into it hence overwritting
+    // all its pixels. But if the dimensions would be different than the current windows's then I would
 
-        opengl->glBindVertexArray(test_fb.vao_rot);
-        glDisable(GL_DEPTH_TEST);
-        glBindTexture(GL_TEXTURE_2D, test_fb.textureColorbuffer_rot);
-        glDrawArrays(GL_TRIANGLES, 0, 6); 
-        opengl->glBindVertexArray(0);
-        #endif
-        opengl->glUseProgram(0);
+
+    opengl->glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    glViewport(0, 0, SRC_WIDTH, SRC_HEIGHT);
+
+
+    opengl->glUseProgram(test_fb.pid);
+
+    opengl->glBindVertexArray(test_fb.vao);
+    glDisable(GL_DEPTH_TEST);
+    glBindTexture(GL_TEXTURE_2D, test_fb.textureColorbuffer);
+    glDrawArrays(GL_TRIANGLES, 0, 6); 
+    opengl->glBindVertexArray(0);
+
+    #if REAR_VIEW
+    opengl->glBindVertexArray(test_fb.vao_rot);
+    glDisable(GL_DEPTH_TEST);
+    glBindTexture(GL_TEXTURE_2D, test_fb.textureColorbuffer_rot);
+    glDrawArrays(GL_TRIANGLES, 0, 6); 
+    opengl->glBindVertexArray(0);
+    #endif
+    opengl->glUseProgram(0);
 }
 
 
@@ -1213,19 +1226,6 @@ int main() {
         push_rect(ui_render_group, rect_points, uv0, uv1, uv2, uv3);
         #endif
 
-
-        // TODO fix put it into the update!
-        {
-            char buf[100];
-            char *at = buf;
-            char *end = buf + sizeof(buf);
-            const char* c  = "Mouse screen coordinates: (%.2f, %.2f)!";
-            
-            f32 mouse_p_x = global_input.curr_mouse_state.x;
-            f32 mouse_p_y = global_input.curr_mouse_state.y;
-            _snprintf_s(at, (size_t)(end - at), (size_t)(end - at), c, mouse_p_x, mouse_p_y);
-            push_text(ui_state, at, 200, 400);
-        }
 
         glm::vec3 tri_points[3] = {glm::vec3(500.0f, 500.0f, 0.0f), glm::vec3(600.0f, 500.0f, 0.0f), glm::vec3(450.0f, 300.0f, 0.0f)};
         u16 tri_indices[3] = {0, 1, 2};
@@ -1702,16 +1702,28 @@ int main() {
             char *end = buf + sizeof(buf);
             const char* c  = "Frame time: %.4fms";
             _snprintf_s(at, (size_t)(end - at), (size_t)(end - at), c, dt_ms);
-            push_text(ui_state, at, 50, 100);
+            push_text(ui_state, at, 25, 75);
         }
         {
             char buf[100];
             char *at = buf;
             char *end = buf + sizeof(buf);
-            const char* c  = "cam pos : %.4f, %.4f, %.4f";
+            const char* c  = "Cam pos: %.4f, %.4f, %.4f";
             _snprintf_s(at, (size_t)(end - at), (size_t)(end - at), c, curr_camera->position.x, curr_camera->position.y, curr_camera->position.z);
-            push_text(ui_state, at, 50, 150);
+            push_text(ui_state, at, 25, 100);
         }
+        {
+            char buf[100];
+            char *at = buf;
+            char *end = buf + sizeof(buf);
+            const char* c  = "Mouse screen coordinates: %.2f, %.2f";
+            
+            f32 mouse_p_x = global_input.curr_mouse_state.x;
+            f32 mouse_p_y = global_input.curr_mouse_state.y;
+            _snprintf_s(at, (size_t)(end - at), (size_t)(end - at), c, mouse_p_x, mouse_p_y);
+            push_text(ui_state, at, 25, 125);
+        }
+
 
         push_line(placeholder_state->static_mesh_render_group);
 

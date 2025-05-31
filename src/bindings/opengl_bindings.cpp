@@ -47,7 +47,10 @@
 #define GL_COLOR_ATTACHMENT30             0x8CFE
 #define GL_COLOR_ATTACHMENT31             0x8CFF
 #define GL_FRAMEBUFFER                    0x8D40
+#define GL_READ_FRAMEBUFFER               0x8CA8
+//#define GL_DRAW_FRAMEBUFFER               0x8CA9
 #define GL_RENDERBUFFER                   0x8D41
+#define GL_DEPTH_ATTACHMENT               0x8D00
 #define GL_DEPTH24_STENCIL8               0x88F0
 #define GL_DEPTH_STENCIL_ATTACHMENT       0x821A
 #define GL_FRAMEBUFFER_COMPLETE           0x8CD5
@@ -98,6 +101,7 @@
 #define GL_SHADER_STORAGE_BARRIER_BIT     0x00002000
 
 #define GL_R8                             0x8229
+#define GL_R32F                           0x822E
 
 typedef ptrdiff_t GLsizeiptr;
 typedef ptrdiff_t GLintptr;
@@ -156,6 +160,7 @@ OpenGLDefineFunction(glActiveTexture, void, GLenum texture);
 OpenGLDefineFunction(glGenerateMipmap, void, GLenum target);
 
 OpenGLDefineFunction(glDrawElementsInstanced, void, GLenum mode, GLsizei count, GLenum type, const void *indices, GLsizei instancecount);
+OpenGLDefineFunction(glDrawBuffers, void, GLsizei n, const GLenum *bufs);
 OpenGLDefineFunction(glBufferSubData, void, GLenum target, GLintptr offset, GLsizeiptr size, const void *data);
 OpenGLDefineFunction(glBindBufferRange, void, GLenum target, GLuint index, GLuint buffer, GLintptr offset, GLsizeiptr size);
 OpenGLDefineFunction(glBindBufferBase, void, GLenum target, GLuint index, GLuint buffer);
@@ -174,5 +179,7 @@ OpenGLDefineFunction(glFramebufferTexture2D, void, GLenum target, GLenum attachm
 OpenGLDefineFunction(glGenRenderbuffers, void, GLsizei n, GLuint *renderbuffers);
 OpenGLDefineFunction(glRenderbufferStorage, void, GLenum target, GLenum internalformat, GLsizei width, GLsizei height);
 OpenGLDefineFunction(glCheckFramebufferStatus, GLenum ,GLenum target);
+
+OpenGLDefineFunction(glClearBufferfv, void, GLenum buffer, GLint drawbuffer, const GLfloat *value);
 
 #define OpenGLGetFunction(name) (OpenGLType_##name) wglGetProcAddress(#name)

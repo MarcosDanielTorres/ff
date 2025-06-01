@@ -49,6 +49,7 @@
 #define GL_FRAMEBUFFER                    0x8D40
 #define GL_READ_FRAMEBUFFER               0x8CA8
 //#define GL_DRAW_FRAMEBUFFER               0x8CA9
+#define GL_FRAMEBUFFER_BINDING            0x8CA6
 #define GL_RENDERBUFFER                   0x8D41
 #define GL_DEPTH_ATTACHMENT               0x8D00
 #define GL_DEPTH24_STENCIL8               0x88F0

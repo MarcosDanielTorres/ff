@@ -5,6 +5,7 @@
 #include <iostream>
 #include <unordered_map>
 
+#define notebook 1
 #define RAW_INPUT 1
 #define STB_IMAGE_IMPLEMENTATION
 #include "stb_image.h"
@@ -844,6 +845,32 @@ void opengl_render(OpenGL *opengl, Camera *curr_camera, u32 cubeVAO,
 
         for (u32 i = 3; i < boxes.size(); i++)
         {
+
+            if (pixelColor > 1 && pixelColor < boxes.size())
+            {
+                u32 entity_id_to_draw = u32(pixelColor);
+                if (entity_id_to_draw == i)
+                {
+        glStencilFunc(GL_ALWAYS, 1, 0xFF);       // Always pass the stencil test
+        glStencilMask(0xFF);                       // Enable writing to stencil
+        // activar esta hace que cuando mnuestro el valor del stencil buffer sea correcto
+        // la de abajo lo deja siempre en 0! (glStencilOp(GL_KEEP, GL_REPLACE, GL_KEEP)) 
+        glStencilOp(GL_KEEP, GL_KEEP, GL_REPLACE); 
+        // when stencil passes and depth fails
+        // glStencilOp(GL_KEEP, GL_REPLACE, GL_KEEP); 
+                    opengl->glUniform1f(opengl->glGetUniformLocation(skinning_shader.id, "u_EntityID"), (f32)i);
+                    glm::mat4 model = glm::translate(glm::mat4(1.0f), boxes[i].transform.pos) *
+                        glm::mat4_cast(boxes[i].transform.rot) *
+                        glm::scale(glm::mat4(1.0f), boxes[i].transform.scale);
+                    shader_set_mat4(skinning_shader, "model", model);
+                    glDrawArrays(GL_TRIANGLES, 0, 36);
+        glStencilFunc(GL_NOTEQUAL, 1, 0xFF);       // Always pass the stencil test
+        // draw outline
+        glStencilMask(0x00); // Disable stencil writes
+        //glDisable(GL_DEPTH_TEST);
+                    continue;
+                }
+            }
             opengl->glUniform1f(opengl->glGetUniformLocation(skinning_shader.id, "u_EntityID"), (f32)i);
             glm::mat4 model = glm::translate(glm::mat4(1.0f), boxes[i].transform.pos) *
                 glm::mat4_cast(boxes[i].transform.rot) *
@@ -1149,12 +1176,13 @@ void opengl_render(OpenGL *opengl, Camera *curr_camera, u32 cubeVAO,
 
     u32 xPos = (u32)mouse_p_x;
     u32 yPos = (u32)mouse_p_y;
-    opengl->glBindFramebuffer(GL_READ_FRAMEBUFFER, test_fb.handle);
+    //opengl->glBindFramebuffer(GL_READ_FRAMEBUFFER, test_fb.handle);
     glReadBuffer(GL_COLOR_ATTACHMENT1);
-    glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+    glPixelStorei(GL_PACK_ALIGNMENT, 1);
     glReadPixels(xPos, yPos, 1, 1, GL_RED, GL_FLOAT, &pixelColor);
-    glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
-    opengl->glBindFramebuffer(GL_FRAMEBUFFER, test_fb.handle);
+    //pixelColor = 21;
+    glPixelStorei(GL_PACK_ALIGNMENT, 4);
+    //opengl->glBindFramebuffer(GL_FRAMEBUFFER, test_fb.handle);
 
 
     // stencil pass
@@ -1175,13 +1203,12 @@ void opengl_render(OpenGL *opengl, Camera *curr_camera, u32 cubeVAO,
 
 
         // Enable stencil test
-        glStencilFunc(GL_ALWAYS, 1, 0xFF);       // Always pass the stencil test
-        glStencilMask(0xFF);                       // Enable writing to stencil
         {
             //opengl->glUniform1f(opengl->glGetUniformLocation(skinning_shader.id, "u_EntityID"), (f32)4);
 
         shader_use(skinning_shader);
 	    opengl->glBindVertexArray(cubeVAO);
+        #if 0
         if (pixelColor > 1 && pixelColor < boxes.size())
         {
                 u32 entity_id_to_draw = u32(pixelColor);
@@ -1192,18 +1219,17 @@ void opengl_render(OpenGL *opengl, Camera *curr_camera, u32 cubeVAO,
                 glDrawArrays(GL_TRIANGLES, 0, 36);
 
         }
+        #endif
         }
 
-        glStencilFunc(GL_NOTEQUAL, 1, 0xFF);       // Always pass the stencil test
-        // draw outline
-        glStencilMask(0x00); // Disable stencil writes
-        glDisable(GL_DEPTH_TEST);
 
-    glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
-        glReadPixels(xPos, yPos, 1, 1, GL_STENCIL_INDEX, GL_UNSIGNED_BYTE, &stencil_val);
-    glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
+        glPixelStorei(GL_PACK_ALIGNMENT, 1);
+        glReadPixels(xPos, SRC_HEIGHT - yPos, 1, 1, GL_STENCIL_INDEX, GL_UNSIGNED_BYTE, &stencil_val);
+        glPixelStorei(GL_PACK_ALIGNMENT, 4);
 
         {
+        // draw outline
+        glDisable(GL_DEPTH_TEST);
         // Use a solid outline color, simple shader
         shader_use(outline_shader);
 	    opengl->glBindVertexArray(cubeVAO);
@@ -1235,7 +1261,7 @@ void opengl_render(OpenGL *opengl, Camera *curr_camera, u32 cubeVAO,
 
     }
 
-    glReadBuffer(GL_COLOR_ATTACHMENT0);
+    //glReadBuffer(GL_COLOR_ATTACHMENT0);
     opengl->glBindFramebuffer(GL_READ_FRAMEBUFFER, 0);
 
     // composition pass (fb 1 + fb 2)
@@ -1492,9 +1518,11 @@ int main() {
     }
 
 
-
-    //const char *model_filepath = "C:/Users/marcos/Desktop/Mastering-Cpp-Game-Animation-Programming/chapter01/01_opengl_assimp/assets/woman/Woman.gltf";
+    #if notebook
+    const char *model_filepath = "C:/Users/marcos/Desktop/Mastering-Cpp-Game-Animation-Programming/chapter01/01_opengl_assimp/assets/woman/Woman.gltf";
+    #else
     const char *model_filepath = "E:/Mastering-Cpp-Game-Animation-Programming/chapter01/01_opengl_assimp/assets/woman/Woman.gltf";
+    #endif
     add_instances(opengl, placeholder_state->instances, model_filepath, 10);
 
     f32 pre_transformed_quad[] = 

@@ -1099,8 +1099,11 @@ load_model(OpenGL *opengl, const char* model_filepath)
         //Logger::log(1, "%s: root node name: '%s'\n", __FUNCTION__, rootNodeName.c_str());
 
         // TODO is this the texture directory?
-        //std::string assetDirectory = "C:/Users/marcos/Desktop/Mastering-Cpp-Game-Animation-Programming/chapter01/01_opengl_assimp/assets/woman";
+        #if notebook
+        std::string assetDirectory = "C:/Users/marcos/Desktop/Mastering-Cpp-Game-Animation-Programming/chapter01/01_opengl_assimp/assets/woman";
+        #else
         std::string assetDirectory = "E:/Mastering-Cpp-Game-Animation-Programming/chapter01/01_opengl_assimp/assets/woman";
+        #endif
         processNode(opengl, model, model->mRootNode, rootNode, scene, assetDirectory);
 
         //Logger::log(1, "%s: ... processing nodes finished...\n", __FUNCTION__);

@@ -5,7 +5,6 @@
 #include <iostream>
 #include <unordered_map>
 
-#define notebook 1
 #define RAW_INPUT 1
 #define STB_IMAGE_IMPLEMENTATION
 #include "stb_image.h"
@@ -53,6 +52,55 @@ typedef Input GameInput;
 
 #include "components.h"
 using namespace aim::Components;
+
+#if 0 
+float skyboxVertices[] = {
+    // positions          
+    -1.0f,  1.0f, -1.0f,
+    -1.0f, -1.0f, -1.0f,
+     1.0f, -1.0f, -1.0f,
+     1.0f, -1.0f, -1.0f,
+     1.0f,  1.0f, -1.0f,
+    -1.0f,  1.0f, -1.0f,
+
+    -1.0f, -1.0f,  1.0f,
+    -1.0f, -1.0f, -1.0f,
+    -1.0f,  1.0f, -1.0f,
+    -1.0f,  1.0f, -1.0f,
+    -1.0f,  1.0f,  1.0f,
+    -1.0f, -1.0f,  1.0f,
+
+     1.0f, -1.0f, -1.0f,
+     1.0f, -1.0f,  1.0f,
+     1.0f,  1.0f,  1.0f,
+     1.0f,  1.0f,  1.0f,
+     1.0f,  1.0f, -1.0f,
+     1.0f, -1.0f, -1.0f,
+
+    -1.0f, -1.0f,  1.0f,
+    -1.0f,  1.0f,  1.0f,
+     1.0f,  1.0f,  1.0f,
+     1.0f,  1.0f,  1.0f,
+     1.0f, -1.0f,  1.0f,
+    -1.0f, -1.0f,  1.0f,
+
+    -1.0f,  1.0f, -1.0f,
+     1.0f,  1.0f, -1.0f,
+     1.0f,  1.0f,  1.0f,
+     1.0f,  1.0f,  1.0f,
+    -1.0f,  1.0f,  1.0f,
+    -1.0f,  1.0f, -1.0f,
+
+    -1.0f, -1.0f, -1.0f,
+    -1.0f, -1.0f,  1.0f,
+     1.0f, -1.0f, -1.0f,
+     1.0f, -1.0f, -1.0f,
+    -1.0f, -1.0f,  1.0f,
+     1.0f, -1.0f,  1.0f
+};
+#endif
+
+
 
 struct TestFB
 {
@@ -799,11 +847,11 @@ void opengl_render(OpenGL *opengl, Camera *curr_camera, u32 cubeVAO,
         opengl->glBindFramebuffer(GL_FRAMEBUFFER, test_fb.handle);
         glViewport(0, 0, SRC_WIDTH, SRC_HEIGHT);
         glEnable(GL_DEPTH_TEST);
-        glDepthFunc(GL_LESS);
         glEnable(GL_CULL_FACE);
         glCullFace(GL_BACK);
 
         glEnable(GL_STENCIL_TEST);
+        glDepthFunc(GL_LESS);
         glStencilFunc(GL_NOTEQUAL, 1, 0xFF);
         glStencilOp(GL_KEEP, GL_KEEP, GL_REPLACE);
 
@@ -843,34 +891,66 @@ void opengl_render(OpenGL *opengl, Camera *curr_camera, u32 cubeVAO,
         // NOTE glDrawArrays takes the amount of vertices, not points (vertex is pos, norm, tex, ... so on, a combination of things!!)
         glDrawArrays(GL_TRIANGLES, 0, 36);
 
+
+
+
         for (u32 i = 3; i < boxes.size(); i++)
         {
-
             if (pixelColor > 1 && pixelColor < boxes.size())
             {
                 u32 entity_id_to_draw = u32(pixelColor);
                 if (entity_id_to_draw == i)
                 {
-        glStencilFunc(GL_ALWAYS, 1, 0xFF);       // Always pass the stencil test
-        glStencilMask(0xFF);                       // Enable writing to stencil
-        // activar esta hace que cuando mnuestro el valor del stencil buffer sea correcto
-        // la de abajo lo deja siempre en 0! (glStencilOp(GL_KEEP, GL_REPLACE, GL_KEEP)) 
-        glStencilOp(GL_KEEP, GL_KEEP, GL_REPLACE); 
-        // when stencil passes and depth fails
-        // glStencilOp(GL_KEEP, GL_REPLACE, GL_KEEP); 
+                    glEnable(GL_STENCIL_TEST);
+                    glStencilFunc(GL_ALWAYS, 1, 0xFF);       // Always pass the stencil test
+                    glStencilMask(0xFF);                       // Enable writing to stencil
+                    // activar esta hace que cuando mnuestro el valor del stencil buffer sea correcto
+                    // la de abajo lo deja siempre en 0! (glStencilOp(GL_KEEP, GL_REPLACE, GL_KEEP)) 
+                    glStencilOp(GL_KEEP, GL_KEEP, GL_REPLACE); 
+                    // when stencil passes and depth fails
+                    // glStencilOp(GL_KEEP, GL_REPLACE, GL_KEEP); 
                     opengl->glUniform1f(opengl->glGetUniformLocation(skinning_shader.id, "u_EntityID"), (f32)i);
                     glm::mat4 model = glm::translate(glm::mat4(1.0f), boxes[i].transform.pos) *
                         glm::mat4_cast(boxes[i].transform.rot) *
                         glm::scale(glm::mat4(1.0f), boxes[i].transform.scale);
                     shader_set_mat4(skinning_shader, "model", model);
                     glDrawArrays(GL_TRIANGLES, 0, 36);
-        glStencilFunc(GL_NOTEQUAL, 1, 0xFF);       // Always pass the stencil test
-        // draw outline
-        glStencilMask(0x00); // Disable stencil writes
-        //glDisable(GL_DEPTH_TEST);
+                    glStencilFunc(GL_NOTEQUAL, 1, 0xFF);       // Always pass the stencil test
+                    // draw outline
+                    glStencilMask(0x00); // Disable stencil writes
+
+
+                    // IMPORTANT This doesn't work
+                    #if 0
+                    {
+                        // draw outline
+                        glDisable(GL_DEPTH_TEST);
+                        // Use a solid outline color, simple shader
+                        shader_use(outline_shader);
+                        opengl->glBindVertexArray(cubeVAO);
+
+                        shader_set_mat4(outline_shader, "nodeMatrix", glm::mat4(1.0f));
+                        shader_set_mat4(outline_shader, "view", view);
+                        shader_set_vec3(outline_shader, "viewPos", curr_camera->position);
+                        shader_set_vec3(outline_shader, "spotLight.position", curr_camera->position);
+                        shader_set_vec3(outline_shader, "spotLight.direction", curr_camera->forward);
+                        shader_set_mat4(outline_shader, "projection", placeholder_state->persp_proj);
+
+                        glm::mat4 outline_model = glm::scale(model, glm::vec3(1.2f));
+                        shader_set_mat4(outline_shader, "model", outline_model);
+                        glDrawArrays(GL_TRIANGLES, 0, 36);
+                        // reset states
+                        glStencilMask(0xFF);
+                        glStencilFunc(GL_ALWAYS, 0, 0xFF);
+                        glEnable(GL_DEPTH_TEST);
+                        shader_use(skinning_shader);
+                    }
+                    #endif
+
                     continue;
                 }
             }
+
             opengl->glUniform1f(opengl->glGetUniformLocation(skinning_shader.id, "u_EntityID"), (f32)i);
             glm::mat4 model = glm::translate(glm::mat4(1.0f), boxes[i].transform.pos) *
                 glm::mat4_cast(boxes[i].transform.rot) *
@@ -1191,66 +1271,52 @@ void opengl_render(OpenGL *opengl, Camera *curr_camera, u32 cubeVAO,
 
         GLint fbo;
         glGetIntegerv(GL_FRAMEBUFFER_BINDING, &fbo);
-        printf("FBO at stencil pass: %d\n", fbo);
+        //printf("FBO at stencil pass: %d\n", fbo);
 
         GLint stencil_mask;
         glGetIntegerv(GL_STENCIL_WRITEMASK, &stencil_mask);
-        printf("Stencil mask at stencil pass: %x\n", stencil_mask);
+        //printf("Stencil mask at stencil pass: %x\n", stencil_mask);
 
         GLboolean depth;
         glGetBooleanv(GL_DEPTH_TEST, &depth);
-        printf("Depth test at stencil pass: %d\n", depth);
+        //printf("Depth test at stencil pass: %d\n", depth);
 
-
-        // Enable stencil test
-        {
-            //opengl->glUniform1f(opengl->glGetUniformLocation(skinning_shader.id, "u_EntityID"), (f32)4);
 
         shader_use(skinning_shader);
 	    opengl->glBindVertexArray(cubeVAO);
-        #if 0
-        if (pixelColor > 1 && pixelColor < boxes.size())
-        {
-                u32 entity_id_to_draw = u32(pixelColor);
-                glm::mat4 model = glm::translate(glm::mat4(1.0f), boxes[entity_id_to_draw].transform.pos) *
-                    glm::mat4_cast(boxes[entity_id_to_draw].transform.rot) *
-                    glm::scale(glm::mat4(1.0f), boxes[entity_id_to_draw].transform.scale );
-                shader_set_mat4(skinning_shader, "model", model);
-                glDrawArrays(GL_TRIANGLES, 0, 36);
-
-        }
-        #endif
-        }
-
 
         glPixelStorei(GL_PACK_ALIGNMENT, 1);
-        glReadPixels(xPos, SRC_HEIGHT - yPos, 1, 1, GL_STENCIL_INDEX, GL_UNSIGNED_BYTE, &stencil_val);
+        glReadPixels(xPos, yPos, 1, 1, GL_STENCIL_INDEX, GL_UNSIGNED_BYTE, &stencil_val);
         glPixelStorei(GL_PACK_ALIGNMENT, 4);
 
-        {
-        // draw outline
-        glDisable(GL_DEPTH_TEST);
-        // Use a solid outline color, simple shader
-        shader_use(outline_shader);
-	    opengl->glBindVertexArray(cubeVAO);
 
-        shader_set_mat4(outline_shader, "nodeMatrix", glm::mat4(1.0f));
-		shader_set_mat4(outline_shader, "view", view);
-        shader_set_vec3(outline_shader, "viewPos", curr_camera->position);
-        shader_set_vec3(outline_shader, "spotLight.position", curr_camera->position);
-        shader_set_vec3(outline_shader, "spotLight.direction", curr_camera->forward);
-        shader_set_mat4(outline_shader, "projection", placeholder_state->persp_proj);
-
+        // IMPORTANT this works because i wait for it to be the last thing
+        #if 1
         if (pixelColor > 1 && pixelColor < boxes.size())
         {
-                u32 entity_id_to_draw = u32(pixelColor);
-                glm::mat4 model = glm::translate(glm::mat4(1.0f), boxes[entity_id_to_draw].transform.pos) *
-                    glm::mat4_cast(boxes[entity_id_to_draw].transform.rot) *
-                    glm::scale(glm::mat4(1.0f), boxes[entity_id_to_draw].transform.scale  * 1.2f);
-                shader_set_mat4(outline_shader, "model", model);
-                glDrawArrays(GL_TRIANGLES, 0, 36);
+            u32 entity_to_draw = u32(pixelColor);
+            // draw outline
+            glDisable(GL_DEPTH_TEST);
+            // Use a solid outline color, simple shader
+            shader_use(outline_shader);
+            opengl->glBindVertexArray(cubeVAO);
+
+            shader_set_mat4(outline_shader, "nodeMatrix", glm::mat4(1.0f));
+            shader_set_mat4(outline_shader, "view", view);
+            shader_set_vec3(outline_shader, "viewPos", curr_camera->position);
+            shader_set_vec3(outline_shader, "spotLight.position", curr_camera->position);
+            shader_set_vec3(outline_shader, "spotLight.direction", curr_camera->forward);
+            shader_set_mat4(outline_shader, "projection", placeholder_state->persp_proj);
+
+            u32 i = entity_to_draw;
+            glm::mat4 outline_model = glm::translate(glm::mat4(1.0f), boxes[i].transform.pos) *
+                glm::mat4_cast(boxes[i].transform.rot) *
+                glm::scale(glm::mat4(1.0f), boxes[i].transform.scale * 1.2f);
+
+            shader_set_mat4(outline_shader, "model", outline_model);
+            glDrawArrays(GL_TRIANGLES, 0, 36);
         }
-        }
+        #endif
 
         // reset states
         glStencilMask(0xFF);

@@ -109,10 +109,24 @@ u32 input_click_left_down(Input* input)
     return result;
 }
 
+u32 input_was_click_left_down(Input* input) 
+{
+    u32 result = 0;
+    result = input->prev_mouse_state.button[MouseButtons_LeftClick] == 1;
+    return result;
+}
+
 u32 input_click_left_up(Input* input) 
 {
     u32 result = 0;
     result = input->curr_mouse_state.button[MouseButtons_LeftClick] == 0;
+    return result;
+}
+
+u32 input_is_click_left_just_pressed(Input* input) 
+{
+    u32 result = 0;
+    result = input->curr_mouse_state.button[MouseButtons_LeftClick] == 1 && input->prev_mouse_state.button[MouseButtons_LeftClick] == 0;
     return result;
 }
 

@@ -33,7 +33,7 @@ internal void* _push_size(Arena* arena, size_t size, u64 alignment)
 
     }
     size += alignment_offset;
-    AssertGui(arena->len + size <= arena->max_len, "Arena size exceeded!");
+    AssertGui(arena->len + size <= arena->max_len, "Requested size: %zd | arena cap: %zd", arena->len + size, arena->max_len);
     //memset(arena->base, 0, size);
     arena->len += size;
     void* result = (void*)(result_ptr + alignment_offset);

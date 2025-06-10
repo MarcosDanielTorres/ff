@@ -33,7 +33,8 @@ set meta=0
 set game=0
 set openglrewrite=0
 set skinning=0
-set render_example=1
+set render_example=0
+set physics_example=1
 
 @rem TODO combine them together!
 if "%vulkan%"=="1" set inc_files=%inc_files% -I%VULKAN_SDK%\Include
@@ -72,5 +73,6 @@ if "%openglrewrite%"=="1"       %compile% -MD -Fmmain.map ..\src\samples\opengl\
 if "%skinning%"=="1"            %compile% -MD -Feopengl-skinning.exe -Fmopengl-skinning.map ..\src\samples\skinning\skinning.cpp /I%VULKAN_SDK%\Include /link /LIBPATH:%assimp_lib_path% opengl32.lib gdi32.lib user32.lib assimp.lib zlibstatic.lib
 @rem NOTE I was previously using -MD for compilation (I guess for no particular reason, just found that it worked at the moment. But when adding freetype i had to moved back to the fault (whic is MT))
 if "%render_example%"=="1"      %compile% -MT -Ferender_example.exe -Fmrender_example.map ..\src\samples\render_example\render_example.cpp /I%glm_root% /link -incremental:no -opt:ref /LIBPATH:%assimp_lib_path_dll% opengl32.lib gdi32.lib user32.lib assimp.lib /LIBPATH:%freetype_lib_path% libfreetype.lib 
+if "%physics_example%"=="1"      %compile% -MT -Fephsyics_example.exe -Fmphysics_example.map ..\src\samples\physics_example\physics_example.cpp /I%glm_root% /link -incremental:no -opt:ref opengl32.lib gdi32.lib user32.lib /LIBPATH:%freetype_lib_path% libfreetype.lib 
 
 popd

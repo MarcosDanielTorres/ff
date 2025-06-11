@@ -34,7 +34,8 @@ set game=0
 set openglrewrite=0
 set skinning=0
 set render_example=0
-set ui_example_v1=1
+set ui_example_v1=0
+set physics_example_v1=1
 
 @rem TODO combine them together!
 if "%vulkan%"=="1" set inc_files=%inc_files% -I%VULKAN_SDK%\Include
@@ -74,5 +75,6 @@ if "%skinning%"=="1"            %compile% -MD -Feopengl-skinning.exe -Fmopengl-s
 @rem NOTE I was previously using -MD for compilation (I guess for no particular reason, just found that it worked at the moment. But when adding freetype i had to moved back to the fault (whic is MT))
 if "%render_example%"=="1"      %compile% -MT -Ferender_example.exe -Fmrender_example.map ..\src\samples\render_example\render_example.cpp /I%glm_root% /link -incremental:no -opt:ref /LIBPATH:%assimp_lib_path_dll% opengl32.lib gdi32.lib user32.lib assimp.lib /LIBPATH:%freetype_lib_path% libfreetype.lib 
 if "%ui_example_v1%"=="1"      %compile% -MT -Feui_example_v1.exe -Fmui_example_v1.map ..\src\samples\ui_example_v1\ui_example_v1.cpp /I%glm_root% /link -incremental:no -opt:ref opengl32.lib gdi32.lib user32.lib /LIBPATH:%freetype_lib_path% libfreetype.lib 
+if "%physics_example_v1%"=="1"      %compile% -MT -Fephysics_example_v1.exe -Fmphysics_example_v1.map ..\src\samples\physics_example_v1\physics_example_v1.cpp /I%glm_root% /link -incremental:no -opt:ref opengl32.lib gdi32.lib user32.lib /LIBPATH:%freetype_lib_path% libfreetype.lib 
 
 popd

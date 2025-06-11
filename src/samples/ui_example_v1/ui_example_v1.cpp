@@ -20,7 +20,6 @@ typedef Input GameInput;
 #include <glm/gtc/type_ptr.hpp>
 #include <glm/gtc/quaternion.hpp>
 
-
 #define AIM_PROFILER
 #include "aim_timer.h"
 #include "aim_profiler.h"
@@ -47,7 +46,6 @@ struct PlatformLimits
     u32 max_quad_count_per_frame;
     u32 max_index_count;
 };
-
 
 #include "renderer/opengl_renderer.cpp"
 
@@ -194,15 +192,18 @@ LRESULT CALLBACK win32_main_callback(HWND Window, UINT Message, WPARAM wParam, L
 enum UI_Interaction
 {
     Interaction_None,
+    Interaction_NOP,
     Interaction_Drag,
 };
 
 struct Widget
 {
     f32 x, y, w, h;
+    f32 x_off, y_off;
     Str8 text; 
     glm::vec4 c;
     Widget *next;
+    Widget *prev;
 };
 
 struct Rect2Dx
@@ -274,19 +275,20 @@ b32 rect_contains_point(Rect2Dx rect, Point2Dx point) {
 internal void
 add_widget(Arena *arena, WidgetList* w_list, Widget w)
 {
-    if (w_list->first == w_list->last)
+    if (!w_list->first)
     {
         Widget *new_w = (Widget *)arena_push_size(arena, Widget, 1);
         *new_w = w;
-        w_list->last = new_w;
-        w_list->first->next = w_list->last;
+        w_list->first = w_list->last = new_w;
     }
     else
     {
         Widget *new_w = (Widget *)arena_push_size(arena, Widget, 1);
         *new_w = w;
+        Widget *last = w_list->last;
         w_list->last->next = new_w;
         w_list->last = new_w;
+        w_list->last->prev = last;
     }
 }
 
@@ -332,6 +334,7 @@ int main()
     window1.y = 500.0f;
     window1.w = 200.0f;
     window1.h = 100.0f;
+    window1.text = str8("A");
     window1.c = glm::vec4(1.0f, 0.0f, 0.0f, 1.0f);
 
     //push_circle(render_group, glm::vec3(500.0f, 500.0f, 0.0f), 20);
@@ -342,11 +345,12 @@ int main()
     //circle.c = glm::vec4(1.0f, 1.0f, 1.0f, 1.0f);
 
     Widget some_rect {};
-    circle.x = 500.0f;
-    circle.y = 500.0f;
-    circle.w = 20.0f;
-    circle.h = 200.0f;
-    circle.c = glm::vec4(1.0f, 1.0f, 1.0f, 1.0f);
+    some_rect.x = 500.0f;
+    some_rect.y = 500.0f;
+    some_rect.w = 20.0f;
+    some_rect.h = 200.0f;
+    some_rect.text = str8("B");
+    some_rect.c = glm::vec4(1.0f, 1.0f, 1.0f, 1.0f);
 
     //push_rect(render_group, 800.0f, 800.0f, 100.0f, 100.0f, glm::vec4(1.0f, 1.0f, 0.0f, 1.0f));
     Widget border {};
@@ -354,6 +358,7 @@ int main()
     border.y = 800.0f;
     border.w = 100.0f;
     border.h = 100.0f;
+    border.text = str8("C");
     border.c = glm::vec4(0.0f, 1.0f, 0.0f, 1.0f);
 
     //add_widget(&g_arena, state->w_list, circle);
@@ -361,13 +366,25 @@ int main()
     add_widget(&g_arena, state->w_list, border);
     add_widget(&g_arena, state->w_list, some_rect);
 
+    u32 frame_window = 1000;
+    u32 frame_counter = 0;
+    f32 avg_frame_time = 0;
+    f32 total_frame_time_per_frame_window = 0;
     while (g_w32_window.is_running)
 	{
+        win32_process_pending_msgs();
+        if(frame_counter == frame_window)
+        {
+            avg_frame_time = total_frame_time_per_frame_window / frame_counter;
+            frame_counter = 0;
+            total_frame_time_per_frame_window = 0;
+        }
         LONGLONG now = aim_timer_get_os_time();
         LONGLONG dt_long = now - last_frame;
         last_frame = now;
         f32 dt = aim_timer_ticks_to_sec(dt_long, frequency);
         f32 dt_ms = aim_timer_ticks_to_ms(dt_long, frequency);
+        total_frame_time_per_frame_window += dt_ms;
 
         Point2Dx mouse_p = {g_input.curr_mouse_state.x, g_input.curr_mouse_state.y};
         state->dmousep = mouse_p - prev_frame_mouse_p;
@@ -426,43 +443,19 @@ int main()
             char *end = buf + sizeof(buf);
             const char* c  = "was pressed";
             _snprintf_s(at, (size_t)(end - at), (size_t)(end - at), c);
-            push_text(render_group, &state->font_info, at, 25, 155);
-
+            push_text(render_group, &state->font_info, at, 25, 185);
         }
 
-
-        b32 hovered = 0;
-        for(Widget *w = state->w_list->first; w != 0; w = w->next)
         {
-            Rect2Dx dim = {w->x, w->y, w->w, w->h};
-            //f32 r = state->circle.w;
-            //Rect2Dx circle_rect = {state->circle.x - r, state->circle.y + r, r * 2, r * 2};
-            //Rect2Dx border_rect = {state->border.x, state->border.y, state->border.w, state->border.h};
-
-            if(hovered == 0 && rect_contains_point(dim, mouse_p))
-            {
-                state->next_hot = w;
-                hovered = 1;
-            }
-
-            {
-                f32 x = w->x;
-                f32 y = w->y;
-                f32 width = w->w;
-                f32 height = w->h;
-                glm::vec4 c = w->c;
-                if (w == state->hot)
-                {
-
-                    push_rect(render_group, x, y, width, height, glm::vec4(0.0f, 0.0f, 1.0f, 1.0f));
-                }
-                else
-                {
-                    push_rect(render_group, x, y, width, height, c);
-                }
-            }
+            char buf[100];
+            char *at = buf;
+            char *end = buf + sizeof(buf);
+            const char* c  = "avg frame time: %fms";
+            _snprintf_s(at, (size_t)(end - at), (size_t)(end - at), c, avg_frame_time);
+            push_text(render_group, &state->font_info, at, 25, 300);
 
         }
+
 
 
         /*
@@ -473,38 +466,147 @@ int main()
 
         //AssertGui(g_input.prev_mouse_state.button[MouseButtons_LeftClick] == g_input.curr_mouse_state.button[MouseButtons_LeftClick], "Finally!");
 
-        if (input_click_left_down(&g_input))
+        local_persist b32 blocked = 0;
+
+        if (!blocked)
         {
-            if (state->hot)
+			if (input_click_left_down(&g_input))
+			{
+				if (state->active)
+				{
+					if(state->interaction == Interaction_Drag)
+					{
+						f32 x_off = state->active->x_off;
+						f32 y_off = state->active->y_off;
+						state->active->x = mouse_p.x - x_off;
+						state->active->y = mouse_p.y - y_off;
+					}
+				}
+				else
+				{
+					if (state->hot)
+					{
+						Rect2Dx rect = {state->hot->x,state->hot->y,state->hot->w,state->hot->h};
+						if(rect_contains_point(rect,  mouse_p))
+						{
+							state->next_interaction = Interaction_Drag;
+							state->active = state->hot;
+							state->active->x_off = mouse_p.x - state->active->x;
+							state->active->y_off = mouse_p.y - state->active->y;
+						}
+					}
+					else
+					{
+                        blocked = 1;
+					}
+				}
+			}
+        }
+
+        if (input_click_left_up(&g_input))
+        {
+            if(state->active)
             {
-                Rect2Dx rect = {state->hot->x,state->hot->y,state->hot->w,state->hot->h};
+                Rect2Dx rect = {state->active->x,state->active->y,state->active->w,state->active->h};
                 if(rect_contains_point(rect,  mouse_p))
                 {
-                    state->active = state->hot;
                 }
+                state->active->x_off = 0;
+                state->active->y_off = 0;
+                state->active = 0;
             }
             else
             {
-                state->active = 0;
+                blocked = 0;
+                state->interaction = Interaction_None;
             }
-            if (state->active)
+        }
+
+        b32 hovered = 0;
+        for(Widget *w = state->w_list->last; w != 0; w = w->prev)
+        {
+            Rect2Dx dim = {w->x, w->y, w->w, w->h};
+            if(hovered == 0 && rect_contains_point(dim, mouse_p))
             {
-                Point2Dx dtm = state->dmousep;
-                state->active->x += dtm.x;
-                state->active->y += dtm.y;
-                state->active = state->hot;
+                state->next_hot = w;
+                hovered = 1;
+            }
+        }
+        for(Widget *w = state->w_list->first; w != 0; w = w->next)
+        {
+            //f32 r = state->circle.w;
+            //Rect2Dx circle_rect = {state->circle.x - r, state->circle.y + r, r * 2, r * 2};
+            //Rect2Dx border_rect = {state->border.x, state->border.y, state->border.w, state->border.h};
+            f32 x = w->x;
+            f32 y = w->y;
+            f32 width = w->w;
+            f32 height = w->h;
+            glm::vec4 c = w->c;
+            if (w == state->hot)
+            {
+
+                push_rect(render_group, x, y, width, height, glm::vec4(0.0f, 0.0f, 1.0f, 1.0f));
+            }
+            else
+            {
+                push_rect(render_group, x, y, width, height, c);
             }
         }
 
 
+
         if (state->active)
         {
-            char buf[100];
-            char *at = buf;
-            char *end = buf + sizeof(buf);
-            const char* c  = "Active: %p";
-            _snprintf_s(at, (size_t)(end - at), (size_t)(end - at), c, state->active);
-            push_text(render_group, &state->font_info, at, 25, 145);
+            {
+                char buf[100];
+                char *at = buf;
+                char *end = buf + sizeof(buf);
+                const char* c  = "Active: %p";
+                _snprintf_s(at, (size_t)(end - at), (size_t)(end - at), c, state->active);
+                push_text(render_group, &state->font_info, at, 25, 145);
+            }
+            {
+                char buf[100];
+                char *at = buf;
+                char *end = buf + sizeof(buf);
+                const char* c  = "Text: %.*s";
+                _snprintf_s(at, (size_t)(end - at), (size_t)(end - at), c, (u32)state->active->text.size,  state->active->text.str);
+                push_text(render_group, &state->font_info, at, 25, 165);
+            }
+
+            if(state->active != state->w_list->last)
+            {
+                if (!state->active->prev)
+                {
+                    // This is the first element if it has no `prev`
+                    Widget *aux_last = state->w_list->last;
+
+                    state->w_list->last = state->active;
+                    state->w_list->last->prev = aux_last;
+                    aux_last->next = state->w_list->last;
+
+                    state->w_list->first = state->active->next;
+                    state->w_list->first->prev = 0;
+                    state->w_list->last->next = 0;
+                }
+                else
+                {
+                    // This is the element element in the middle
+                    Widget *prev = state->active->prev;
+                    Widget *next = state->active->next;
+                    prev->next = next;
+                    next->prev = prev;
+                    state->active->prev = 0;
+                    state->active->next = 0;
+
+                    Widget *aux = state->w_list->last;
+                    state->w_list->last = state->active;
+                    aux->next = state->w_list->last;
+                    state->w_list->last->prev = aux;
+                }
+            }
+
+
         }
 
         //printf("curr: %d, prev: %d\n", g_input.curr_mouse_state.button[MouseButtons_LeftClick], g_input.prev_mouse_state.button[MouseButtons_LeftClick]);
@@ -516,7 +618,6 @@ int main()
         }
 
 
-        win32_process_pending_msgs();
 
         //glPolygonMode( GL_FRONT_AND_BACK, GL_LINE);
 
@@ -531,14 +632,14 @@ int main()
 
         state->hot = state->next_hot;
         state->next_hot = 0;
-        if (!state->active)
-            state->interaction = Interaction_None;
+        state->interaction = state->next_interaction;
         //glPolygonMode( GL_FRONT_AND_BACK, GL_FILL);
 
         click_left_pressed_last_frame = input_click_left_down(&g_input);
-        input_update(&g_input);
         SwapBuffers(hdc);
         temp_end(per_frame);
+        frame_counter++;
+        input_update(&g_input);
     }
     ReleaseDC(g_w32_window.handle, hdc);
     aim_profiler_print();

@@ -1,5 +1,6 @@
 build
 asan*
 src/samples/opengl/thirdpartya
+src/samples/render_example/skybox/
 thirdparty/assimp
 thirdparty/glm

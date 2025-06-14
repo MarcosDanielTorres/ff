@@ -1,9 +1,20 @@
+/*
+    How do I change the acceleration of a particle? Forces F = ma => a = F/m
+        The more mass the harder to accelerate
+    Weight = g * m which then cancels out when applying a = F/m, so no need to add it to F, just to accel after a = F/m
+    Drag: works in the opposite direction of the motion of the object with respect to a surrounding fluid (water, oil, mud, air, gas)
+        Depends on the velocity, the more velocity the stronger the drag
+
+    Drag = 0.5 * fluid_density (p) * coefficient of drag (k) * cross-sectional area (A) * length_squared(velocity) * -norm(velocity)
+    p, k and A are just constants
+*/
 #include "base/base_core.h"
 #include "base/base_arena.h"
 #include "base/base_string.h"
 #include "os/os_core.h"
 #include "draw/draw.h"
 #include "font/font.h"
+#include "base/base_math.h"
 
 #include "base/base_arena.cpp"
 #include "base/base_string.cpp"
@@ -45,6 +56,15 @@ struct PlatformLimits
 {
     u32 max_quad_count_per_frame;
     u32 max_index_count;
+};
+
+struct Particle
+{
+    Vec2 pos;
+    Vec2 vel;
+    Vec2 acc;
+    f32 inv_m;
+    f32 r;
 };
 
 #include "renderer/opengl_renderer.cpp"
@@ -277,10 +297,22 @@ int main()
 
 
     Point2Dx prev_frame_mouse_p = {};
-    u32 frame_window = 1000;
+    u32 frame_window = 100;
     u32 frame_counter = 0;
     f32 avg_frame_time = 0;
     f32 total_frame_time_per_frame_window = 0;
+    LONGLONG now = aim_timer_get_os_time();
+    LONGLONG dt_long = now - last_frame;
+    last_frame = now;
+
+    f32 pixels_per_meter = 50.f;
+    Particle *particles = arena_push_size(&g_arena, Particle, 10);
+    u32 count = 3;
+
+    particles[0] = {.pos = Vec2{100.0f, 100.0f}, .vel = Vec2{}, .acc = Vec2{}, .inv_m = 1.0f/3.0f, .r = 10.0f};
+    particles[1] = {.pos = Vec2{200.0f, 100.0f}, .vel = Vec2{}, .acc = Vec2{}, .inv_m = 1.0f/4.0f, .r = 3.0f};
+    particles[2] = {.pos = Vec2{300.0f, 800.0f}, .vel = Vec2{}, .acc = Vec2{}, .inv_m = 1.0f, .r = 3.0f};
+
     while (g_w32_window.is_running)
 	{
         win32_process_pending_msgs();
@@ -290,11 +322,15 @@ int main()
             frame_counter = 0;
             total_frame_time_per_frame_window = 0;
         }
-        LONGLONG now = aim_timer_get_os_time();
-        LONGLONG dt_long = now - last_frame;
-        last_frame = now;
+
+        while ((aim_timer_ticks_to_ms(aim_timer_get_os_time() - last_frame, frequency)) < (1000.0f/60.0f)) {}
+
+        now = aim_timer_get_os_time();
+        dt_long = now - last_frame;
         f32 dt = aim_timer_ticks_to_sec(dt_long, frequency);
+        dt = Min(dt, 0.016f);
         f32 dt_ms = aim_timer_ticks_to_ms(dt_long, frequency);
+        last_frame = now;
         total_frame_time_per_frame_window += dt_ms;
 
         Point2Dx mouse_p = {g_input.curr_mouse_state.x, g_input.curr_mouse_state.y};
@@ -327,7 +363,7 @@ int main()
             char *end = buf + sizeof(buf);
             const char* c  = "Frame time: %.4fms";
             _snprintf_s(at, (size_t)(end - at), (size_t)(end - at), c, dt_ms);
-            push_text(render_group, &state->font_info, at, 25, 75);
+            push_text(render_group, &state->font_info, at, 15, 30);
         }
 
         {
@@ -336,22 +372,82 @@ int main()
             char *end = buf + sizeof(buf);
             const char* c  = "mouse pos: %.2f, %.2f";
             _snprintf_s(at, (size_t)(end - at), (size_t)(end - at), c, mouse_p.x, mouse_p.y);
-            push_text(render_group, &state->font_info, at, 25, 100);
+            push_text(render_group, &state->font_info, at, 15, 50);
         }
 
         {
             char buf[100];
             char *at = buf;
             char *end = buf + sizeof(buf);
-            const char* c  = "avg frame time: %fms";
+            const char* c  = "avg frame time: %.3fms";
             _snprintf_s(at, (size_t)(end - at), (size_t)(end - at), c, avg_frame_time);
-            push_text(render_group, &state->font_info, at, 25, 300);
+            push_text(render_group, &state->font_info, at, 15, 70);
+
+        }
+
+        {
+            char buf[100];
+            char *at = buf;
+            char *end = buf + sizeof(buf);
+            const char* c  = "frame number: %d";
+            _snprintf_s(at, (size_t)(end - at), (size_t)(end - at), c, frame_counter);
+            push_text(render_group, &state->font_info, at, 270, 70);
 
         }
 
 
+        {
+            {
+            #if 0
+                char buf[100];
+                char *at = buf;
+                char *end = buf + sizeof(buf);
+                const char* c  = "vel: (%f, %f) m/s";
+                _snprintf_s(at, (size_t)(end - at), (size_t)(end - at), c, p.vel.x, p.vel.y);
+                push_text(render_group, &state->font_info, at, 15, 90);
+            #endif
+            }
 
-        //glPolygonMode( GL_FRONT_AND_BACK, GL_LINE);
+            Vec2 g = Vec2{0.0f, pixels_per_meter * 9.8f};
+            Vec2 f = {};
+            f += Vec2{pixels_per_meter * 0.2f, 0.0f};
+            //f += Vec2{0.0f, pixels_per_meter * 1.0f};
+
+            for(u32 i = 0; i < count; i++)
+            {
+                Particle *p = particles + i;
+                p->acc = f * p->inv_m;
+                p->acc += g;
+                p->vel += p->acc * dt;
+                p->pos += p->vel * dt;
+
+                if (p->pos.x + p->r > SRC_WIDTH)
+                {
+                    p->pos.x = SRC_WIDTH - p->r;
+                    p->vel.x *= -1.0f;
+                }
+                if (p->pos.x - p->r < 0)
+                {
+                    p->pos.x = p->r;
+                    p->vel.x *= -1.0f;
+                }
+                if (p->pos.y + p->r > SRC_HEIGHT)
+                {
+                    p->pos.y = SRC_HEIGHT - p->r;
+                    p->vel.y *= -1.0f;
+                }
+                if (p->pos.y - p->r < 0)
+                {
+                    p->pos.y = p->r;
+                    p->vel.y *= -1.0f;
+                }
+
+
+                push_circle(render_group, p->pos.x, p->pos.y, p->r);
+
+            }
+
+        }
 
         {
             opengl->glUseProgram(opengl->program_id);

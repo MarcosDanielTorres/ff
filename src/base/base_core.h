@@ -24,6 +24,7 @@ typedef u32 b32;
 
 #define Min(a, b) ((a) > (b) ? (b) : (a))
 #define Max(a, b) ((a) > (b) ? (a) : (b))
+#define Clamp(a, b, c) (Min(Max(a, b), c))
 #define array_count(a) (sizeof(a) / sizeof(*a))
 
 #define align_pow2(x,b) (((x) + (b) - 1)&(~((b) - 1)))

@@ -238,6 +238,22 @@ push_line(RenderGroup *render_group, glm::vec3 from, glm::vec3 to, f32 thickness
 }
 #endif
 
+internal void
+push_text(RenderGroup *render_group, FontInfo *font_info, Str8 text, f32 x, f32 baseline, glm::vec4 color = glm::vec4(1.0f, 1.0f, 1.0f, 1.0f))
+{
+    f32 pen_x = x;
+    f32 pen_y = baseline;
+    FontGlyph *font_table = font_info->font_table;
+
+    for(u32 i = 0; i < text.size; i++)
+    {
+        char c = text.str[i];
+        u32 codepoint = u32(c);
+        FontGlyph *glyph = &font_table[codepoint];
+        push_glyph(render_group, glyph, pen_x, pen_y, color);
+        pen_x += glyph->advance_x >> 6;
+    }
+}
 
 internal void
 push_text(RenderGroup *render_group, FontInfo *font_info, char *text, f32 x, f32 baseline, glm::vec4 color = glm::vec4(1.0f, 1.0f, 1.0f, 1.0f))

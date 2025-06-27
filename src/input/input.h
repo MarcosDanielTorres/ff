@@ -158,6 +158,13 @@ u32 input_is_key_pressed(Input* input, Keys key)
     return result;
 }
 
+u32 input_was_key_pressed(Input* input, Keys key) 
+{
+    u32 result = 0;
+    result = input->prev_keyboard_state.keys[key] == 1;
+    return result;
+}
+
 u32 input_is_key_released(Input* input, Keys key) 
 {
     u32 result = 0;

@@ -68,7 +68,7 @@ Vec2 &operator*=(f32 s, Vec2& a)
 
 f32 dot(Vec2 a, Vec2 b)
 {
-    f32 result = a.x * b.x + a.y + b.y;
+    f32 result = a.x * b.x + a.y * b.y;
     return result;
 }
 
@@ -87,13 +87,18 @@ f32 len(Vec2 a)
     return result;
 }
 
+f32 len_sq(Vec2 a)
+{
+    f32 result = dot(a, a);
+    return result;
+}
 
 Vec2 norm(Vec2 &a)
 {
     Vec2 result = {0};
     f32 v_len = len(a);
     if (v_len != 0.0f){
-        result = a * (1 / v_len);
+        result = a * (1.0f / v_len);
     }
     return result;
 }

@@ -48,6 +48,7 @@
 #define GL_COLOR_ATTACHMENT31             0x8CFF
 #define GL_FRAMEBUFFER                    0x8D40
 #define GL_READ_FRAMEBUFFER               0x8CA8
+#define GL_MULTISAMPLE                    0x809D
 //#define GL_DRAW_FRAMEBUFFER               0x8CA9
 #define GL_FRAMEBUFFER_BINDING            0x8CA6
 #define GL_RENDERBUFFER                   0x8D41

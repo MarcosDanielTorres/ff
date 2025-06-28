@@ -534,13 +534,15 @@ int main()
                         center + Vec2{local[2].x * c - local[2].y * s, local[2].x * s + local[2].y * c},
                         center + Vec2{local[3].x * c - local[3].y * s, local[3].x * s + local[3].y * c}, 
                     };
-                    // TODO(Marcos): Fix this one day (probably never)!
-                    // Quad has only the outline drawn if: border_radius = 0.03f (or a small value other than 0.0f)
-                    // and border_thickness = 0.0f
-                    // Would be better if i could just say: only outline, or not, border or not, border and outline yes, border alone yes, outline alone yes
-                    // Which i can but is not that clear
-                    //push_rect(render_group, quad_points, 0.0f, 0.0f, 1.0f, glm::vec4(1.0f, 0.0f, 0.0f, 1.0f));
-                    push_rect(render_group, quad_points, glm::vec4(1.0f, 1.0f, 0.0f, 1.0f));
+                    /* TODO(Marcos): Fix this one day (probably never)!
+                        Quad has only the outline drawn if: border_radius = 0.03f (or a small value other than 0.0f)
+                        and border_thickness = 0.0f
+                        Would be better if i could just say: only outline, or not, border or not, border and outline yes, border alone yes, outline alone yes
+                        Which i can but is not that clear
+
+                        When trying I removed the if (r > 0.0) in the shader. Although it was just a hunch
+                    */
+                    push_rect(render_group, quad_points, 0.0f, 0.0f, 1.0f, glm::vec4(1.0f, 1.0f, 0.0f, 0.0f));
 
                     push_circle(render_group, quad_points[0], 2.0f, glm::vec4(0.0, 1.0, 1.0, 1.0));
                     push_circle(render_group, quad_points[1], 2.0f, glm::vec4(0.0, 1.0, 1.0, 1.0));
@@ -548,7 +550,7 @@ int main()
                     push_circle(render_group, quad_points[3], 2.0f, glm::vec4(0.0, 1.0, 1.0, 1.0));
                         
                     // draw cm
-                    push_circle(render_group, center, 2.0f, glm::vec4(1.0, 0.0, 0.0, 1.0));
+                    push_circle(render_group, center, 22.0f, glm::vec4(1.0, 0.0, 0.0, 1.0));
                 } break;
             };
         }

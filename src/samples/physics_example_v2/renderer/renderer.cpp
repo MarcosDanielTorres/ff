@@ -67,6 +67,16 @@ push_rect(RenderGroup *render_group, Vec2 quad_points[4], f32 border_radius = 0.
 }
 
 internal void
+push_rect(RenderGroup *render_group, Vec2 quad_points[4], glm::vec4 c = glm::vec4(1.0f, 1.0f, 1.0f, 1.0f))
+{
+    glm::vec2 uv0 = glm::vec2(0, 0);
+    glm::vec2 uv1 = glm::vec2(1, 0);
+    glm::vec2 uv2 = glm::vec2(1, 1);
+    glm::vec2 uv3 = glm::vec2(0, 1);
+    push_rect(render_group, quad_points, 0.0f, 1.0f, 1.0f, c, uv0, uv1, uv2, uv3);
+}
+
+internal void
 push_rect(RenderGroup *render_group, f32 x, f32 y, f32 w, f32 h, glm::vec4 c = glm::vec4(1.0f, 1.0f, 1.0f, 1.0f))
 {
     Vec2 quad_points[4] = 
@@ -145,6 +155,24 @@ push_glyph(RenderGroup *render_group, FontGlyph *glyph, f32 x, f32 baseline, glm
 
 
 internal void
+push_circle(RenderGroup *render_group, Vec2 center, f32 radius = 1.0f, f32 border_thickness = 0.0f, glm::vec4 color = glm::vec4(1.0f, 1.0f, 1.0f, 1.0f))
+{
+    Vec2 quad_points[4] = 
+    {
+        {center.x - radius, center.y + radius},
+        {center.x + radius, center.y + radius},
+        {center.x + radius, center.y - radius},
+        {center.x - radius, center.y - radius}
+    };
+    glm::vec2 uv0 = glm::vec2(0, 0);
+    glm::vec2 uv1 = glm::vec2(1, 0);
+    glm::vec2 uv2 = glm::vec2(1, 1);
+    glm::vec2 uv3 = glm::vec2(0, 1);
+    push_rect(render_group, quad_points, 0.5f, border_thickness, 1.0f, color, uv0, uv1, uv2, uv3);
+
+}
+
+internal void
 push_circle(RenderGroup *render_group, Vec2 center, f32 radius = 1.0f, glm::vec4 color = glm::vec4(1.0f, 1.0f, 1.0f, 1.0f))
 {
     Vec2 quad_points[4] = 
@@ -158,15 +186,22 @@ push_circle(RenderGroup *render_group, Vec2 center, f32 radius = 1.0f, glm::vec4
     glm::vec2 uv1 = glm::vec2(1, 0);
     glm::vec2 uv2 = glm::vec2(1, 1);
     glm::vec2 uv3 = glm::vec2(0, 1);
-    push_rect(render_group, quad_points, 0.5f, 0.0f, 1.0f, color, uv0, uv1, uv2, uv3);
+    push_rect(render_group, quad_points, 0.5f, radius, 1.0f, color, uv0, uv1, uv2, uv3);
 
+}
+
+internal void
+push_circle(RenderGroup *render_group, f32 center_x, f32 center_y, f32 radius = 1.0f, f32 border_thickness = 0.0f, glm::vec4 color = glm::vec4(1.0f, 1.0f, 1.0f, 1.0f))
+{
+    Vec2 center = {center_x, center_y};
+    push_circle(render_group, center, radius, border_thickness, color);
 }
 
 internal void
 push_circle(RenderGroup *render_group, f32 center_x, f32 center_y, f32 radius = 1.0f, glm::vec4 color = glm::vec4(1.0f, 1.0f, 1.0f, 1.0f))
 {
     Vec2 center = {center_x, center_y};
-    push_circle(render_group, center, radius, color);
+    push_circle(render_group, center, radius, radius, color);
 }
 
 
@@ -202,6 +237,12 @@ push_line_2d(RenderGroup *render_group, f32 x0, f32 y0, f32 x1, f32 y1, f32 thic
     Vec2 from = {x0, y0};
     Vec2 to = {x1, y1};
     push_line_2d(render_group, from, to, thickness, color);
+}
+
+internal void
+push_line_2d(RenderGroup *render_group, f32 x0, f32 y0, f32 x1, f32 y1, glm::vec4 color = glm::vec4(1.0f, 1.0f, 1.0f, 1.0f))
+{
+    push_line_2d(render_group, x0, y0, x1, y1, 0.05f, color);
 }
 
 #if 0

@@ -1,6 +1,8 @@
 #pragma once
 #include <math.h>
 
+#define PI 3.14159265359
+
 union Vec2
 {
     struct
@@ -106,6 +108,14 @@ Vec2 norm(Vec2 &a)
 Vec2 lerp(Vec2 a, Vec2 b, f32 t)
 {
     Vec2 result = a + (b - a) * t;
+    return result;
+}
+
+Vec2 rotate(Vec2 a, f32 angle)
+{
+    Vec2 result = {};
+    result.x = a.x * cos(angle) - a.y * sin(angle);
+    result.y = a.x * sin(angle) + a.y * cos(angle);
     return result;
 }
 

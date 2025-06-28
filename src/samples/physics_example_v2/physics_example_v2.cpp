@@ -25,7 +25,6 @@
 #include "input/input.h"
 
 typedef Input GameInput;
-#define PI 3.14
 
 #include <math.h>
 // glm
@@ -65,6 +64,7 @@ struct PlatformLimits
     u32 max_index_count;
 };
 
+// #p
 struct Particle
 {
     Vec2 pos;
@@ -74,6 +74,60 @@ struct Particle
     f32 inv_m;
     f32 r;
 };
+
+typedef u32 ShapeFlags;
+enum
+{
+    ShapeFlag_None = (1 << 0),
+    ShapeFlag_Circle = (1 << 1),
+    ShapeFlag_Box = (1 << 2),
+};
+
+enum ShapeType
+{
+    ShapeType_Circle,
+    ShapeType_Box,
+    ShapeType_Count,
+};
+
+struct Entity
+{
+    Vec2 p;
+    Vec2 v;
+    Vec2 a;
+    f32 inv_m;
+    f32 ap;
+    f32 av;
+    f32 aa;
+    f32 inv_i;
+
+    Vec2 t_f;
+    f32 t_t;
+
+    ShapeFlags flags;
+    f32 r, w, h;
+
+    ShapeType type;
+    union
+    {
+        struct
+        {
+            f32 r;
+        };
+        struct
+        {
+            f32 w, h;
+        };
+    };
+};
+
+internal f32
+inertia_circle(f32 inv_m, f32 r)
+{
+    // 0.5f*m*r*r <=> (2.0f * 1)/(m*r*r) <=> (2.0f*inv_m)/(r*r)
+    f32 result = (2.0f * inv_m) / (r * r);
+    return result;
+}
 
 
 Vec2 spring_force(Vec2 anchor, Vec2 p, f32 eq_len, f32 k)
@@ -359,8 +413,17 @@ int main()
     LONGLONG dt_long = now - last_frame;
     last_frame = now;
 
-    Particle *particles = arena_push_size(&g_arena, Particle, 10);
+    u32 entity_count = 2;
+    Entity *entity = arena_push_size(&g_arena, Entity, 5);
+    entity[0] = {.p = Vec2{900.0f, 400.0f}, .inv_m = 1.0f, .r = 40.0f};
+    entity[0].inv_i = inertia_circle(entity->inv_m, entity->r);
+    entity[0].type = ShapeType_Circle;
 
+    entity[1] = {.p = Vec2{300.0f, 400.0f}, .inv_m = 1.0f, .w = 300.0f, .h = 90.0f};
+    entity[1].inv_i = inertia_circle(entity->inv_m, entity->r);
+    entity[1].type = ShapeType_Box;
+
+    Particle *particles = arena_push_size(&g_arena, Particle, 10);
     particles[0] = {.pos = Vec2{700.0f, 400.0f}, .vel = Vec2{}, .acc = Vec2{}, .inv_m = 1.0f, .r = 40.0f};
     u32 count = 1;
 
@@ -410,19 +473,86 @@ int main()
         g_input.dt = dt;
         total_time += dt;
 
+        local_persist f32 angle = 0.0f;
         // debug text
         push_text(render_group, &state->font_info, str8_fmt(per_frame.arena, "Frame time: %.4fms", dt_ms), 15, 30);
         push_text(render_group, &state->font_info, str8_fmt(per_frame.arena, "mouse pos: %.2f, %.2f", mouse_p.x, mouse_p.y), 15, 50);
         push_text(render_group, &state->font_info, str8_fmt(per_frame.arena, "avg frame time: %.3fms", avg_frame_time), 15, 70);
-        push_text(render_group, &state->font_info, str8_fmt(per_frame.arena, "frame number: %d", frame_counter), 270, 70);
+        push_text(render_group, &state->font_info, str8_fmt(per_frame.arena, "theta: %.2frads", -1.0f * entity->ap), 15, 90);
         // debug text
 
-        process_physics(particles, count, dt);
-        for(u32 i = 0; i < count; i++)
+        //process_physics(particles, count, dt);
+        for(u32 i = 0; i < entity_count; i++)
         {
-            Particle *p = particles + i;
-            push_circle(render_group, p->pos.x, p->pos.y, p->r);
+            Entity *e = entity + i;
+            e->t_f = {5.0f, 0.0f};
+            e->t_t = angle;
         }
+        for(u32 i = 0; i < entity_count; i++)
+        {
+            Entity *e = entity + i;
+            e->a = e->t_f * e->inv_m;
+            e->v += e->a * dt;
+            e->p += e->v * dt;
+            e->aa = e->t_t * e->inv_i;
+            e->av += e->aa * dt;
+            e->ap += e->av * dt;
+        }
+        for(u32 i = 0; i < entity_count; i++)
+        {
+            Entity *e = entity + i;
+
+            switch(e->type)
+            {
+                case ShapeType_Circle:
+                {
+                    push_circle(render_group, e->p, e->r, 0.0f, glm::vec4(1.0, 1.0, 0.0, 1.0));
+                    push_line_2d(render_group, e->p, e->p + Vec2{cos(e->ap) * e->r, sin(e->ap) * e->r}, 1.0f, glm::vec4(1.0, 1.0, 1.0, 1.0));
+                    // draw cm
+                    push_circle(render_group, e->p, 2.0f, glm::vec4(1.0, 0.0, 0.0, 1.0));
+                } break;
+                case ShapeType_Box:
+                {
+                    f32 x, y, w, h;
+                    x = e->p.x;
+                    y = e->p.y;
+                    w = e->w;
+                    h = e->h;
+                    Vec2 center = e->p + Vec2{e->w / 2.0f, -e->h / 2.0f};
+                    f32 c = cos(e->ap);
+                    f32 s = sin(e->ap);
+                    Vec2 local[4] = {
+                        { -e->w*0.5f,  +e->h*0.5f },   // bottom-left
+                        { +e->w*0.5f,  +e->h*0.5f },   // bottom-right
+                        { +e->w*0.5f,  -e->h*0.5f },   // top-right
+                        { -e->w*0.5f,  -e->h*0.5f },   // top-left
+                    };
+                    Vec2 quad_points[4] = 
+                    {
+                        center + Vec2{local[0].x * c - local[0].y * s, local[0].x * s + local[0].y * c}, 
+                        center + Vec2{local[1].x * c - local[1].y * s, local[1].x * s + local[1].y * c},
+                        center + Vec2{local[2].x * c - local[2].y * s, local[2].x * s + local[2].y * c},
+                        center + Vec2{local[3].x * c - local[3].y * s, local[3].x * s + local[3].y * c}, 
+                    };
+                    // TODO(Marcos): Fix this one day (probably never)!
+                    // Quad has only the outline drawn if: border_radius = 0.03f (or a small value other than 0.0f)
+                    // and border_thickness = 0.0f
+                    // Would be better if i could just say: only outline, or not, border or not, border and outline yes, border alone yes, outline alone yes
+                    // Which i can but is not that clear
+                    //push_rect(render_group, quad_points, 0.0f, 0.0f, 1.0f, glm::vec4(1.0f, 0.0f, 0.0f, 1.0f));
+                    push_rect(render_group, quad_points, glm::vec4(1.0f, 1.0f, 0.0f, 1.0f));
+
+                    push_circle(render_group, quad_points[0], 2.0f, glm::vec4(0.0, 1.0, 1.0, 1.0));
+                    push_circle(render_group, quad_points[1], 2.0f, glm::vec4(0.0, 1.0, 1.0, 1.0));
+                    push_circle(render_group, quad_points[2], 2.0f, glm::vec4(0.0, 1.0, 1.0, 1.0));
+                    push_circle(render_group, quad_points[3], 2.0f, glm::vec4(0.0, 1.0, 1.0, 1.0));
+                        
+                    // draw cm
+                    push_circle(render_group, center, 2.0f, glm::vec4(1.0, 0.0, 0.0, 1.0));
+                } break;
+            };
+        }
+        angle -= dt * 10.4;
 
         {
             opengl->glUseProgram(opengl->program_id);

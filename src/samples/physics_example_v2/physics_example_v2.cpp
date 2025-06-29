@@ -90,6 +90,12 @@ enum ShapeType
     ShapeType_Count,
 };
 
+struct ContactInfo
+{
+    Vec2 world_p;
+    u32 e_idx;
+};
+
 struct Entity
 {
     Vec2 p;
@@ -104,6 +110,8 @@ struct Entity
     Vec2 t_f;
     f32 t_t;
 
+    b32 colliding;
+    ContactInfo last_contact_info;
     ShapeFlags flags;
     f32 r, w, h;
 
@@ -403,7 +411,6 @@ int main()
 
     glm::mat4 ortho_proj_mat = glm::ortho(0.0f, f32(SRC_WIDTH), f32(SRC_HEIGHT), 0.0f, -1.0f, 1.0f);
 
-
     Point2Dx prev_frame_mouse_p = {};
     u32 frame_window = 100;
     u32 frame_counter = 0;
@@ -413,15 +420,24 @@ int main()
     LONGLONG dt_long = now - last_frame;
     last_frame = now;
 
-    u32 entity_count = 2;
+    u32 entity_count = 3;
+    // #ei
     Entity *entity = arena_push_size(&g_arena, Entity, 5);
     entity[0] = {.p = Vec2{900.0f, 400.0f}, .inv_m = 1.0f, .r = 40.0f};
     entity[0].inv_i = inertia_circle(entity->inv_m, entity->r);
     entity[0].type = ShapeType_Circle;
 
-    entity[1] = {.p = Vec2{300.0f, 400.0f}, .inv_m = 1.0f, .w = 300.0f, .h = 90.0f};
+    entity[1] = {.p = Vec2{1200.0f, 400.0f}, .inv_m = 1.0f, .r = 40.0f};
     entity[1].inv_i = inertia_circle(entity->inv_m, entity->r);
-    entity[1].type = ShapeType_Box;
+    entity[1].type = ShapeType_Circle;
+
+    entity[2] = {.p = Vec2{300.0f, 100.0f}, .inv_m = 1.0f, .r = 90.0f};
+    entity[2].inv_i = inertia_circle(entity->inv_m, entity->r);
+    entity[2].type = ShapeType_Circle;
+
+    entity[3] = {.p = Vec2{300.0f, 400.0f}, .inv_m = 1.0f, .w = 100.0f, .h = 50.0f};
+    entity[3].inv_i = inertia_circle(entity->inv_m, entity->r);
+    entity[3].type = ShapeType_Box;
 
     Particle *particles = arena_push_size(&g_arena, Particle, 10);
     particles[0] = {.pos = Vec2{700.0f, 400.0f}, .vel = Vec2{}, .acc = Vec2{}, .inv_m = 1.0f, .r = 40.0f};
@@ -482,32 +498,104 @@ int main()
         // debug text
 
         //process_physics(particles, count, dt);
+        entity[0].t_f = {};
+        entity[0].t_t = 0.0f;
+        entity[1].t_f = {};
+        entity[1].t_t = 0.0f;
+        entity[2].t_f = {};
+        entity[2].t_t = 0.0f;
+
+        Vec2 g = Vec2{0.0f, pixels_per_meter * 9.8f};
+        Vec2 wind = Vec2{pixels_per_meter * 4.2f, 0.0f};
+        entity[0].t_f += wind;
+        entity[1].t_f += {-8.0f, 0.0f};
+        entity[2].t_f += {22.0f, 0.0f};
+
+        entity[0].t_t += angle;
+        entity[1].t_t += angle;
+        entity[2].t_t += angle;
+
         for(u32 i = 0; i < entity_count; i++)
         {
             Entity *e = entity + i;
-            e->t_f = {5.0f, 0.0f};
-            e->t_t = angle;
-        }
-        for(u32 i = 0; i < entity_count; i++)
-        {
-            Entity *e = entity + i;
+            e->colliding = 0;
             e->a = e->t_f * e->inv_m;
+            e->a += g;
             e->v += e->a * dt;
             e->p += e->v * dt;
             e->aa = e->t_t * e->inv_i;
             e->av += e->aa * dt;
             e->ap += e->av * dt;
+            if (e->p.x + e->r > SRC_WIDTH)
+            {
+                e->p.x = SRC_WIDTH - e->r;
+                e->v.x *= -1.0f;
+            }
+            if (e->p.x - e->r < 0)
+            {
+                e->p.x = e->r;
+                e->v.x *= -1.0f;
+            }
+            if (e->p.y + e->r > SRC_HEIGHT)
+            {
+                e->p.y = SRC_HEIGHT - e->r;
+                e->v.y *= -1.0f;
+            }
+            if (e->p.y - e->r < 0)
+            {
+                e->p.y = e->r;
+                e->v.y *= -1.0f;
+            }
         }
+        {
+            // collisions
+            for(u32 i = 0; i < entity_count; i++)
+            {
+                Entity *a = entity + i;
+                for(u32 j = 0; j < entity_count; j++)
+                {
+                    if(i == j) continue;
+                    Entity *b = entity + j;
+                    switch(a->type)
+                    {
+                        case ShapeType_Circle:
+                        {
+                            Vec2 ab = b->p - a->p;
+                            f32 sum = a->r + b->r;
+                            if (len_sq(ab) <= sum * sum)
+                            {
+                                a->colliding = 1;
+                                a->last_contact_info.world_p = a->p + a->r * norm(ab);
+                                a->last_contact_info.e_idx = j;
+                                break;
+                            }
+                        } break;
+                    }
+                }
+            }
+        }
+
         for(u32 i = 0; i < entity_count; i++)
         {
             Entity *e = entity + i;
-
             switch(e->type)
             {
                 case ShapeType_Circle:
                 {
-                    push_circle(render_group, e->p, e->r, 0.0f, glm::vec4(1.0, 1.0, 0.0, 1.0));
-                    push_line_2d(render_group, e->p, e->p + Vec2{cos(e->ap) * e->r, sin(e->ap) * e->r}, 1.0f, glm::vec4(1.0, 1.0, 1.0, 1.0));
+                    push_text(render_group, &state->font_info, str8_fmt(per_frame.arena, 
+                        "e%d last contact: (%2.f, %2.f) with: e%d", i, e->last_contact_info.world_p.x, e->last_contact_info.world_p.y, e->last_contact_info.e_idx),
+                        15, 120 + i * 20);
+                    if(e->colliding)
+                    {
+                        push_circle(render_group, e->p, e->r, glm::vec4(1.0, 1.0, 0.0, 1.0));
+
+                        push_circle(render_group, e->last_contact_info.world_p, 4.0f, glm::vec4(0.0, 0.0, 1.0, 1.0));
+                    }
+                    else
+                    {
+                        push_circle(render_group, e->p, e->r, 0.0f, glm::vec4(1.0, 1.0, 0.0, 1.0));
+                        push_line_2d(render_group, e->p, e->p + Vec2{cos(e->ap) * e->r, sin(e->ap) * e->r}, 1.0f, glm::vec4(1.0, 1.0, 1.0, 1.0));
+                    }
                     // draw cm
                     push_circle(render_group, e->p, 2.0f, glm::vec4(1.0, 0.0, 0.0, 1.0));
                 } break;
@@ -535,14 +623,13 @@ int main()
                         center + Vec2{local[3].x * c - local[3].y * s, local[3].x * s + local[3].y * c}, 
                     };
                     /* TODO(Marcos): Fix this one day (probably never)!
-                        Quad has only the outline drawn if: border_radius = 0.03f (or a small value other than 0.0f)
-                        and border_thickness = 0.0f
+                        Quad has only the outline drawn if: border_radius = 0.0f and border_thickness = 0.0f
                         Would be better if i could just say: only outline, or not, border or not, border and outline yes, border alone yes, outline alone yes
-                        Which i can but is not that clear
+                        Which i can but is not that clear!
 
-                        When trying I removed the if (r > 0.0) in the shader. Although it was just a hunch
+                        When trying I removed the if (r > 0.0) in the shader. Although it was just a hunch!
                     */
-                    push_rect(render_group, quad_points, 0.0f, 0.0f, 1.0f, glm::vec4(1.0f, 1.0f, 0.0f, 0.0f));
+                    push_rect(render_group, quad_points, 0.0f, 0.0f, 1.0f, glm::vec4(1.0f, 1.0f, 0.0f, 1.0f));
 
                     push_circle(render_group, quad_points[0], 2.0f, glm::vec4(0.0, 1.0, 1.0, 1.0));
                     push_circle(render_group, quad_points[1], 2.0f, glm::vec4(0.0, 1.0, 1.0, 1.0));
@@ -550,9 +637,11 @@ int main()
                     push_circle(render_group, quad_points[3], 2.0f, glm::vec4(0.0, 1.0, 1.0, 1.0));
                         
                     // draw cm
-                    push_circle(render_group, center, 22.0f, glm::vec4(1.0, 0.0, 0.0, 1.0));
+                    push_circle(render_group, center, 2.0f, glm::vec4(1.0, 0.0, 0.0, 1.0));
                 } break;
             };
+            push_text(render_group, &state->font_info, str8_fmt(per_frame.arena, 
+                "e%d", i), e->p.x, e->p.y);
         }
         angle -= dt * 10.4;
 
@@ -569,6 +658,29 @@ int main()
         {
             g_w32_window.is_running = false;
         }
+
+        if(input_is_key_pressed(&g_input, Keys_R))
+        {
+            entity[0] = {.p = Vec2{900.0f, 400.0f}, .inv_m = 1.0f, .r = 40.0f};
+            entity[0].a = {};
+            entity[0].v = {};
+            entity[0].ap = {};
+            entity[0].aa = {};
+            entity[0].av = {};
+            entity[0].t_t = {};
+            entity[0].t_f = {};
+
+            entity[1] = {.p = Vec2{1200.0f, 400.0f}, .inv_m = 1.0f, .r = 40.0f};
+            entity[1].a = {};
+            entity[1].v = {};
+            entity[1].ap = {};
+            entity[1].aa = {};
+            entity[1].av = {};
+            entity[1].t_t = {};
+            entity[1].t_f = {};
+        }
+
+
 
         SwapBuffers(hdc);
         temp_end(per_frame);
